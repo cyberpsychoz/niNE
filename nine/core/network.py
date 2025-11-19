@@ -1,5 +1,6 @@
 import asyncio
 import json
+import ssl
 import struct
 from typing import NamedTuple, Optional
 
@@ -33,10 +34,27 @@ class NetworkManager:
         self._server_task: Optional[asyncio.Task] = None
 
     async def start_server(self, host: str, port: int):
-        """Запускает TCP сервер."""
-        server = await asyncio.start_server(self._handle_connection, host, port)
+        """Запускает TCP сервер с TLS-шифрованием."""
+        
+        # Создаем SSL-контекст для сервера
+        ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+        try:
+            # Загружаем наш самоподписанный сертификат
+            ssl_context.load_cert_chain('certs/cert.pem', 'certs/key.pem')
+            print("SSL-сертификат успешно загружен.")
+        except FileNotFoundError:
+            print("="*50)
+            print("КРИТИЧЕСКАЯ ОШИБКА: SSL-сертификаты не найдены.")
+            print("Пожалуйста, сгенерируйте их, прежде чем запускать сервер.")
+            print("="*50)
+            return
+            
+        server = await asyncio.start_server(
+            self._handle_connection, host, port, ssl=ssl_context
+        )
+        
         addr = server.sockets[0].getsockname()
-        print(f"Сервер запущен на {addr}")
+        print(f"Сервер (TLS) запущен на {addr}")
         self.event_manager.post("network_server_started", addr)
 
         async with server:
@@ -49,7 +67,7 @@ class NetworkManager:
         self.clients[client_id] = writer
 
         addr = writer.get_extra_info("peername")
-        print(f"Новое подключение от {addr}, назначен ID {client_id}")
+        print(f"Новое TLS-подключение от {addr}, назначен ID {client_id}")
 
         self.event_manager.post("network_client_connected", ClientConnectedEvent(client_id, reader, writer))
 
