@@ -16,17 +16,17 @@
 ## Технологии
 
 - **3D движок**: Panda3D
-- **Сетевое взаимодействие**: asyncio с TCP сокетами
-- **База данных**: Redis (для сохранения состояния игроков)
+- **Сетевое взаимодействие**: asyncio с TCP сокетами и TLS-шифрованием
+- **База данных**: SQLite (для сохранения состояния игроков, с реляционной схемой)
+- **Аутентификация**: Базовая аутентификация по паролю
 - **Сериализация**: JSON
-- **Система плагинов**: Динамическая загрузка с поддержкой ресурсов
+- **Система плагинов**: Динамическая загрузка с событийной архитектурой
 
 ## Установка
 
 ### Предварительные требования
 
 - Python 3.12 или выше
-- `redis-server` (должен быть установлен и доступен в системном PATH для автоматического запуска)
 
 ```bash
 pip install -r requirements.txt
@@ -45,13 +45,18 @@ cd niNE
 pip install -r requirements.txt
 ```
 
-3. Запустите сервер:
+3. **Сгенерируйте SSL-сертификаты**: Для безопасного соединения между клиентом и сервером вам потребуются SSL-сертификаты. В режиме разработки вы можете использовать самоподписанные:
+```bash
+mkdir certs
+openssl req -x509 -newkey rsa:2048 -keyout certs/key.pem -out certs/cert.pem -days 365 -nodes -subj "/C=US/ST=CA/L=SanFrancisco/O=MyProject/OU=Dev/CN=localhost"
+```
+
+4. Запустите сервер:
 ```bash
 python server.py
 ```
-Сервер попытается автоматически запустить собственный экземпляр Redis.
 
-4. Запустите клиент:
+5. Запустите клиент:
 ```bash
 python client.py
 ```
@@ -63,10 +68,11 @@ niNE/
 ├── requirements.txt        # Зависимости проекта
 ├── server.py               # Главная точка входа сервера
 ├── client.py               # Главная точка входа клиента
-├── redis_data/             # Данные управляемого экземпляра Redis
+├── certs/                  # SSL-сертификаты для TLS-соединения
+├── nine.db                 # Файл базы данных SQLite
 ├── nine/                   # Ядро фреймворка
 │   ├── core/
-│   │   ├── database.py     # Менеджер базы данных (Redis)
+│   │   ├── database.py     # Менеджер базы данных (SQLite)
 │   │   └── ...
 │   └── ...
 └── ...
@@ -74,51 +80,44 @@ niNE/
 
 ## Работа с базой данных (для разработчиков плагинов)
 
-Сервер `niNE` включает `DatabaseManager`, который обеспечивает простое сохранение и загрузку данных игроков.
-
-### Автоматическое управление Redis
-
-- При запуске сервер `niNE` пытается подключиться к Redis.
-- Если подключение не удалось, он автоматически запускает собственный, управляемый процесс `redis-server`. Для этого `redis-server` должен быть установлен в вашей системе и доступен в `PATH`.
-- Этот управляемый процесс автоматически останавливается при выключении сервера `niNE`.
-- Данные и логи этого процесса сохраняются в папках `redis_data/` и `redis.log` в корне проекта.
+Сервер `niNE` включает `DatabaseManager`, который обеспечивает простое сохранение и загрузку данных игроков в SQLite.
 
 ### API для плагинов
 
-Плагины могут получить доступ к менеджеру базы данных через объект `server`, который передается в некоторые обработчики событий, или запросив его у ядра. `DatabaseManager` предоставляет следующие методы:
+Плагины могут получить доступ к менеджеру базы данных через объект `app.db`. `DatabaseManager` предоставляет следующие методы для работы с реляционной схемой:
 
-- `db.set_player_attribute(player_name, attribute, value)`: Устанавливает атрибут для игрока. `value` будет автоматически преобразовано в JSON.
+- `db.set_player_attribute(player_uuid, attribute, value)`: Устанавливает атрибут для игрока. Основные атрибуты (`name`, `pos`) сохраняются в отдельные колонки. Остальные - в JSON-поле `attributes`.
   ```python
-  # Установить HP игрока 'John' на 100
-  db.set_player_attribute('John', 'hp', 100)
+  # Установить HP игрока
+  db.set_player_attribute('some_player_uuid', 'health', 100)
+  
+  # Изменить позицию игрока
+  db.set_player_attribute('some_player_uuid', 'pos', [10.0, 5.0, 0.0])
+  
+  # Изменить имя игрока
+  db.set_player_attribute('some_player_uuid', 'name', 'NewPlayerName')
   ```
 
-- `db.get_player_attribute(player_name, attribute)`: Получает значение атрибута. Возвращает строку (которую нужно десериализовать из JSON, если это сложный тип) или `None`.
+- `db.get_player_attribute(player_uuid, attribute)`: Получает значение атрибута.
   ```python
-  # Получить HP игрока 'John'
-  hp_json = db.get_player_attribute('John', 'hp')
-  hp = json.loads(hp_json) if hp_json else 100
+  # Получить HP игрока
+  health = db.get_player_attribute('some_player_uuid', 'health') # 100
+  
+  # Получить позицию игрока
+  pos = db.get_player_attribute('some_player_uuid', 'pos') # [10.0, 5.0, 0.0]
   ```
 
-- `db.get_player_all_attributes(player_name)`: Получает все атрибуты игрока в виде словаря.
+- `db.get_player_all_attributes(player_uuid)`: Получает все основные атрибуты игрока (имя, позиция) и атрибуты из JSON-поля в виде словаря.
   ```python
-  # Получить все данные 'John'
-  all_data = db.get_player_all_attributes('John')
-  # all_data будет {'pos': '[1, 2, 3]', 'hp': '100'}
+  # Получить все данные игрока
+  all_data = db.get_player_all_attributes('some_player_uuid')
+  # all_data будет {'name': 'NewPlayerName', 'pos': [10.0, 5.0, 0.0], 'health': 100, ...}
   ```
-
-- `db.save_player_inventory(player_name, inventory_list)`: Сохраняет инвентарь (список).
-  ```python
-  inventory = ['sword', 'shield', 'potion']
-  db.save_player_inventory('John', inventory)
-  ```
-
-- `db.get_player_inventory(player_name)`: Загружает инвентарь.
-  ```python
-  inventory = db.get_player_inventory('John')
-  # inventory будет ['sword', 'shield', 'potion']
-  ```
-
+  
+- `db.player_exists(player_uuid)`: Проверяет существование игрока.
+- `db.create_player(player_uuid, name, password)`: Создает нового игрока.
+- `db.verify_player_password(player_uuid, password)`: Проверяет пароль игрока.
+  
 ## Лицензия
 
 Этот проект лицензирован под MIT License - подробности см. в файле [LICENSE](LICENSE).
