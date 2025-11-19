@@ -174,22 +174,82 @@ class GameClient(ShowBase):
         self.asyncio_loop.create_task(
             self.send_message(self.writer, auth_data)
         )
-		
-    # ...
+
+    def load_player_model(self, is_local_player=False) -> NodePath:
+        model_path = Path("nine/assets/models/player.glb")
+        try:
+            model = self.loader.loadModel(model_path)
+        except Exception:
+            cm = CardMaker("fallback-player")
+            cm.setFrame(-0.5, 0.5, -0.5, 0.5)
+            model = NodePath(cm.generate())
+            model.setZ(0.5)
+            model.setColor(LColor(0.8, 0.8, 0.8, 1))
+        
+        if is_local_player:
+            model.setColor(LColor(0.5, 0.8, 0.5, 1))
+            self.camera.reparentTo(model)
+            self.camera.setPos(0, -20, 8)
+            self.camera.lookAt(model)
+
+        model.reparentTo(self.render)
+        return model
+
+    def handle_network_data(self, data: dict):
+        msg_type = data.get("type")
+
+        if msg_type == "welcome":
+            self.player_id = data["id"]
+            my_pos = data["pos"]
+            print(f"Добро пожаловать! Ваш ID: {self.player_id}")
+            
+            self.player_model = self.load_player_model(is_local_player=True)
+            self.player_model.setPos(my_pos[0], my_pos[1], my_pos[2])
+            for p_id, p_info in data["players"].items():
+                p_id = int(p_id)
+                if p_id != self.player_id:
+                    player_node = self.load_player_model()
+                    player_node.setPos(p_info["pos"][0], p_info["pos"][1], p_info["pos"][2])
+                    self.other_players[p_id] = player_node
 
         elif msg_type == "auth_failed":
             reason = data.get("reason", "Неизвестная ошибка")
             print(f"Ошибка аутентификации: {reason}")
-            # Закрываем соединение. Блок finally в connect_and_read
-            # должен будет снова показать главное меню.
-            # Для лучшего UX, мы можем сразу показать меню логина.
-            self.is_connected = False # Инициируем закрытие
-            # Дальнейшая очистка произойдет в finally
-            self.ui.destroy_ingame_menu() # на случай если было открыто
-            self.open_login_menu() # Показываем меню логина снова
-            # TODO: Показать 'reason' в UI
-			
-	# ... (остальные методы без изменений)
+            # Принудительно разрываем соединение, чтобы вызвать блок finally
+            self.is_connected = False
+            # Показываем меню логина снова для повторной попытки
+            self.asyncio_loop.call_soon_threadsafe(self.open_login_menu)
+
+
+        elif msg_type == "chat_broadcast":
+            sender_name = data.get("from_name", "Unknown")
+            message = data.get("message", "")
+            self.ui.add_chat_message(sender_name, message)
+
+        elif msg_type == "player_joined":
+            p_id = data["id"]
+            if p_id != self.player_id:
+                print(f"Игрок {p_id} присоединился.")
+                p_info = data["player_info"]
+                player_node = self.load_player_model()
+                player_node.setPos(p_info["pos"][0], p_info["pos"][1], p_info["pos"][2])
+                self.other_players[p_id] = player_node
+
+        elif msg_type == "player_left":
+            p_id = data["id"]
+            if p_id in self.other_players:
+                print(f"Игрок {p_id} отключился.")
+                self.other_players[p_id].removeNode()
+                del self.other_players[p_id]
+
+        elif msg_type == "world_state":
+            for p_id, p_info in data["players"].items():
+                p_id = int(p_id)
+                if p_id != self.player_id and p_id in self.other_players:
+                    pos = p_info["pos"]
+                    self.other_players[p_id].setPos(pos[0], pos[1], pos[2])
+
+    # --- Networking ---
 		
 		
 		
