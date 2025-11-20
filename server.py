@@ -73,38 +73,48 @@ class ServerApp(Application):
 
         if msg_type == "auth":
             player_name = data.get("name")
-            player_uuid = data.get("uuid")
+            client_uuid = data.get("uuid")
             password = data.get("password")
 
-            # --- 1. Проверка базовых данных ---
-            if not all([player_uuid, player_name, password]):
+            if not all([client_uuid, player_name, password]):
                 self.asyncio_loop.create_task(self.network.send_message(
                     client_id, {"type": "auth_failed", "reason": "Все поля должны быть заполнены."}
                 ))
                 return
 
-            # --- 2. Логика аутентификации ---
-            auth_success = False
-            if self.db.player_exists(player_uuid):
-                # Пользователь существует, проверяем пароль
-                if self.db.verify_player_password(player_uuid, password):
-                    auth_success = True
-                    print(f"Игрок '{player_name}' ({player_uuid}) успешно аутентифицирован.")
+            player_data = self.db.get_player_by_name(player_name)
+
+            if player_data:
+                # --- Игрок существует, проверяем пароль ---
+                if self.db.verify_player_password_by_name(player_name, password):
+                    print(f"Игрок '{player_name}' успешно аутентифицирован.")
+                    # Обновляем UUID, если он изменился (вход с другой машины)
+                    if player_data['uuid'] != client_uuid:
+                        self.db.update_player_uuid(player_name, client_uuid)
+                    
+                    # Используем каноничный UUID из базы
+                    player_uuid = player_data['uuid']
                 else:
+                    print(f"Неудачная попытка входа для '{player_name}': неверный пароль.")
                     self.asyncio_loop.create_task(self.network.send_message(
-                        client_id, {"type": "auth_failed", "reason": "Неверный пароль."}
+                        client_id, {"type": "auth_failed", "reason": "Неверное имя пользователя или пароль."}
                     ))
-                    print(f"Неудачная попытка входа для UUID {player_uuid}: неверный пароль.")
+                    return
             else:
-                # Новый пользователь, регистрируем его
-                self.db.create_player(player_uuid, player_name, password)
-                auth_success = True
-                print(f"Новый игрок '{player_name}' ({player_uuid}) зарегистрирован.")
+                # --- Новый игрок, регистрируем ---
+                if self.db.create_player(client_uuid, player_name, password):
+                    print(f"Новый игрок '{player_name}' зарегистрирован с UUID {client_uuid}.")
+                    player_uuid = client_uuid # Используем UUID, с которым создали
+                else:
+                    # Это может случиться в редком случае гонки, когда два клиента
+                    # одновременно пытаются зарегистрировать одно и то же имя.
+                    print(f"Неудачная попытка регистрации для '{player_name}': имя уже может быть занято.")
+                    self.asyncio_loop.create_task(self.network.send_message(
+                        client_id, {"type": "auth_failed", "reason": "Не удалось зарегистрировать пользователя. Возможно, имя занято."}
+                    ))
+                    return
 
-            if not auth_success:
-                return
-
-            # --- 3. Логика после успешной аутентификации ---
+            # --- Логика после успешной аутентификации / регистрации ---
             
             # Проверяем, не подключен ли уже игрок с таким UUID
             old_client_id = next((cid for cid, p_info in self.players.items() if p_info.get('uuid') == player_uuid), None)
@@ -112,24 +122,16 @@ class ServerApp(Application):
                 print(f"Игрок {player_name} ({player_uuid}) переподключается. Старый ID: {old_client_id}, новый ID: {client_id}.")
                 old_writer = self.network.clients.get(old_client_id)
                 if old_writer:
-                    old_writer.close() # Закрытие соединения вызовет on_client_disconnected
+                    old_writer.close()
                 if old_client_id in self.players: del self.players[old_client_id]
                 if old_client_id in self.client_id_to_uuid: del self.client_id_to_uuid[old_client_id]
 
-            # Загружаем данные игрока из БД или берем точку спавна
             db_attributes = self.db.get_player_all_attributes(player_uuid)
             spawn_pos = db_attributes.get("pos", next(self.spawn_points))
-            final_player_name = db_attributes.get("name", player_name) # Имя из БД имеет приоритет
 
-            # Инициализируем игрока в игровом мире
-            self.players[client_id] = {"name": final_player_name, "pos": spawn_pos, "uuid": player_uuid}
+            self.players[client_id] = {"name": player_name, "pos": spawn_pos, "uuid": player_uuid}
             self.client_id_to_uuid[client_id] = player_uuid
 
-            # Обновляем имя в БД, если оно изменилось
-            if final_player_name != player_name:
-                 self.db.set_player_attribute(player_uuid, "name", player_name)
-
-            # Отправляем 'welcome'
             welcome_data = {
                 "type": "welcome",
                 "id": client_id,
@@ -138,16 +140,23 @@ class ServerApp(Application):
             }
             self.asyncio_loop.create_task(self.network.send_message(client_id, welcome_data))
 
-            # Оповещаем остальных
             join_data = {"type": "player_joined", "id": client_id, "player_info": self.players[client_id]}
             self.asyncio_loop.create_task(self.network.broadcast(join_data, exclude_ids=[client_id]))
 
         elif client_id in self.players:
             if msg_type == "move":
                 self.players[client_id]["pos"] = data.get("pos", self.players[client_id]["pos"])
+            elif msg_type == "chat_message":
+                message = data.get("message", "")
+                if message:
+                    sender_name = self.players.get(client_id, {}).get('name', f'Player {client_id}')
+                    broadcast_data = {
+                        "type": "chat_broadcast",
+                        "from_name": sender_name,
+                        "message": message
+                    }
+                    self.asyncio_loop.create_task(self.network.broadcast(broadcast_data))
             else:
-                # Это сообщение для плагина. Генерируем динамическое событие.
-                # Например, для "chat_message" будет событие "server_on_chat_message".
                 event_name = f"server_on_{msg_type}"
                 event_data = {
                     "client_id": client_id,
