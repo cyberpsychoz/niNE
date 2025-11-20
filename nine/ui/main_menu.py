@@ -17,7 +17,7 @@ class MainMenu(BaseUIComponent):
         # Фон
         bg = self._add_element('background', OnscreenImage(
             parent=self.base.render2d, 
-            image="nine/assets/materials/main_menu.jpg"
+            image="nine/assets/materials/main_menu.png"
         ))
         self._update_bg_scale(bg)
         self.base.accept('window-event', self._on_window_event)

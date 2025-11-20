@@ -5,6 +5,8 @@
 ![Лицензия](https://img.shields.io/badge/license-MIT-green.svg)
 ![Panda3D](https://img.shields.io/badge/engine-Panda3D-orange.svg)
 
+![logos](nine/assets/materials/main_menu.png)
+
 ## Особенности
 
 - **3D среда для ролевых игр**: Базовый 3D мир, в котором игроки могут подключаться и взаимодействовать
