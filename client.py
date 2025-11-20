@@ -1,33 +1,53 @@
 import asyncio
+import logging
 import json
+import ssl
 import struct
 import sys
 import uuid
 from pathlib import Path
 
 from panda3d.core import loadPrcFileData
-# Отключаем аудио-библиотеку, чтобы избежать некритичных ошибок на некоторых системах
+
 loadPrcFileData("", "audio-library-name null")
 
 from direct.showbase.ShowBase import ShowBase
 from direct.task import Task
-from panda3d.core import CardMaker, NodePath, LColor, TextNode
+from panda3d.core import CardMaker, NodePath, LColor
 
-from nine.core.ui import UIManager
-
-# Устанавливаем кодировку по умолчанию для всего текста в UTF-8
-TextNode.setDefaultEncoding(TextNode.EUtf8)
+# Новый, компонентный UIManager
+from nine.ui.manager import UIManager
 
 # Конфигурация
 HOST = "localhost"
 PORT = 9009
 
+
 class GameClient(ShowBase):
     def __init__(self):
-        self.asyncio_loop = asyncio.get_event_loop()
+        # --- Логгирование ---
+        log_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        file_handler = logging.FileHandler("client.log", mode='w')
+        file_handler.setFormatter(log_formatter)
+        
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(logging.INFO)
+        self.logger.addHandler(file_handler)
+        
+        # Добавляем обработчик для вывода в консоль
+        # stream_handler = logging.StreamHandler()
+        # stream_handler.setFormatter(log_formatter)
+        # self.logger.addHandler(stream_handler)
+
+        try:
+            self.asyncio_loop = asyncio.get_event_loop()
+        except RuntimeError:
+            self.asyncio_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self.asyncio_loop)
+
         ShowBase.__init__(self)
 
-        # Состояние игры
+        # --- Состояние игры ---
         self.player_id = -1
         self.is_connected = False
         self.character_name = "Player"
@@ -35,28 +55,20 @@ class GameClient(ShowBase):
         self.player_model = None
         self.other_players = {}
         self.writer = None
-        self.is_ingame_menu_open = False
-        self.is_chat_open = False
-        self.temp_password = None # Временно храним пароль для отправки
-        
-        # --- UI ---
+        self.temp_password = None
+
+        # --- Новый UI Manager ---
         callbacks = {
             "connect": self.open_login_menu,
-            "settings": self.open_settings_menu,
             "exit": self.exit_game,
-            "save_settings": self.save_settings,
-            "close_settings": self.close_settings_menu,
-            "resume": self.toggle_ingame_menu,
-            "disconnect": self.disconnect,
             "attempt_login": self.attempt_login,
             "close_login_menu": self.close_login_menu,
-            "send_chat_message": self.send_chat_message,
-            "close_chat_input": self.close_chat_input,
         }
         self.ui = UIManager(self, callbacks)
-        self.ui.create_main_menu()
 
+        self.ui.show_main_menu()
         self.setup_scene()
+        self.logger.info("Клиент запущен.")
 
         # --- Управление ---
         self.keyMap = {"w": False, "a": False, "s": False, "d": False}
@@ -69,33 +81,22 @@ class GameClient(ShowBase):
         self.accept("d", self.update_key_map, ["d", True])
         self.accept("d-up", self.update_key_map, ["d", False])
         self.accept("escape", self.handle_escape)
-        self.accept("y", self.toggle_chat_input)
 
         # --- Задачи ---
         self.taskMgr.add(self.poll_asyncio, "asyncio-poll")
         self.taskMgr.add(self.update_movement, "update-movement-task")
 
     def _get_or_create_uuid(self) -> str:
-        """
-        Получает уникальный идентификатор клиента из файла или создает новый.
-        """
         uuid_file = Path(".client_uuid")
         if uuid_file.exists():
             try:
                 client_uuid = uuid_file.read_text().strip()
                 uuid.UUID(client_uuid)
-                print(f"Найден существующий UUID клиента: {client_uuid}")
                 return client_uuid
             except (ValueError, IndexError):
-                print("Найден невалидный UUID. Будет создан новый.")
-        
+                pass
         client_uuid = str(uuid.uuid4())
-        try:
-            uuid_file.write_text(client_uuid)
-            print(f"Создан и сохранен новый UUID клиента: {client_uuid}")
-        except IOError as e:
-            print(f"Не удалось сохранить UUID клиента: {e}")
-
+        uuid_file.write_text(client_uuid)
         return client_uuid
 
     def setup_scene(self):
@@ -110,7 +111,7 @@ class GameClient(ShowBase):
         self.keyMap[key] = state
 
     def update_movement(self, task):
-        if not self.is_connected or not self.player_model or self.is_ingame_menu_open or self.is_chat_open:
+        if not self.is_connected or not self.player_model:
             return Task.cont
 
         dt = globalClock.getDt()
@@ -130,64 +131,58 @@ class GameClient(ShowBase):
             )
         return Task.cont
 
-    # --- UI Callbacks ---
+    # --- Обработчики UI ---
     def open_login_menu(self):
-        self.ui.destroy_main_menu()
-        self.ui.create_login_menu(default_ip=HOST, default_name=self.character_name)
+        self.ui.show_login_menu(default_ip=HOST, default_name=self.character_name)
 
     def close_login_menu(self):
-        self.ui.destroy_login_menu()
-        self.ui.create_main_menu()
+        self.ui.hide_login_menu()
+        self.ui.show_main_menu()
 
     def attempt_login(self):
         credentials = self.ui.get_login_credentials()
-        host = credentials.get("ip")
-        name = credentials.get("name")
-        password = credentials.get("password")
-
-        if not all([host, name, password]):
-            print("Все поля (IP, Имя, Пароль) должны быть заполнены.")
-            # TODO: Показать ошибку в UI
+        if not credentials["ip"] or not credentials["name"] or not credentials["password"]:
+            self.logger.warning("Все поля должны быть заполнены.")
             return
-            
-        self.character_name = name
-        self.temp_password = password # Сохраняем для отправки после подключения
-        
-        self.ui.destroy_login_menu()
-        self.asyncio_loop.create_task(self.connect_and_read(host))
 
-    def open_settings_menu(self):
-        self.ui.destroy_main_menu()
-        self.ui.create_settings_menu(self.character_name)
-    
-    # ... (остальные методы без изменений)
+        self.character_name = credentials["name"]
+        self.temp_password = credentials["password"]
 
+        self.ui.hide_login_menu()
+        self.asyncio_loop.create_task(self.connect_and_read(credentials["ip"]))
+
+    def exit_game(self):
+        if self.writer:
+            self.writer.close()
+        self.userExit()
+
+    def handle_escape(self):
+        # TODO: Добавить логику меню паузы, когда оно будет восстановлено
+        pass
+
+    # --- Логика игры и сети ---
     def on_successful_connection(self):
         auth_data = {
             "type": "auth",
             "name": self.character_name,
             "uuid": self.client_uuid,
-            "password": self.temp_password # Добавляем пароль
+            "password": self.temp_password
         }
-        self.temp_password = None # Очищаем пароль после использования
-        
-        self.asyncio_loop.create_task(
-            self.send_message(self.writer, auth_data)
-        )
+        self.temp_password = None
+        self.asyncio_loop.create_task(self.send_message(self.writer, auth_data))
 
     def load_player_model(self, is_local_player=False) -> NodePath:
-        model_path = Path("nine/assets/models/player.glb")
-        try:
-            model = self.loader.loadModel(model_path)
-        except Exception:
+        model = self.loader.loadModel("nine/assets/models/player.egg")
+        if not model:
             cm = CardMaker("fallback-player")
             cm.setFrame(-0.5, 0.5, -0.5, 0.5)
             model = NodePath(cm.generate())
             model.setZ(0.5)
-            model.setColor(LColor(0.8, 0.8, 0.8, 1))
+
+        model.setColor(LColor(0.5, 0.8, 0.5, 1) if is_local_player else LColor(0.8, 0.8, 0.8, 1))
+        model.set_scale(0.5)
         
         if is_local_player:
-            model.setColor(LColor(0.5, 0.8, 0.5, 1))
             self.camera.reparentTo(model)
             self.camera.setPos(0, -20, 8)
             self.camera.lookAt(model)
@@ -199,157 +194,132 @@ class GameClient(ShowBase):
         msg_type = data.get("type")
 
         if msg_type == "welcome":
+            self.ui.hide_main_menu()
             self.player_id = data["id"]
-            my_pos = data["pos"]
-            print(f"Добро пожаловать! Ваш ID: {self.player_id}")
-            
             self.player_model = self.load_player_model(is_local_player=True)
-            self.player_model.setPos(my_pos[0], my_pos[1], my_pos[2])
-            for p_id, p_info in data["players"].items():
-                p_id = int(p_id)
+            self.player_model.setPos(*data["pos"])
+            for p_id_str, p_info in data.get("players", {}).items():
+                p_id = int(p_id_str)
                 if p_id != self.player_id:
-                    player_node = self.load_player_model()
-                    player_node.setPos(p_info["pos"][0], p_info["pos"][1], p_info["pos"][2])
-                    self.other_players[p_id] = player_node
+                    p_node = self.load_player_model()
+                    p_node.setPos(*p_info["pos"])
+                    self.other_players[p_id] = p_node
 
         elif msg_type == "auth_failed":
-            reason = data.get("reason", "Неизвестная ошибка")
-            print(f"Ошибка аутентификации: {reason}")
-            # Принудительно разрываем соединение, чтобы вызвать блок finally
+            self.logger.error(f"Ошибка аутентификации: {data.get('reason', 'Неизвестная ошибка')}")
             self.is_connected = False
-            # Показываем меню логина снова для повторной попытки
-            self.asyncio_loop.call_soon_threadsafe(self.open_login_menu)
-
-
-        elif msg_type == "chat_broadcast":
-            sender_name = data.get("from_name", "Unknown")
-            message = data.get("message", "")
-            self.ui.add_chat_message(sender_name, message)
+            self.ui.show_main_menu()
+            self.ui.hide_login_menu()
 
         elif msg_type == "player_joined":
             p_id = data["id"]
             if p_id != self.player_id:
-                print(f"Игрок {p_id} присоединился.")
                 p_info = data["player_info"]
-                player_node = self.load_player_model()
-                player_node.setPos(p_info["pos"][0], p_info["pos"][1], p_info["pos"][2])
-                self.other_players[p_id] = player_node
+                p_node = self.load_player_model()
+                p_node.setPos(*p_info["pos"])
+                self.other_players[p_id] = p_node
 
         elif msg_type == "player_left":
             p_id = data["id"]
             if p_id in self.other_players:
-                print(f"Игрок {p_id} отключился.")
                 self.other_players[p_id].removeNode()
                 del self.other_players[p_id]
 
-        elif msg_type == "world_state":
-            for p_id, p_info in data["players"].items():
-                p_id = int(p_id)
-                if p_id != self.player_id and p_id in self.other_players:
-                    pos = p_info["pos"]
-                    self.other_players[p_id].setPos(pos[0], pos[1], pos[2])
+    # --- Управление соединением ---
+    def poll_asyncio(self, task):
+        # We need to stop and restart the loop to process asyncio tasks.
+        self.asyncio_loop.stop()
+        self.asyncio_loop.run_forever()
+        return Task.cont
 
-    # --- Networking ---
-		
-		
-		
+    async def send_message(self, writer: asyncio.StreamWriter, data: dict):
+        if not writer or writer.is_closing(): return
+        payload = json.dumps(data).encode("utf-8")
+        header = struct.pack("!I", len(payload))
+        writer.write(header + payload)
+        await writer.drain()
 
     async def connect_and_read(self, host: str):
-        reader, self.writer = None, None
-        
-        # --- SSL-контекст для клиента ---
         ssl_context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
         try:
-            # Указываем, что мы доверяем нашему самоподписанному сертификату
+            # Assuming certs/cert.pem contains the server's self-signed certificate
             ssl_context.load_verify_locations('certs/cert.pem')
-            print("SSL-контекст клиента успешно создан.")
         except FileNotFoundError:
-            print("="*50)
-            print("КРИТИЧЕСКАЯ ОШИБКА: Файл сертификата 'certs/cert.pem' не найден.")
-            print("Клиент не может проверить подлинность сервера.")
-            print("="*50)
-            self.ui.create_main_menu()
+            self.logger.critical("КРИТИЧЕСКАЯ ОШИБКА: Файл сертификата 'certs/cert.pem' не найден.")
+            self.close_login_menu()
             return
-            
+
+        reader = None
         try:
-            # При использовании самоподписанного сертификата 'localhost' должен быть и в host,
-            # и в server_hostname
             reader, self.writer = await asyncio.open_connection(
-                host, PORT, ssl=ssl_context, server_hostname=host
+                host, PORT, ssl=ssl_context, server_hostname=host if host != "localhost" else None
             )
             self.is_connected = True
-            print("Успешно установлено TLS-соединение с сервером.")
-            self.on_successful_connection() # Отправляем auth данные
+            self.logger.info("Успешно установлено TLS-соединение с сервером.")
+            self.on_successful_connection()
             await self.read_messages(reader)
-        except ConnectionRefusedError:
-            print("В соединении отказано. Сервер запущен?")
-            self.ui.create_main_menu()
-        except ssl.SSLCertVerificationError:
-            print("="*50)
-            print("ОШИБКА ПРОВЕРКИ SSL СЕРТИФИКАТА!")
-            print(f"Клиент не доверяет сертификату, предоставленному сервером '{host}'.")
-            print("Убедитесь, что на клиенте и сервере используются одинаковые сертификаты.")
-            print("="*50)
-            self.ui.create_main_menu()
         except Exception as e:
-            print(f"Ошибка подключения: {e}")
+            self.logger.error(f"Ошибка подключения: {e}")
         finally:
             self.is_connected = False
             if self.writer:
                 self.writer.close()
                 if not self.asyncio_loop.is_closed():
-                    await self.writer.wait_closed()
-            
-            self.ui.clear_chat_lines()
-            print("Соединение с сервером закрыто.")
-            if self.player_model: self.player_model.removeNode()
-            for p in self.other_players.values(): p.removeNode()
-            self.other_players.clear()
-            self.player_id = -1
-            self.ui.create_main_menu()
+                    try:
+                        await self.writer.wait_closed()
+                    except (AttributeError, TypeError, ValueError):
+                        # This can happen on unclean shutdown, ignore
+                        pass
+
+            if reader:
+                reader.feed_eof()
+            self.asyncio_loop.call_soon_threadsafe(self.cleanup_game_state)
+
+    def cleanup_game_state(self):
+        """Очищает состояние игры после отключения."""
+        self.logger.info("Соединение с сервером закрыто.")
+        if self.player_model:
+            self.player_model.removeNode()
+            self.player_model = None
+        for p in self.other_players.values():
+            p.removeNode()
+        self.other_players.clear()
+        self.player_id = -1
+        self.ui.destroy_all()
+        self.ui.show_main_menu()
 
     async def read_messages(self, reader: asyncio.StreamReader):
         while self.is_connected:
             try:
                 header = await reader.readexactly(4)
+                if not header: break
                 msg_len = struct.unpack("!I", header)[0]
                 payload = await reader.readexactly(msg_len)
+                if not payload: break
                 data = json.loads(payload.decode("utf-8"))
-                self.handle_network_data(data)
+                self.asyncio_loop.call_soon_threadsafe(self.handle_network_data, data)
             except (asyncio.IncompleteReadError, ConnectionResetError):
+                self.logger.warning("Потеряно соединение с сервером.")
                 self.is_connected = False
             except Exception as e:
-                print(f"Ошибка при чтении сообщения: {e}")
+                self.logger.error(f"Ошибка при чтении сообщения: {e}")
                 self.is_connected = False
 
+
 if __name__ == "__main__":
-
-    try:
-
-        import panda3d
-
-    except ImportError:
-
-        print("Ошибка: Panda3D не установлен. Пожалуйста, установите его:")
-
-        print("pip install panda3d")
-
-        sys.exit(1)
-
-
+    if "panda3d" not in sys.modules:
+        try:
+            import panda3d
+        except ImportError:
+            logging.basicConfig(level=logging.CRITICAL)
+            logging.critical("Ошибка: Panda3D не установлен. Пожалуйста, установите его: pip install panda3d")
+            sys.exit(1)
 
     app = GameClient()
-
     try:
-
         app.run()
-
     except SystemExit:
-
-        pass
-
+        logging.info("Выход из приложения.")
     finally:
-
-        if app.asyncio_loop.is_running():
-
+        if hasattr(app, 'asyncio_loop') and app.asyncio_loop.is_running():
             app.asyncio_loop.stop()
