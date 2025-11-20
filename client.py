@@ -51,12 +51,14 @@ class GameClient(ShowBase):
         self.other_players = {}
         self.writer = None
         self.temp_password = None
+        self.in_game_menu_active = False # New attribute to track in-game menu state
 
         callbacks = {
             "connect": self.open_login_menu,
             "exit": self.exit_game,
             "attempt_login": self.attempt_login,
             "close_login_menu": self.close_login_menu,
+            "settings": self.show_settings_menu, # ADDED THIS LINE
         }
         self.ui = UIManager(self, callbacks)
         
@@ -79,7 +81,7 @@ class GameClient(ShowBase):
         self.accept("escape", self.handle_escape)
 
         self.taskMgr.add(self.poll_asyncio, "asyncio-poll")
-        self.taskMgr.add(self.update_movement, "update-movement-task")
+        self.update_movement_task = self.taskMgr.add(self.update_movement, "update-movement-task")
 
     def _get_or_create_uuid(self) -> str:
         uuid_file = Path(".client_uuid")
@@ -111,8 +113,21 @@ class GameClient(ShowBase):
                 return plugin.is_active()
         return False
 
+    def disable_game_input(self):
+        """Disables game-related input and tasks when a menu is active."""
+        for key in self.keyMap:
+            self.keyMap[key] = False # Clear any held keys
+        if self.update_movement_task:
+            self.taskMgr.remove(self.update_movement_task)
+            self.update_movement_task = None
+
+    def enable_game_input(self):
+        """Enables game-related input and tasks when a menu is closed."""
+        if not self.update_movement_task:
+            self.update_movement_task = self.taskMgr.add(self.update_movement, "update-movement-task")
+
     def update_movement(self, task):
-        if not self.is_connected or not self.player_model or self.is_chat_active():
+        if not self.is_connected or not self.player_model or self.is_chat_active() or self.in_game_menu_active:
             return Task.cont
 
         dt = globalClock.getDt()
@@ -139,6 +154,10 @@ class GameClient(ShowBase):
         self.ui.hide_login_menu()
         self.ui.show_main_menu()
 
+    def show_settings_menu(self):
+        """Displays the settings menu."""
+        self.ui.show_settings_menu(self) # Assuming show_settings_menu takes client instance
+
     def attempt_login(self):
         credentials = self.ui.get_login_credentials()
         if not credentials["ip"] or not credentials["name"] or not credentials["password"]:
@@ -161,8 +180,14 @@ class GameClient(ShowBase):
         if self.is_chat_active():
             self.event_manager.post("escape_key_pressed")
         else:
-            # TODO: Добавить логику меню паузы, когда оно будет восстановлено
-            pass
+            if self.in_game_menu_active:
+                self.ui.hide_in_game_menu()
+                self.in_game_menu_active = False
+                self.enable_game_input() # Re-enable game input/tasks
+            else:
+                self.ui.show_in_game_menu(self) # Pass self (GameClient instance) for disconnect
+                self.in_game_menu_active = True
+                self.disable_game_input() # Disable game input/tasks
             
     def send_chat_packet(self, message: str):
         if not message.strip():
@@ -283,13 +308,27 @@ class GameClient(ShowBase):
                 self.writer.close()
                 if not self.asyncio_loop.is_closed():
                     try:
-                        await self.writer.wait_closed()
+                        pass # Removed await self.writer.wait_closed()
                     except (AttributeError, TypeError, ValueError):
                         pass
 
             if reader:
                 reader.feed_eof()
             self.asyncio_loop.call_soon_threadsafe(self.cleanup_game_state)
+
+    def disconnect_from_server(self):
+        """Initiates disconnection from the server."""
+        if self.is_connected:
+            self.logger.info("Отключение от сервера и очистка состояния игры.")
+            self.is_connected = False
+            if self.writer:
+                self.writer.close()
+            # The cleanup_game_state will be called via the finally block in connect_and_read
+            # and lead back to the main menu.
+            if self.in_game_menu_active:
+                self.ui.hide_in_game_menu()
+                self.in_game_menu_active = False
+                self.enable_game_input()
 
     def cleanup_game_state(self):
         """Очищает состояние игры после отключения."""
