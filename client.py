@@ -15,17 +15,15 @@ from direct.showbase.ShowBase import ShowBase
 from direct.task import Task
 from panda3d.core import CardMaker, NodePath, LColor
 
-# Новый, компонентный UIManager
+from nine.core.events import EventManager
+from nine.core.plugins import PluginManager
 from nine.ui.manager import UIManager
 
-# Конфигурация
 HOST = "localhost"
 PORT = 9009
 
-
 class GameClient(ShowBase):
     def __init__(self):
-        # --- Логгирование ---
         log_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         file_handler = logging.FileHandler("client.log", mode='w')
         file_handler.setFormatter(log_formatter)
@@ -33,11 +31,6 @@ class GameClient(ShowBase):
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(logging.INFO)
         self.logger.addHandler(file_handler)
-        
-        # Добавляем обработчик для вывода в консоль
-        # stream_handler = logging.StreamHandler()
-        # stream_handler.setFormatter(log_formatter)
-        # self.logger.addHandler(stream_handler)
 
         try:
             self.asyncio_loop = asyncio.get_event_loop()
@@ -46,8 +39,10 @@ class GameClient(ShowBase):
             asyncio.set_event_loop(self.asyncio_loop)
 
         ShowBase.__init__(self)
+        
+        self.event_manager = EventManager()
+        self.plugin_manager = PluginManager(self, self.event_manager)
 
-        # --- Состояние игры ---
         self.player_id = -1
         self.is_connected = False
         self.character_name = "Player"
@@ -57,7 +52,6 @@ class GameClient(ShowBase):
         self.writer = None
         self.temp_password = None
 
-        # --- Новый UI Manager ---
         callbacks = {
             "connect": self.open_login_menu,
             "exit": self.exit_game,
@@ -65,12 +59,14 @@ class GameClient(ShowBase):
             "close_login_menu": self.close_login_menu,
         }
         self.ui = UIManager(self, callbacks)
+        
+        self.event_manager.subscribe("client_send_chat_message", self.send_chat_packet)
+        self.plugin_manager.load_plugins()
 
         self.ui.show_main_menu()
         self.setup_scene()
         self.logger.info("Клиент запущен.")
 
-        # --- Управление ---
         self.keyMap = {"w": False, "a": False, "s": False, "d": False}
         self.accept("w", self.update_key_map, ["w", True])
         self.accept("w-up", self.update_key_map, ["w", False])
@@ -82,7 +78,6 @@ class GameClient(ShowBase):
         self.accept("d-up", self.update_key_map, ["d", False])
         self.accept("escape", self.handle_escape)
 
-        # --- Задачи ---
         self.taskMgr.add(self.poll_asyncio, "asyncio-poll")
         self.taskMgr.add(self.update_movement, "update-movement-task")
 
@@ -91,8 +86,7 @@ class GameClient(ShowBase):
         if uuid_file.exists():
             try:
                 client_uuid = uuid_file.read_text().strip()
-                uuid.UUID(client_uuid)
-                return client_uuid
+                return str(client_uuid)
             except (ValueError, IndexError):
                 pass
         client_uuid = str(uuid.uuid4())
@@ -110,8 +104,15 @@ class GameClient(ShowBase):
     def update_key_map(self, key, state):
         self.keyMap[key] = state
 
+    def is_chat_active(self) -> bool:
+        """Helper method to find the chat plugin and check its status."""
+        for plugin in self.plugin_manager.plugins:
+            if plugin.name == "Chat UI" and hasattr(plugin, 'is_active'):
+                return plugin.is_active()
+        return False
+
     def update_movement(self, task):
-        if not self.is_connected or not self.player_model:
+        if not self.is_connected or not self.player_model or self.is_chat_active():
             return Task.cont
 
         dt = globalClock.getDt()
@@ -131,7 +132,6 @@ class GameClient(ShowBase):
             )
         return Task.cont
 
-    # --- Обработчики UI ---
     def open_login_menu(self):
         self.ui.show_login_menu(default_ip=HOST, default_name=self.character_name)
 
@@ -147,25 +147,35 @@ class GameClient(ShowBase):
 
         self.character_name = credentials["name"]
         self.temp_password = credentials["password"]
-
+        
         self.ui.hide_login_menu()
         self.asyncio_loop.create_task(self.connect_and_read(credentials["ip"]))
 
     def exit_game(self):
+        self.plugin_manager.unload_plugins()
         if self.writer:
             self.writer.close()
         self.userExit()
 
     def handle_escape(self):
-        # TODO: Добавить логику меню паузы, когда оно будет восстановлено
-        pass
+        if self.is_chat_active():
+            self.event_manager.post("escape_key_pressed")
+        else:
+            # TODO: Добавить логику меню паузы, когда оно будет восстановлено
+            pass
+            
+    def send_chat_packet(self, message: str):
+        if not message.strip():
+            return
+        message_data = {"type": "chat_message", "message": message}
+        self.asyncio_loop.create_task(self.send_message(self.writer, message_data))
 
-    # --- Логика игры и сети ---
+
     def on_successful_connection(self):
         auth_data = {
-            "type": "auth",
+            "type": "auth", 
             "name": self.character_name,
-            "uuid": self.client_uuid,
+            "uuid": self.client_uuid, 
             "password": self.temp_password
         }
         self.temp_password = None
@@ -178,15 +188,15 @@ class GameClient(ShowBase):
             cm.setFrame(-0.5, 0.5, -0.5, 0.5)
             model = NodePath(cm.generate())
             model.setZ(0.5)
-
+        
         model.setColor(LColor(0.5, 0.8, 0.5, 1) if is_local_player else LColor(0.8, 0.8, 0.8, 1))
-        model.set_scale(0.5)
+        model.set_scale(0.3)
         
         if is_local_player:
             self.camera.reparentTo(model)
             self.camera.setPos(0, -20, 8)
             self.camera.lookAt(model)
-
+            
         model.reparentTo(self.render)
         return model
 
@@ -211,6 +221,12 @@ class GameClient(ShowBase):
             self.ui.show_main_menu()
             self.ui.hide_login_menu()
 
+        elif msg_type == "chat_broadcast":
+            self.event_manager.post("network_chat_broadcast", {
+                "sender": data.get("from_name", "Unknown"), 
+                "message": data.get("message", "")
+            })
+
         elif msg_type == "player_joined":
             p_id = data["id"]
             if p_id != self.player_id:
@@ -224,10 +240,12 @@ class GameClient(ShowBase):
             if p_id in self.other_players:
                 self.other_players[p_id].removeNode()
                 del self.other_players[p_id]
+        
+        else:
+            self.event_manager.post(msg_type, data)
 
-    # --- Управление соединением ---
-    def poll_asyncio(self, task):
-        # We need to stop and restart the loop to process asyncio tasks.
+
+    async def poll_asyncio(self, task):
         self.asyncio_loop.stop()
         self.asyncio_loop.run_forever()
         return Task.cont
@@ -242,13 +260,12 @@ class GameClient(ShowBase):
     async def connect_and_read(self, host: str):
         ssl_context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
         try:
-            # Assuming certs/cert.pem contains the server's self-signed certificate
             ssl_context.load_verify_locations('certs/cert.pem')
         except FileNotFoundError:
             self.logger.critical("КРИТИЧЕСКАЯ ОШИБКА: Файл сертификата 'certs/cert.pem' не найден.")
             self.close_login_menu()
             return
-
+            
         reader = None
         try:
             reader, self.writer = await asyncio.open_connection(
@@ -268,7 +285,6 @@ class GameClient(ShowBase):
                     try:
                         await self.writer.wait_closed()
                     except (AttributeError, TypeError, ValueError):
-                        # This can happen on unclean shutdown, ignore
                         pass
 
             if reader:
