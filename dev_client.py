@@ -6,9 +6,11 @@ import struct
 import sys
 import uuid
 import argparse # Added for command line argument parsing
+import math # Added for math operations like atan2
 from pathlib import Path
 
-from panda3d.core import loadPrcFileData
+from panda3d.core import loadPrcFileData, WindowProperties, LVector3, LPoint3 # Added LPoint3
+
 
 loadPrcFileData("", "audio-library-name null")
 
@@ -53,6 +55,9 @@ class GameClient(ShowBase):
         self.character_name = name # Use name from argument
         self.client_uuid = client_uuid # Use uuid from argument
         self.player_model = None
+        self.camera_pivot = None  # Node for horizontal camera rotation
+        self.camera_boom = None   # Node for vertical camera rotation and distance
+        self.camera_pitch = 0     # Current camera pitch
         self.other_players = {}
         self.writer = None
         self.temp_password = None
@@ -87,19 +92,31 @@ class GameClient(ShowBase):
         self.accept("escape", self.handle_escape)
 
         self.taskMgr.add(self.poll_asyncio, "asyncio-poll")
-        self.update_movement_task = self.taskMgr.add(self.update_movement, "update-movement-task")
+        self.update_movement_task = None
+        self.update_camera_task = None
 
     def _get_or_create_uuid(self) -> str:
         # For dev clients, always generate a new UUID or use the one provided by argument
         return str(uuid.uuid4())
 
     def setup_scene(self):
-        self.disableMouse()
+        # self.disableMouse() is handled by input enabling/disabling
         cm = CardMaker("ground")
         cm.setFrame(-50, 50, -50, 50)
         ground = self.render.attachNewNode(cm.generate())
         ground.setP(-90)
         ground.setPos(0, 0, -1)
+
+    def setup_mouse_control(self, active):
+        props = WindowProperties()
+        if active:
+            props.setCursorHidden(True)
+            props.setMouseMode(WindowProperties.M_relative)
+            self.win.requestProperties(props)
+        else:
+            props.setCursorHidden(False)
+            props.setMouseMode(WindowProperties.M_absolute)
+            self.win.requestProperties(props)
 
     def update_key_map(self, key, state):
         self.keyMap[key] = state
@@ -113,16 +130,41 @@ class GameClient(ShowBase):
 
     def disable_game_input(self):
         """Disables game-related input and tasks when a menu is active."""
+        self.setup_mouse_control(False)
         for key in self.keyMap:
             self.keyMap[key] = False # Clear any held keys
         if self.update_movement_task:
             self.taskMgr.remove(self.update_movement_task)
             self.update_movement_task = None
+        if self.update_camera_task:
+            self.taskMgr.remove(self.update_camera_task)
+            self.update_camera_task = None
 
     def enable_game_input(self):
         """Enables game-related input and tasks when a menu is closed."""
+        self.setup_mouse_control(True)
         if not self.update_movement_task:
             self.update_movement_task = self.taskMgr.add(self.update_movement, "update-movement-task")
+        if not self.update_camera_task:
+            self.update_camera_task = self.taskMgr.add(self.update_camera, "update-camera-task")
+
+    def update_camera(self, task):
+        if not self.is_connected or not self.player_model or not self.camera_pivot or not self.camera_boom or not self.win.getPointer(0).getInWindow():
+            return Task.cont
+
+        md = self.win.getPointer(0)
+        dx = md.getX()
+        dy = md.getY()
+        
+        if self.win.getProperties().getMouseMode() == WindowProperties.M_relative:
+            # Rotate camera pivot horizontally around the player
+            self.camera_pivot.setH(self.camera_pivot.getH() - dx * 10)
+            
+            # Rotate camera boom vertically
+            self.camera_pitch = max(-60, min(60, self.camera_pitch + dy * 10))
+            self.camera_boom.setP(self.camera_pitch)
+        
+        return Task.cont
 
     def update_movement(self, task):
         if not self.is_connected or not self.player_model or self.is_chat_active() or self.in_game_menu_active:
@@ -130,16 +172,29 @@ class GameClient(ShowBase):
 
         dt = globalClock.getDt()
         move_speed = 10.0
-        pos = self.player_model.getPos()
-        moved = False
-
-        if self.keyMap["w"]: pos.y += move_speed * dt; moved = True
-        if self.keyMap["s"]: pos.y -= move_speed * dt; moved = True
-        if self.keyMap["a"]: pos.x -= move_speed * dt; moved = True
-        if self.keyMap["d"]: pos.x += move_speed * dt; moved = True
-
+        
+        move_vec = LVector3(0, 0, 0)
+        if self.keyMap["w"]: move_vec.y += 1
+        if self.keyMap["s"]: move_vec.y -= 1
+        if self.keyMap["a"]: move_vec.x -= 1
+        if self.keyMap["d"]: move_vec.x += 1
+        
+        moved = move_vec.length_squared() > 0
         if moved:
-            self.player_model.setPos(pos)
+            move_vec.normalize()
+            
+            # Get the world-space movement vector relative to the camera
+            world_move_vec = self.render.getRelativeVector(self.camera_pivot, move_vec)
+            world_move_vec.z = 0 # We are not flying
+            world_move_vec.normalize()
+
+            # Move the player
+            self.player_model.setPos(self.player_model.getPos() + world_move_vec * move_speed * dt)
+
+            # Rotate the player to face the direction of movement
+            self.player_model.lookAt(self.player_model.getPos() + world_move_vec)
+
+            pos = self.player_model.getPos()
             self.asyncio_loop.create_task(
                 self.send_message(self.writer, {"type": "move", "pos": [pos.x, pos.y, pos.z]})
             )
@@ -209,9 +264,21 @@ class GameClient(ShowBase):
         model.set_scale(0.3)
         
         if is_local_player:
-            self.camera.reparentTo(model)
-            self.camera.setPos(0, -20, 8)
-            self.camera.lookAt(model)
+            # Create camera pivot attached to the player model
+            self.camera_pivot = model.attachNewNode("camera_pivot")
+            self.camera_pivot.setPos(0, 0, 2) # Offset pivot slightly above player base
+            
+            # Create camera boom attached to the pivot
+            self.camera_boom = self.camera_pivot.attachNewNode("camera_boom")
+            self.camera_boom.setPos(0, -15, 5) # Initial camera distance and height
+            
+            # Reparent camera to the boom
+            self.camera.reparentTo(self.camera_boom)
+            self.camera.lookAt(self.camera_pivot) # Look at the pivot point
+            
+            self.camera_pivot.setH(0)
+            self.camera_boom.setP(0)
+            self.camera_pitch = 0
             
         model.reparentTo(self.render)
         return model
@@ -224,6 +291,7 @@ class GameClient(ShowBase):
             self.player_id = data["id"]
             self.player_model = self.load_player_model(is_local_player=True)
             self.player_model.setPos(*data["pos"])
+            self.enable_game_input() # Enable mouse control after player model is loaded
             for p_id_str, p_info in data.get("players", {}).items():
                 p_id = int(p_id_str)
                 if p_id != self.player_id:
@@ -234,6 +302,7 @@ class GameClient(ShowBase):
         elif msg_type == "auth_failed":
             self.logger.error(f"Ошибка аутентификации: {data.get('reason', 'Неизвестная ошибка')}")
             self.is_connected = False
+            self.disable_game_input()
             # self.ui.show_main_menu() # No main menu for dev client
             # self.ui.hide_login_menu() # No login menu for dev client
             self.exit_game() # Exit if dev auth fails
@@ -327,9 +396,16 @@ class GameClient(ShowBase):
     def cleanup_game_state(self):
         """Очищает состояние игры после отключения."""
         self.logger.info("Соединение с сервером закрыто.")
+        self.disable_game_input()
         if self.player_model:
             self.player_model.removeNode()
             self.player_model = None
+        if self.camera_pivot:
+            self.camera_pivot.removeNode()
+            self.camera_pivot = None
+        if self.camera_boom:
+            self.camera_boom.removeNode()
+            self.camera_boom = None
         for p in self.other_players.values():
             p.removeNode()
         self.other_players.clear()
