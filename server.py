@@ -1,5 +1,7 @@
 import asyncio
+import json
 import time
+import uuid
 from itertools import cycle
 
 from nine.core.app import Application
@@ -8,14 +10,19 @@ from nine.core.plugins import PluginManager
 from nine.core.world import World
 from nine.core.database import DatabaseManager
 
-# Конфигурация
-HOST = "localhost"
-PORT = 9009
-TICK_RATE = 20
 
 class ServerApp(Application):
     def __init__(self):
         super().__init__(is_server=True)
+        
+        with open("server_config.json") as f:
+            config = json.load(f)
+
+        self.host = config.get("host", "localhost")
+        self.port = config.get("port", 9009)
+        self.tick_rate = config.get("tick_rate", 20)
+        self.allow_dev_client = config.get("allow_dev_client", False)
+
         self.network = NetworkManager(self.event_manager)
         self.db = DatabaseManager()
         self.plugin_manager = PluginManager(self, self.event_manager)
@@ -52,9 +59,12 @@ class ServerApp(Application):
             player_info = self.players[client_id]
             player_name = player_info.get("name", "Unknown")
             
-            self.db.set_player_attribute(player_uuid, "pos", player_info["pos"])
-            self.db.set_player_attribute(player_uuid, "name", player_name)
-            print(f"Данные для игрока '{player_name}' ({player_uuid}) сохранены.")
+            is_dev_client = player_info.get("is_dev", False)
+
+            if not is_dev_client:
+                self.db.set_player_attribute(player_uuid, "pos", player_info["pos"])
+                self.db.set_player_attribute(player_uuid, "name", player_name)
+                print(f"Данные для игрока '{player_name}' ({player_uuid}) сохранены.")
             
             del self.players[client_id]
             del self.client_id_to_uuid[client_id]
@@ -143,6 +153,27 @@ class ServerApp(Application):
             join_data = {"type": "player_joined", "id": client_id, "player_info": self.players[client_id]}
             self.asyncio_loop.create_task(self.network.broadcast(join_data, exclude_ids=[client_id]))
 
+        elif msg_type == "dev_auth" and self.allow_dev_client:
+            player_name = data.get("name", f"DevPlayer{client_id}")
+            player_uuid = str(uuid.uuid4())
+
+            print(f"Dev-игрок '{player_name}' ({player_uuid}) аутентифицирован.")
+
+            spawn_pos = next(self.spawn_points)
+            self.players[client_id] = {"name": player_name, "pos": spawn_pos, "uuid": player_uuid, "is_dev": True}
+            self.client_id_to_uuid[client_id] = player_uuid
+
+            welcome_data = {
+                "type": "welcome",
+                "id": client_id,
+                "pos": spawn_pos,
+                "players": {cid: p_info for cid, p_info in self.players.items() if cid != client_id},
+            }
+            self.asyncio_loop.create_task(self.network.send_message(client_id, welcome_data))
+
+            join_data = {"type": "player_joined", "id": client_id, "player_info": self.players[client_id]}
+            self.asyncio_loop.create_task(self.network.broadcast(join_data, exclude_ids=[client_id]))
+
         elif client_id in self.players:
             if msg_type == "move":
                 self.players[client_id]["pos"] = data.get("pos", self.players[client_id]["pos"])
@@ -167,7 +198,7 @@ class ServerApp(Application):
 
     async def broadcast_world_state(self):
         while self.running:
-            await asyncio.sleep(1 / TICK_RATE)
+            await asyncio.sleep(1 / self.tick_rate)
             if not self.players:
                 continue
             
@@ -186,7 +217,7 @@ class ServerApp(Application):
             saved_count = 0
             for client_id, player_info in self.players.items():
                 player_uuid = player_info.get("uuid")
-                if player_uuid:
+                if player_uuid and not player_info.get("is_dev", False):
                     try:
                         self.db.set_player_attribute(player_uuid, "pos", player_info["pos"])
                         self.db.set_player_attribute(player_uuid, "name", player_info.get("name"))
@@ -206,7 +237,7 @@ class ServerApp(Application):
         self.asyncio_loop.create_task(self.auto_save_world())
 
         last_tick_time = time.time()
-        tick_interval = 1.0 / TICK_RATE
+        tick_interval = 1.0 / self.tick_rate
 
         try:
             while self.running:
@@ -231,7 +262,7 @@ class ServerApp(Application):
             # Сохраняем данные всех оставшихся игроков при остановке сервера
             for client_id, player_info in self.players.items():
                 player_uuid = player_info.get("uuid")
-                if player_uuid:
+                if player_uuid and not player_info.get("is_dev", False):
                     self.db.set_player_attribute(player_uuid, "pos", player_info["pos"])
                     self.db.set_player_attribute(player_uuid, "name", player_info.get("name"))
             
@@ -244,7 +275,7 @@ class ServerApp(Application):
 async def main():
     server_app = ServerApp()
     server_app.asyncio_loop = asyncio.get_running_loop()
-    server_task = asyncio.create_task(server_app.network.start_server(HOST, PORT))
+    server_task = asyncio.create_task(server_app.network.start_server(server_app.host, server_app.port))
     main_loop_task = asyncio.create_task(server_app.main_loop())
     await asyncio.gather(server_task, main_loop_task)
 
