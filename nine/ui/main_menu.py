@@ -25,6 +25,7 @@ class MainMenu(BaseUIComponent):
         # Якорь для кнопок, чтобы они были по центру
         menu_center = self._add_element('buttons_anchor', self.base.aspect2d.attach_new_node("menu-center"))
         # The anchor is now at the center of the screen by default.
+        # (ง'̀-'́)ง
 
         buttons = [
             ("Подключиться", self.ui_manager.callbacks.get("connect"), 0.15),
