@@ -163,6 +163,18 @@ class ServerApp(Application):
                 self.players[client_id]["rot"] = data.get("rot", (0,0,0))
                 self.players[client_id]["anim_state"] = "walk"
                 self.players[client_id]["last_move_time"] = time.time()
+            
+            elif msg_type == "chat_message":
+                player_name = self.players[client_id].get("name", "Unknown")
+                message = data.get("message", "")
+                
+                broadcast_data = {
+                    "type": "chat_broadcast",
+                    "from_name": player_name,
+                    "message": message
+                }
+                self.asyncio_loop.create_task(self.network.broadcast(broadcast_data))
+
             else:
                 event_name = f"server_on_{msg_type}"
                 event_data = {
