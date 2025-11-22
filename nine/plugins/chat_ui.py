@@ -4,6 +4,7 @@ from nine.ui.chat_window import ChatWindow
 
 class ChatUIPlugin(BasePlugin, DirectObject):
     name = "Chat UI"
+    plugin_type = "client"
 
     def on_load(self):
         self.app.logger.info(f"Плагин '{self.name}' загружен.")

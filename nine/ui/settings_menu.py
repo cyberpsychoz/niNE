@@ -1,5 +1,5 @@
 # nine/ui/settings_menu.py
-from direct.gui.DirectGui import DirectFrame, DirectButton, DirectEntry, DirectLabel, DirectOptionMenu, DGG
+from direct.gui.DirectGui import DirectFrame, DirectButton, DirectEntry, DirectLabel, DirectOptionMenu, DGG, DirectSlider
 from panda3d.core import LColor, TextNode, WindowProperties
 
 from nine.ui.base_component import BaseUIComponent
@@ -40,7 +40,7 @@ class SettingsMenu(BaseUIComponent):
             parent=frame,
             text="Nickname:",
             scale=0.06,
-            pos=(-0.4, 0, 0.2),
+            pos=(-0.5, 0, 0.3),
             text_align=TextNode.ALeft,
             text_fg=(1,1,1,1),
             relief=None
@@ -48,7 +48,7 @@ class SettingsMenu(BaseUIComponent):
         self._add_element('nickname_entry', DirectEntry(
             parent=frame,
             scale=0.06,
-            pos=(0.1, 0, 0.2),
+            pos=(0.1, 0, 0.3),
             initialText=config.get("nickname"),
             numLines=1,
             width=10,
@@ -62,7 +62,7 @@ class SettingsMenu(BaseUIComponent):
             parent=frame,
             text="Resolution:",
             scale=0.06,
-            pos=(-0.4, 0, 0.0),
+            pos=(-0.5, 0, 0.1),
             text_align=TextNode.ALeft,
             text_fg=(1,1,1,1),
             relief=None
@@ -73,7 +73,7 @@ class SettingsMenu(BaseUIComponent):
             parent=frame,
             text=current_resolution,
             scale=0.06,
-            pos=(0.1, 0, 0.0),
+            pos=(0.1, 0, 0.1),
             items=available_resolutions,
             initialitem=available_resolutions.index(current_resolution) if current_resolution in available_resolutions else 0,
             highlightColor=(0.2, 0.6, 0.2, 1), # Highlight color for selected item
@@ -81,6 +81,35 @@ class SettingsMenu(BaseUIComponent):
             text_fg=(1,1,1,1),
             sortOrder=11, # Ensure dropdown is on top
             command=self._on_resolution_selected
+        ))
+
+        # Camera Sensitivity Label and Slider
+        self._add_element('sensitivity_label', DirectLabel(
+            parent=frame,
+            text="Camera Sensitivity:",
+            scale=0.06,
+            pos=(-0.5, 0, -0.1),
+            text_align=TextNode.ALeft,
+            text_fg=(1,1,1,1),
+            relief=None
+        ))
+        initial_sensitivity = config.get("camera_sensitivity", 1.0)
+        self.sensitivity_slider = self._add_element('sensitivity_slider', DirectSlider(
+            parent=frame,
+            range=(0.1, 3.0),
+            value=initial_sensitivity,
+            scale=0.4,
+            pos=(0.2, 0, -0.1),
+            command=self._on_sensitivity_changed
+        ))
+        self.sensitivity_value_label = self._add_element('sensitivity_value_label', DirectLabel(
+            parent=frame,
+            text=f"{initial_sensitivity:.2f}",
+            scale=0.06,
+            pos=(0.65, 0, -0.1),
+            text_align=TextNode.ARight,
+            text_fg=(1,1,1,1),
+            relief=None
         ))
 
         # Save Button
@@ -111,6 +140,14 @@ class SettingsMenu(BaseUIComponent):
         
         self.hide()
 
+    def _on_sensitivity_changed(self):
+        """Callback for when the sensitivity slider is adjusted."""
+        new_sensitivity = self.sensitivity_slider.getValue()
+        self.sensitivity_value_label['text'] = f"{new_sensitivity:.2f}"
+        if self.client and self.client.camera_controller:
+            self.client.camera_controller.sensitivity_multiplier = new_sensitivity
+
+
     def _on_resolution_selected(self, selection):
         """Callback for when a resolution is selected from the dropdown."""
         print(f"Resolution selected: {selection}")
@@ -119,10 +156,12 @@ class SettingsMenu(BaseUIComponent):
         """Saves the settings and applies changes."""
         new_nickname = self._elements['nickname_entry'].get()
         selected_resolution = self._elements['resolution_option_menu'].get()
+        new_sensitivity = self.sensitivity_slider.getValue()
 
         # Update config
         config.set("nickname", new_nickname)
         config.set("resolution", selected_resolution)
+        config.set("camera_sensitivity", new_sensitivity)
 
         # Apply nickname change to client
         self.client.character_name = new_nickname
@@ -135,7 +174,7 @@ class SettingsMenu(BaseUIComponent):
         props.setSize(width, height)
         self.client.win.requestProperties(props)
         
-        print(f"Settings saved: Nickname={new_nickname}, Resolution={selected_resolution}")
+        print(f"Settings saved: Nickname={new_nickname}, Resolution={selected_resolution}, Sensitivity={new_sensitivity:.2f}")
         
         self.ui_manager.hide_settings_menu()
         self.ui_manager.show_main_menu() # Go back to main menu
