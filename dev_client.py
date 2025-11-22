@@ -5,30 +5,32 @@ import ssl
 import struct
 import sys
 import uuid
-import argparse # Added for command line argument parsing
-import math # Added for math operations like atan2
+import argparse
 from pathlib import Path
 
-from panda3d.core import loadPrcFileData, WindowProperties, LVector3, LPoint3 # Added LPoint3
-
+from panda3d.core import loadPrcFileData, WindowProperties, LVector3, LPoint3
 
 loadPrcFileData("", "audio-library-name null")
+loadPrcFileData("", "cursor-hidden 0")
+loadPrcFileData("", "mouse-mode absolute")
 
+from direct.actor.Actor import Actor
 from direct.showbase.ShowBase import ShowBase
 from direct.task import Task
 from panda3d.core import CardMaker, NodePath, LColor
 
+from nine.core.camera_controller import CameraController
 from nine.core.events import EventManager
 from nine.core.plugins import PluginManager
 from nine.ui.manager import UIManager
 
 
 class GameClient(ShowBase):
-    def __init__(self, name: str, client_uuid: str): # Added name and client_uuid as arguments
+    def __init__(self, name: str, client_uuid: str):
         log_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         file_handler = logging.FileHandler("client.log", mode='w')
         file_handler.setFormatter(log_formatter)
-        
+
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(logging.INFO)
         self.logger.addHandler(file_handler)
@@ -40,11 +42,18 @@ class GameClient(ShowBase):
             asyncio.set_event_loop(self.asyncio_loop)
 
         ShowBase.__init__(self)
-        
+        self.disableMouse()
+
         self.event_manager = EventManager()
         self.plugin_manager = PluginManager(self, self.event_manager)
 
-        # Load server config
+        try:
+            with open("config.json") as f:
+                config = json.load(f)
+            self.camera_sensitivity = config.get("camera_sensitivity", 1.0)
+        except (FileNotFoundError, json.JSONDecodeError):
+            self.camera_sensitivity = 1.0
+
         with open("server_config.json") as f:
             config = json.load(f)
         self.host = config.get("host", "localhost")
@@ -52,32 +61,30 @@ class GameClient(ShowBase):
 
         self.player_id = -1
         self.is_connected = False
-        self.character_name = name # Use name from argument
-        self.client_uuid = client_uuid # Use uuid from argument
-        self.player_model = None
-        self.camera_pivot = None  # Node for horizontal camera rotation
-        self.camera_boom = None   # Node for vertical camera rotation and distance
-        self.camera_pitch = 0     # Current camera pitch
+        self.character_name = name
+        self.client_uuid = client_uuid
+        self.player_actor = None
+        self.camera_controller = None
         self.other_players = {}
         self.writer = None
         self.temp_password = None
-        self.in_game_menu_active = False # New attribute to track in-game menu state
+        self.in_game_menu_active = False
 
         callbacks = {
             "connect": self.open_login_menu,
             "exit": self.exit_game,
             "attempt_login": self.attempt_login,
             "close_login_menu": self.close_login_menu,
-            "settings": self.show_settings_menu, # ADDED THIS LINE
+            "settings": self.show_settings_menu,
         }
         self.ui = UIManager(self, callbacks)
-        
+
         self.event_manager.subscribe("client_send_chat_message", self.send_chat_packet)
         self.plugin_manager.load_plugins()
 
-        # Connect directly without showing main menu
         self.setup_scene()
-        self.logger.info(f"Dev Client {self.character_name} ({self.client_uuid}) launched. Connecting to {self.host}:{self.port}")
+        self.logger.info(
+            f"Dev Client {self.character_name} ({self.client_uuid}) launched. Connecting to {self.host}:{self.port}")
         self.asyncio_loop.create_task(self.connect_and_read(self.host))
 
         self.keyMap = {"w": False, "a": False, "s": False, "d": False}
@@ -93,14 +100,11 @@ class GameClient(ShowBase):
 
         self.taskMgr.add(self.poll_asyncio, "asyncio-poll")
         self.update_movement_task = None
-        self.update_camera_task = None
 
     def _get_or_create_uuid(self) -> str:
-        # For dev clients, always generate a new UUID or use the one provided by argument
         return str(uuid.uuid4())
 
     def setup_scene(self):
-        # self.disableMouse() is handled by input enabling/disabling
         cm = CardMaker("ground")
         cm.setFrame(-50, 50, -50, 50)
         ground = self.render.attachNewNode(cm.generate())
@@ -108,112 +112,83 @@ class GameClient(ShowBase):
         ground.setPos(0, 0, -1)
 
     def setup_mouse_control(self, active):
-        props = WindowProperties()
-        if active:
-            props.setCursorHidden(True)
-            props.setMouseMode(WindowProperties.M_relative)
-            self.win.requestProperties(props)
-        else:
-            props.setCursorHidden(False)
-            props.setMouseMode(WindowProperties.M_absolute)
-            self.win.requestProperties(props)
+        if self.camera_controller:
+            if active:
+                self.camera_controller.start()
+            else:
+                self.camera_controller.stop()
 
     def update_key_map(self, key, state):
         self.keyMap[key] = state
 
     def is_chat_active(self) -> bool:
-        """Helper method to find the chat plugin and check its status."""
         for plugin in self.plugin_manager.plugins:
             if plugin.name == "Chat UI" and hasattr(plugin, 'is_active'):
                 return plugin.is_active()
         return False
 
     def disable_game_input(self):
-        """Disables game-related input and tasks when a menu is active."""
         self.setup_mouse_control(False)
         for key in self.keyMap:
-            self.keyMap[key] = False # Clear any held keys
+            self.keyMap[key] = False
         if self.update_movement_task:
             self.taskMgr.remove(self.update_movement_task)
             self.update_movement_task = None
-        if self.update_camera_task:
-            self.taskMgr.remove(self.update_camera_task)
-            self.update_camera_task = None
 
     def enable_game_input(self):
-        """Enables game-related input and tasks when a menu is closed."""
         self.setup_mouse_control(True)
         if not self.update_movement_task:
             self.update_movement_task = self.taskMgr.add(self.update_movement, "update-movement-task")
-        if not self.update_camera_task:
-            self.update_camera_task = self.taskMgr.add(self.update_camera, "update-camera-task")
-
-    def update_camera(self, task):
-        if not self.is_connected or not self.player_model or not self.camera_pivot or not self.camera_boom or not self.win.getPointer(0).getInWindow():
-            return Task.cont
-
-        md = self.win.getPointer(0)
-        dx = md.getX()
-        dy = md.getY()
-        
-        if self.win.getProperties().getMouseMode() == WindowProperties.M_relative:
-            # Rotate camera pivot horizontally around the player
-            self.camera_pivot.setH(self.camera_pivot.getH() - dx * 10)
-            
-            # Rotate camera boom vertically
-            self.camera_pitch = max(-60, min(60, self.camera_pitch + dy * 10))
-            self.camera_boom.setP(self.camera_pitch)
-        
-        return Task.cont
 
     def update_movement(self, task):
-        if not self.is_connected or not self.player_model or self.is_chat_active() or self.in_game_menu_active:
+        if not self.is_connected or not self.player_actor or not self.camera_controller or self.is_chat_active() or self.in_game_menu_active:
             return Task.cont
 
         dt = globalClock.getDt()
         move_speed = 10.0
-        
+
         move_vec = LVector3(0, 0, 0)
         if self.keyMap["w"]: move_vec.y += 1
         if self.keyMap["s"]: move_vec.y -= 1
         if self.keyMap["a"]: move_vec.x -= 1
         if self.keyMap["d"]: move_vec.x += 1
-        
+
         moved = move_vec.length_squared() > 0
         if moved:
+            if self.player_actor.getCurrentAnim() != "walk":
+                self.player_actor.loop("walk")
+
             move_vec.normalize()
-            
-            # Get the world-space movement vector relative to the camera
-            world_move_vec = self.render.getRelativeVector(self.camera_pivot, move_vec)
-            world_move_vec.z = 0 # We are not flying
+
+            camera_pivot = self.camera_controller.get_camera_pivot()
+            world_move_vec = self.render.getRelativeVector(camera_pivot, move_vec)
+            world_move_vec.z = 0
             world_move_vec.normalize()
 
-            # Move the player
-            self.player_model.setPos(self.player_model.getPos() + world_move_vec * move_speed * dt)
+            self.player_actor.setPos(self.player_actor.getPos() + world_move_vec * move_speed * dt)
+            self.player_actor.lookAt(self.player_actor.getPos() + world_move_vec)
 
-            # Rotate the player to face the direction of movement
-            self.player_model.lookAt(self.player_model.getPos() + world_move_vec)
-
-            pos = self.player_model.getPos()
+            pos = self.player_actor.getPos()
+            rot = self.player_actor.getHpr()
             self.asyncio_loop.create_task(
-                self.send_message(self.writer, {"type": "move", "pos": [pos.x, pos.y, pos.z]})
+                self.send_message(self.writer, {"type": "move", "pos": [pos.x, pos.y, pos.z], "rot": [rot.x, rot.y, rot.z]})
             )
+        else:
+            if self.player_actor.getCurrentAnim() != "idle":
+                self.player_actor.loop("idle")
+
         return Task.cont
 
     def open_login_menu(self):
-        # Not used in dev client, connect directly
-        pass 
+        pass
 
     def close_login_menu(self):
-        # Not used in dev client
         pass
 
     def show_settings_menu(self):
-        """Displays the settings menu."""
-        self.ui.show_settings_menu(self) # Assuming show_settings_menu takes client instance
+        self.ui.show_settings_menu(self)
 
     def attempt_login(self):
-        # Not used in dev client, connect directly
         pass
 
     def exit_game(self):
@@ -229,73 +204,60 @@ class GameClient(ShowBase):
             if self.in_game_menu_active:
                 self.ui.hide_in_game_menu()
                 self.in_game_menu_active = False
-                self.enable_game_input() # Re-enable game input/tasks
+                self.enable_game_input()
             else:
-                self.ui.show_in_game_menu(self) # Pass self (GameClient instance) for disconnect
+                self.ui.show_in_game_menu(self)
                 self.in_game_menu_active = True
-                self.disable_game_input() # Disable game input/tasks
-            
+                self.disable_game_input()
+
     def send_chat_packet(self, message: str):
         if not message.strip():
             return
         message_data = {"type": "chat_message", "message": message}
         self.asyncio_loop.create_task(self.send_message(self.writer, message_data))
 
-
     def on_successful_connection(self):
         auth_data = {
-            "type": "dev_auth", # Changed from "auth"
+            "type": "dev_auth",
             "name": self.character_name,
-            "uuid": self.client_uuid, 
-            # No password needed for dev_auth
+            "uuid": self.client_uuid,
         }
         self.temp_password = None
         self.asyncio_loop.create_task(self.send_message(self.writer, auth_data))
 
-    def load_player_model(self, is_local_player=False) -> NodePath:
-        model = self.loader.loadModel("nine/assets/models/player.egg")
-        if not model:
+    def load_actor(self, is_local_player=False) -> NodePath:
+        anims = {
+            "walk": "nine/assets/models/player.egg",
+            "idle": "nine/assets/models/player.egg"
+        }
+        actor = Actor("nine/assets/models/player.egg", anims)
+
+        if not actor or actor.isEmpty():
             cm = CardMaker("fallback-player")
             cm.setFrame(-0.5, 0.5, -0.5, 0.5)
-            model = NodePath(cm.generate())
-            model.setZ(0.5)
-        
-        model.setColor(LColor(0.5, 0.8, 0.5, 1) if is_local_player else LColor(0.8, 0.8, 0.8, 1))
-        model.set_scale(0.3)
-        
-        if is_local_player:
-            # Create camera pivot attached to the player model
-            self.camera_pivot = model.attachNewNode("camera_pivot")
-            self.camera_pivot.setPos(0, 0, 2) # Offset pivot slightly above player base
-            
-            # Create camera boom attached to the pivot
-            self.camera_boom = self.camera_pivot.attachNewNode("camera_boom")
-            self.camera_boom.setPos(0, -15, 5) # Initial camera distance and height
-            
-            # Reparent camera to the boom
-            self.camera.reparentTo(self.camera_boom)
-            self.camera.lookAt(self.camera_pivot) # Look at the pivot point
-            
-            self.camera_pivot.setH(0)
-            self.camera_boom.setP(0)
-            self.camera_pitch = 0
-            
-        model.reparentTo(self.render)
-        return model
+            actor = NodePath(cm.generate())
+            actor.setZ(0.5)
+
+        actor.setColor(LColor(0.5, 0.8, 0.5, 1) if is_local_player else LColor(0.8, 0.8, 0.8, 1))
+        actor.set_scale(0.3)
+        actor.reparentTo(self.render)
+        return actor
 
     def handle_network_data(self, data: dict):
         msg_type = data.get("type")
 
         if msg_type == "welcome":
-            # self.ui.hide_main_menu() # No main menu to hide for dev client
             self.player_id = data["id"]
-            self.player_model = self.load_player_model(is_local_player=True)
-            self.player_model.setPos(*data["pos"])
-            self.enable_game_input() # Enable mouse control after player model is loaded
+            self.player_actor = self.load_actor(is_local_player=True)
+            self.player_actor.setPos(*data["pos"])
+
+            self.camera_controller = CameraController(self, self.camera, self.win, self.player_actor, self.camera_sensitivity)
+            self.enable_game_input()
+
             for p_id_str, p_info in data.get("players", {}).items():
                 p_id = int(p_id_str)
                 if p_id != self.player_id:
-                    p_node = self.load_player_model()
+                    p_node = self.load_actor()
                     p_node.setPos(*p_info["pos"])
                     self.other_players[p_id] = p_node
 
@@ -303,13 +265,11 @@ class GameClient(ShowBase):
             self.logger.error(f"Ошибка аутентификации: {data.get('reason', 'Неизвестная ошибка')}")
             self.is_connected = False
             self.disable_game_input()
-            # self.ui.show_main_menu() # No main menu for dev client
-            # self.ui.hide_login_menu() # No login menu for dev client
-            self.exit_game() # Exit if dev auth fails
+            self.exit_game()
 
         elif msg_type == "chat_broadcast":
             self.event_manager.post("network_chat_broadcast", {
-                "sender": data.get("from_name", "Unknown"), 
+                "sender": data.get("from_name", "Unknown"),
                 "message": data.get("message", "")
             })
 
@@ -317,19 +277,29 @@ class GameClient(ShowBase):
             p_id = data["id"]
             if p_id != self.player_id:
                 p_info = data["player_info"]
-                p_node = self.load_player_model()
+                p_node = self.load_actor()
                 p_node.setPos(*p_info["pos"])
                 self.other_players[p_id] = p_node
+
+        elif msg_type == "world_state":
+            for p_id_str, p_info in data.get("players", {}).items():
+                p_id = int(p_id_str)
+                if p_id in self.other_players:
+                    actor = self.other_players[p_id]
+                    actor.setPos(*p_info["pos"])
+                    actor.setHpr(*p_info["rot"])
+                    anim_state = p_info.get("anim_state", "idle")
+                    if actor.getCurrentAnim() != anim_state:
+                        actor.loop(anim_state)
 
         elif msg_type == "player_left":
             p_id = data["id"]
             if p_id in self.other_players:
                 self.other_players[p_id].removeNode()
                 del self.other_players[p_id]
-        
+
         else:
             self.event_manager.post(msg_type, data)
-
 
     async def poll_asyncio(self, task):
         self.asyncio_loop.stop()
@@ -349,10 +319,9 @@ class GameClient(ShowBase):
             ssl_context.load_verify_locations('certs/cert.pem')
         except FileNotFoundError:
             self.logger.critical("КРИТИЧЕСКАЯ ОШИБКА: Файл сертификата 'certs/cert.pem' не найден.")
-            # self.close_login_menu() # No login menu for dev client
-            self.exit_game() # Exit if cert not found
+            self.exit_game()
             return
-            
+
         reader = None
         try:
             reader, self.writer = await asyncio.open_connection(
@@ -364,55 +333,43 @@ class GameClient(ShowBase):
             await self.read_messages(reader)
         except Exception as e:
             self.logger.error(f"Ошибка подключения: {e}")
-            self.exit_game() # Exit on connection error
+            self.exit_game()
         finally:
             self.is_connected = False
             if self.writer:
                 self.writer.close()
-                if not self.asyncio_loop.is_closed():
-                    try:
-                        pass # Removed await self.writer.wait_closed()
-                    except (AttributeError, TypeError, ValueError):
-                        pass
-
             if reader:
                 reader.feed_eof()
             self.asyncio_loop.call_soon_threadsafe(self.cleanup_game_state)
 
     def disconnect_from_server(self):
-        """Initiates disconnection from the server."""
         if self.is_connected:
             self.logger.info("Отключение от сервера и очистка состояния игры.")
             self.is_connected = False
             if self.writer:
                 self.writer.close()
-            # The cleanup_game_state will be called via the finally block in connect_and_read
-            # and lead back to the main menu.
             if self.in_game_menu_active:
                 self.ui.hide_in_game_menu()
                 self.in_game_menu_active = False
                 self.enable_game_input()
 
     def cleanup_game_state(self):
-        """Очищает состояние игры после отключения."""
         self.logger.info("Соединение с сервером закрыто.")
         self.disable_game_input()
-        if self.player_model:
-            self.player_model.removeNode()
-            self.player_model = None
-        if self.camera_pivot:
-            self.camera_pivot.removeNode()
-            self.camera_pivot = None
-        if self.camera_boom:
-            self.camera_boom.removeNode()
-            self.camera_boom = None
+        if self.player_actor:
+            self.player_actor.cleanup()
+            self.player_actor.removeNode()
+            self.player_actor = None
+        if self.camera_controller:
+            self.camera_controller.stop()
+            self.camera_controller = None
         for p in self.other_players.values():
+            p.cleanup()
             p.removeNode()
         self.other_players.clear()
         self.player_id = -1
         self.ui.destroy_all()
-        # self.ui.show_main_menu() # No main menu for dev client
-        self.exit_game() # Exit after cleanup
+        self.exit_game()
 
     async def read_messages(self, reader: asyncio.StreamReader):
         while self.is_connected:
@@ -445,8 +402,7 @@ if __name__ == "__main__":
             logging.basicConfig(level=logging.CRITICAL)
             logging.critical("Ошибка: Panda3D не установлен. Пожалуйста, установите его: pip install panda3d")
             sys.exit(1)
-    
-    # Generate UUID if not provided
+
     client_uuid = args.uuid if args.uuid else str(uuid.uuid4())
     app = GameClient(args.name, client_uuid)
     try:

@@ -1,19 +1,28 @@
 import asyncio
 import json
+import logging
 import time
 import uuid
 from itertools import cycle
 
 from nine.core.app import Application
-from nine.core.network import NetworkManager, MessageReceivedEvent, ClientConnectedEvent, ClientDisconnectedEvent
-from nine.core.plugins import PluginManager
-from nine.core.world import World
 from nine.core.database import DatabaseManager
+from nine.core.network import (ClientConnectedEvent, ClientDisconnectedEvent,
+                               MessageReceivedEvent, NetworkManager)
+from nine.core.plugins import PluginManager
 
 
 class ServerApp(Application):
     def __init__(self):
         super().__init__(is_server=True)
+
+        log_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        file_handler = logging.FileHandler("server.log", mode='w')
+        file_handler.setFormatter(log_formatter)
+
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(logging.INFO)
+        self.logger.addHandler(file_handler)
         
         with open("server_config.json") as f:
             config = json.load(f)
@@ -27,9 +36,7 @@ class ServerApp(Application):
         self.db = DatabaseManager()
         self.plugin_manager = PluginManager(self, self.event_manager)
 
-        # {client_id: {'name': str, 'pos': [x, y, z], 'uuid': str}}
         self.players = {}
-        # {client_id: 'player_uuid'} - для обратного поиска UUID при отключении
         self.client_id_to_uuid = {}
         
         self.spawn_points = cycle([
@@ -48,8 +55,6 @@ class ServerApp(Application):
 
     def on_client_connected(self, event: ClientConnectedEvent):
         print(f"Клиент {event.client_id} ожидает аутентификации...")
-        # Событие network_client_connected уже разослано через EventManager,
-        # плагины могут подписаться на него напрямую.
 
     def on_client_disconnected(self, event: ClientDisconnectedEvent):
         client_id = event.client_id
@@ -72,9 +77,6 @@ class ServerApp(Application):
             leave_data = {"type": "player_left", "id": client_id}
             self.asyncio_loop.create_task(self.network.broadcast(leave_data))
             print(f"Игрок {player_name} ({client_id}) отключился.")
-        
-        # Событие network_client_disconnected уже разослано,
-        # плагины могут подписаться на него напрямую.
 
     def on_message_received(self, event: MessageReceivedEvent):
         client_id = event.client_id
@@ -95,41 +97,24 @@ class ServerApp(Application):
             player_data = self.db.get_player_by_name(player_name)
 
             if player_data:
-                # --- Игрок существует, проверяем пароль ---
                 if self.db.verify_player_password_by_name(player_name, password):
-                    print(f"Игрок '{player_name}' успешно аутентифицирован.")
-                    # Обновляем UUID, если он изменился (вход с другой машины)
-                    if player_data['uuid'] != client_uuid:
-                        self.db.update_player_uuid(player_name, client_uuid)
-                    
-                    # Используем каноничный UUID из базы
                     player_uuid = player_data['uuid']
                 else:
-                    print(f"Неудачная попытка входа для '{player_name}': неверный пароль.")
                     self.asyncio_loop.create_task(self.network.send_message(
                         client_id, {"type": "auth_failed", "reason": "Неверное имя пользователя или пароль."}
                     ))
                     return
             else:
-                # --- Новый игрок, регистрируем ---
                 if self.db.create_player(client_uuid, player_name, password):
-                    print(f"Новый игрок '{player_name}' зарегистрирован с UUID {client_uuid}.")
-                    player_uuid = client_uuid # Используем UUID, с которым создали
+                    player_uuid = client_uuid
                 else:
-                    # Это может случиться в редком случае гонки, когда два клиента
-                    # одновременно пытаются зарегистрировать одно и то же имя.
-                    print(f"Неудачная попытка регистрации для '{player_name}': имя уже может быть занято.")
                     self.asyncio_loop.create_task(self.network.send_message(
-                        client_id, {"type": "auth_failed", "reason": "Не удалось зарегистрировать пользователя. Возможно, имя занято."}
+                        client_id, {"type": "auth_failed", "reason": "Не удалось зарегистрировать пользователя."}
                     ))
                     return
 
-            # --- Логика после успешной аутентификации / регистрации ---
-            
-            # Проверяем, не подключен ли уже игрок с таким UUID
             old_client_id = next((cid for cid, p_info in self.players.items() if p_info.get('uuid') == player_uuid), None)
             if old_client_id is not None:
-                print(f"Игрок {player_name} ({player_uuid}) переподключается. Старый ID: {old_client_id}, новый ID: {client_id}.")
                 old_writer = self.network.clients.get(old_client_id)
                 if old_writer:
                     old_writer.close()
@@ -139,7 +124,7 @@ class ServerApp(Application):
             db_attributes = self.db.get_player_all_attributes(player_uuid)
             spawn_pos = db_attributes.get("pos", next(self.spawn_points))
 
-            self.players[client_id] = {"name": player_name, "pos": spawn_pos, "uuid": player_uuid}
+            self.players[client_id] = {"name": player_name, "pos": spawn_pos, "uuid": player_uuid, "rot": (0, 0, 0), "anim_state": "idle", "last_move_time": time.time()}
             self.client_id_to_uuid[client_id] = player_uuid
 
             welcome_data = {
@@ -157,10 +142,8 @@ class ServerApp(Application):
             player_name = data.get("name", f"DevPlayer{client_id}")
             player_uuid = str(uuid.uuid4())
 
-            print(f"Dev-игрок '{player_name}' ({player_uuid}) аутентифицирован.")
-
             spawn_pos = next(self.spawn_points)
-            self.players[client_id] = {"name": player_name, "pos": spawn_pos, "uuid": player_uuid, "is_dev": True}
+            self.players[client_id] = {"name": player_name, "pos": spawn_pos, "uuid": player_uuid, "is_dev": True, "rot": (0, 0, 0), "anim_state": "idle", "last_move_time": time.time()}
             self.client_id_to_uuid[client_id] = player_uuid
 
             welcome_data = {
@@ -176,17 +159,10 @@ class ServerApp(Application):
 
         elif client_id in self.players:
             if msg_type == "move":
-                self.players[client_id]["pos"] = data.get("pos", self.players[client_id]["pos"])
-            elif msg_type == "chat_message":
-                message = data.get("message", "")
-                if message:
-                    sender_name = self.players.get(client_id, {}).get('name', f'Player {client_id}')
-                    broadcast_data = {
-                        "type": "chat_broadcast",
-                        "from_name": sender_name,
-                        "message": message
-                    }
-                    self.asyncio_loop.create_task(self.network.broadcast(broadcast_data))
+                self.players[client_id]["pos"] = data.get("pos", (0,0,0))
+                self.players[client_id]["rot"] = data.get("rot", (0,0,0))
+                self.players[client_id]["anim_state"] = "walk"
+                self.players[client_id]["last_move_time"] = time.time()
             else:
                 event_name = f"server_on_{msg_type}"
                 event_data = {
@@ -195,6 +171,14 @@ class ServerApp(Application):
                     "data": data
                 }
                 self.event_manager.post(event_name, event_data)
+
+    async def check_idle_players(self):
+        while self.running:
+            now = time.time()
+            for player_info in self.players.values():
+                if player_info.get("anim_state") == "walk" and now - player_info.get("last_move_time", 0) > 0.2:
+                    player_info["anim_state"] = "idle"
+            await asyncio.sleep(1)
 
     async def broadcast_world_state(self):
         while self.running:
@@ -206,7 +190,7 @@ class ServerApp(Application):
             await self.network.broadcast(state_data)
 
     async def auto_save_world(self):
-        auto_save_interval = 300  # 5 минут
+        auto_save_interval = 300
         while self.running:
             await asyncio.sleep(auto_save_interval)
             
@@ -216,18 +200,17 @@ class ServerApp(Application):
             print(f"[{time.strftime('%H:%M:%S')}] Начало автосохранения мира...")
             saved_count = 0
             for client_id, player_info in self.players.items():
-                player_uuid = player_info.get("uuid")
-                if player_uuid and not player_info.get("is_dev", False):
+                if not player_info.get("is_dev", False):
+                    player_uuid = player_info.get("uuid")
                     try:
                         self.db.set_player_attribute(player_uuid, "pos", player_info["pos"])
                         self.db.set_player_attribute(player_uuid, "name", player_info.get("name"))
                         saved_count += 1
                     except Exception as e:
-                        print(f"Ошибка при автосохранении игрока {player_uuid}: {e}")
+                        print(f"Error autosaving player {player_uuid}: {e}")
             
             if saved_count > 0:
                 print(f"[{time.strftime('%H:%M:%S')}] Автосохранение завершено. Сохранено {saved_count} игроков.")
-
 
     async def main_loop(self):
         self.running = True
@@ -235,6 +218,7 @@ class ServerApp(Application):
         self.plugin_manager.load_plugins()
         self.asyncio_loop.create_task(self.broadcast_world_state())
         self.asyncio_loop.create_task(self.auto_save_world())
+        self.asyncio_loop.create_task(self.check_idle_players())
 
         last_tick_time = time.time()
         tick_interval = 1.0 / self.tick_rate
@@ -245,11 +229,9 @@ class ServerApp(Application):
                 delta_time = now - last_tick_time
                 
                 if delta_time >= tick_interval:
-                    # Отправляем событие тика, на которое могут подписаться плагины
                     self.event_manager.post('app_tick', {'delta_time': delta_time})
                     last_tick_time = now
 
-                # Небольшая пауза, чтобы не загружать CPU на 100%
                 await asyncio.sleep(0.01)
 
         except KeyboardInterrupt:
@@ -259,18 +241,15 @@ class ServerApp(Application):
 
     def stop(self):
         if self.running:
-            # Сохраняем данные всех оставшихся игроков при остановке сервера
             for client_id, player_info in self.players.items():
-                player_uuid = player_info.get("uuid")
-                if player_uuid and not player_info.get("is_dev", False):
+                if not player_info.get("is_dev", False):
+                    player_uuid = player_info.get("uuid")
                     self.db.set_player_attribute(player_uuid, "pos", player_info["pos"])
                     self.db.set_player_attribute(player_uuid, "name", player_info.get("name"))
             
             self.plugin_manager.unload_plugins()
             super().stop()
-            # Останавливаем управляемый процесс Redis
             self.db.shutdown()
-
 
 async def main():
     server_app = ServerApp()
@@ -279,10 +258,8 @@ async def main():
     main_loop_task = asyncio.create_task(server_app.main_loop())
     await asyncio.gather(server_task, main_loop_task)
 
-
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except (KeyboardInterrupt, SystemExit):
         print("Завершение работы.")
-

@@ -87,6 +87,18 @@ class PluginManager:
         for attribute_name in dir(module):
             attribute = getattr(module, attribute_name)
             if isinstance(attribute, type) and issubclass(attribute, BasePlugin) and attribute is not BasePlugin:
+                
+                # Determine plugin type, default to 'common' if not specified
+                plugin_type = getattr(attribute, 'plugin_type', 'common')
+                
+                # Server loads 'server' and 'common' plugins
+                if self.app.is_server and plugin_type not in ['server', 'common']:
+                    continue
+                
+                # Client loads 'client' and 'common' plugins
+                if not self.app.is_server and plugin_type not in ['client', 'common']:
+                    continue
+
                 try:
                     instance = attribute(self.app, self.event_manager, path)
                     self.plugins.append(instance)
