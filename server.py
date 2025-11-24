@@ -24,8 +24,23 @@ class ServerApp(Application):
         self.logger.setLevel(logging.INFO)
         self.logger.addHandler(file_handler)
         
-        with open("server_config.json") as f:
-            config = json.load(f)
+        import os
+        json_server_config_filename = "server_config.json"
+        if not os.path.exists(json_server_config_filename):
+
+            json_server_config = {
+            "host": "localhost",
+            "port": 9009,
+            "tick_rate": 20,
+            "allow_dev_client": True
+            }
+
+            with open("server_config.json", "w") as f:
+                json.dump(json_server_config, f, indent=4)
+                config = json.load(f)
+        else:
+            with open("server_config.json", "r") as f:
+                config = json.load(f)
 
         self.host = config.get("host", "localhost")
         self.port = config.get("port", 9009)
