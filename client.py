@@ -59,6 +59,7 @@ class GameClient(ShowBase):
 
         self.player_id = -1
         self.is_connected = False
+        self.is_server = False  # Plugins check this
         self.character_name = "Player"
         self.client_uuid = self._get_or_create_uuid()
 
@@ -312,6 +313,10 @@ class GameClient(ShowBase):
         self.plugin_manager.unload_plugins()
         if self.writer: self.writer.close()
         self.userExit()
+
+    def is_chat_active(self) -> bool:
+        """A fallback method in case the chat plugin is not loaded."""
+        return False
 
     def handle_escape(self):
         if self.is_chat_active():
