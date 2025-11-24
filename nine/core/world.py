@@ -1,57 +1,120 @@
-from typing import Dict
-from .events import EventManager
+import time
+from itertools import cycle
 
-class Entity:
+from panda3d.bullet import BulletRigidBodyNode, BulletPlaneShape
+from panda3d.core import Vec3, LColor
+
+from nine.core.database import DatabaseManager
+from nine.core.character_controller import CharacterController
+
+
+class Player:
+    """Represents a player on the server side."""
+    def __init__(self, client_id, name, actor, physics_world):
+        self.client_id = client_id
+        self.name = name
+        self.actor = actor  # This is a server-side NodePath
+        self.input_state = {"w": False, "a": False, "s": False, "d": False, "space": False}
+        self.last_move_time = 0
+
+        # On the server, the character controller manages the physics node
+        self.character_controller = CharacterController(self.actor, physics_world)
+    
+    def update(self, dt):
+        """Updates the player's character controller."""
+        result = self.character_controller.update(dt, self.input_state)
+        if result:
+            self.last_move_time = time.time()
+        return result
+
+    def get_state(self):
+        """Gets the player's state for broadcasting."""
+        # The character_controller holds the physics NodePath, which has the position
+        pos = self.character_controller.character_np.getPos()
+        # The actor itself holds the rotation
+        rot = self.actor.getHpr()
+
+        anim_state = "idle"
+        if self.character_controller.is_moving:
+            anim_state = "walk"
+
+        return {
+            "pos": [pos.x, pos.y, pos.z],
+            "rot": [rot.x, rot.y, rot.z],
+            "name": self.name,
+            "anim_state": anim_state
+        }
+
+
+class GameWorld:
     """
-    Базовый класс для любого объекта в игровом мире.
-    В полноценной реализации это будет часть ECS.
+    Manages the server-side game state, including all players and physics.
     """
-    def __init__(self, entity_id: int):
-        self.id = entity_id
-        self.position = (0, 0, 0)
+    def __init__(self, physics_world, render_node):
+        self.physics_world = physics_world
+        self.render = render_node  # The server's top-level render node
+        self.players = {}  # Maps client_id to Player object
+        self.db = DatabaseManager()
 
-    def __repr__(self):
-        return f"<Entity {self.id}>"
+        self.spawn_points = cycle([
+            [0, 0, 1], [5, 5, 1], [-5, 5, 1], [5, -5, 1], [-5, -5, 1]
+        ])
 
+        self._setup_scene()
 
-class World:
-    """
-    Управляет состоянием всех сущностей в игровом мире.
-    """
+    def _setup_scene(self):
+        """Sets up the static physical world."""
+        ground_shape = BulletPlaneShape(Vec3(0, 0, 1), 0)
+        ground_body_node = BulletRigidBodyNode('Ground')
+        ground_body_node.addShape(ground_shape)
+        ground_np = self.render.attachNewNode(ground_body_node)
+        ground_np.setPos(0, 0, -0.5)
+        self.physics_world.attachRigidBody(ground_body_node)
+    
+    def get_world_state(self):
+        """Gathers the state of all players for broadcasting."""
+        player_states = {}
+        for client_id, player in self.players.items():
+            player_states[client_id] = player.get_state()
+        return {"type": "world_state", "players": player_states}
 
-    def __init__(self, event_manager: EventManager):
-        self.event_manager = event_manager
-        self.entities: Dict[int, Entity] = {}
-        self._next_entity_id = 1
-        
-        self.event_manager.subscribe("app_tick", self.update)
+    def update(self, dt):
+        """The main update tick for the world."""
+        for player in self.players.values():
+            player.update(dt)
 
-    def create_entity(self) -> Entity:
-        """Создает новую сущность и добавляет ее в мир."""
-        entity_id = self._next_entity_id
-        self._next_entity_id += 1
-        
-        entity = Entity(entity_id)
-        self.entities[entity_id] = entity
-        
-        self.event_manager.post("entity_created", entity)
-        print(f"Создана сущность {entity.id}")
-        return entity
+    def handle_input(self, client_id, input_data):
+        if client_id in self.players:
+            # Directly update the player's input state
+            # This is a simple approach; a more robust one would validate
+            self.players[client_id].input_state = input_data
 
-    def destroy_entity(self, entity_id: int):
-        """Удаляет сущность из мира."""
-        if entity_id in self.entities:
-            entity = self.entities.pop(entity_id)
-            self.event_manager.post("entity_destroyed", entity)
-            print(f"Удалена сущность {entity.id}")
+    def remove_player(self, client_id):
+        if client_id in self.players:
+            player = self.players.pop(client_id)
+            player.character_controller.cleanup()
+            player.actor.removeNode()
+            self.db.shutdown() # Should be handled better
+            print(f"Removed player {client_id}")
+            return player.client_id
+        return None
 
-    def get_entity(self, entity_id: int) -> Entity:
-        """Возвращает сущность по ее ID."""
-        return self.entities.get(entity_id)
-
-    def update(self, dt: float):
+    def add_player(self, client_id, name):
         """
-        Основной цикл обновления мира.
+        Creates a player entity in the world.
+        For now, we create a dummy actor on the server.
+        It doesn't need to be visible, it's just a NodePath for transform.
         """
-        pass
+        from direct.actor.Actor import Actor
+        # The server doesn't need to load the full model, just a node
+        actor = self.render.attachNewNode(name)
+        
+        player = Player(client_id, name, actor, self.physics_world)
+        
+        spawn_pos = next(self.spawn_points)
+        player.character_controller.character_np.setPos(Vec3(*spawn_pos))
 
+        self.players[client_id] = player
+        
+        print(f"Added player {name} ({client_id}) to the world.")
+        return player
