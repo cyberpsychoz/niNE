@@ -1,0 +1,10 @@
+{
+    "nickname": "Player",
+    "resolution": "1280x720",
+    "available_resolutions": [
+        "800x600",
+        "1024x768",
+        "1280x720",
+        "1920x1080"
+    ]
+}
