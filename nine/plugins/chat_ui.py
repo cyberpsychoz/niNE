@@ -14,17 +14,25 @@ class ChatUIPlugin(BasePlugin, DirectObject):
         
         # --- Callbacks & Events ---
         self.ui_window.on_send_callback = self.send_chat_message
-        self.event_manager.subscribe("network_chat_broadcast", self.add_incoming_message)
+        self.event_manager.subscribe("chat_broadcast", self.add_incoming_message)
         
         # --- Keybindings ---
         self.accept('t', self.ui_window.toggle_input)
 
+        # Monkey-patch the app instance
+        self.app.is_chat_active = self.is_active
+
     def on_unload(self):
         self.ignoreAll()
         if self.event_manager:
-            self.event_manager.unsubscribe("network_chat_broadcast", self.add_incoming_message)
+            self.event_manager.unsubscribe("chat_broadcast", self.add_incoming_message)
         if self.ui_window:
             self.ui_window.destroy()
+        
+        # Clean up the monkey-patch
+        if hasattr(self.app, 'is_chat_active'):
+            del self.app.is_chat_active
+
         self.app.logger.info(f"Плагин '{self.name}' выгружен.")
 
     def send_chat_message(self, message: str):
@@ -35,7 +43,7 @@ class ChatUIPlugin(BasePlugin, DirectObject):
 
     def add_incoming_message(self, data: dict):
         """Called by the EventManager when a network message arrives."""
-        self.ui_window.add_message(data['sender'], data['message'])
+        self.ui_window.add_message(data['from_name'], data['message'])
     
     def is_active(self) -> bool:
         """Is the chat input currently active?"""
