@@ -43,7 +43,7 @@ class ChatUIPlugin(BasePlugin, DirectObject):
 
     def add_incoming_message(self, data: dict):
         """Called by the EventManager when a network message arrives."""
-        self.ui_window.add_message(data['sender'], data['message'])
+        self.ui_window.add_message(data['from_name'], data['message'])
     
     def is_active(self) -> bool:
         """Is the chat input currently active?"""
