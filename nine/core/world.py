@@ -22,6 +22,10 @@ class Player:
     
     def update(self, dt):
         """Updates the player's character controller."""
+        # Reset is_moving at the start of the tick for dev clients
+        # For regular clients, this is set by the controller. For dev clients, by handle_move.
+        self.character_controller.is_moving = False
+        
         result = self.character_controller.update(dt, self.input_state)
         if result:
             self.last_move_time = time.time()
@@ -85,9 +89,20 @@ class GameWorld:
 
     def handle_input(self, client_id, input_data):
         if client_id in self.players:
-            # Directly update the player's input state
-            # This is a simple approach; a more robust one would validate
             self.players[client_id].input_state = input_data
+
+    def handle_move(self, client_id, move_data):
+        """Directly sets the position and rotation for a player (used for dev clients)."""
+        if client_id in self.players:
+            player = self.players[client_id]
+            pos = move_data.get("pos")
+            rot = move_data.get("rot")
+            if pos:
+                player.character_controller.character_np.setPos(Vec3(*pos))
+                # We should still mark them as moving so the anim broadcasts correctly
+                player.character_controller.is_moving = True
+            if rot:
+                player.actor.setHpr(Vec3(*rot))
 
     def remove_player(self, client_id):
         if client_id in self.players:

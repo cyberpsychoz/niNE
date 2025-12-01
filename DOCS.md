@@ -1,236 +1,100 @@
-# Документация по Проекту "niNE"
+# niNE Project Documentation
 
-Этот документ содержит техническую документацию по ключевым классам и методам проекта.
-
----
-
-## `ServerApp`
-**Файл:** `server.py`
-
-Основной класс серверного приложения. Управляет жизненным циклом сервера, подключениями клиентов, игровым состоянием и глобальными серверными системами.
-
-### `__init__(self)`
-- **Назначение:** Инициализирует сервер.
-- **Действия:**
-    - Загружает конфигурацию из `server_config.json`.
-    - Инициализирует логгер для записи в `server.log`.
-    - Создает экземпляры `NetworkManager`, `DatabaseManager` и `PluginManager`.
-    - Устанавливает обработчики для основных сетевых событий (подключение, отключение, получение сообщения).
-
-### `on_client_connected(self, event: ClientConnectedEvent)`
-- **Назначение:** Обработчик события подключения нового клиента.
-- **Аргументы:**
-    - `event`: Объект события, содержащий `client_id`.
-- **Действия:** Выводит в консоль сообщение о том, что клиент ожидает аутентификации.
-
-### `on_client_disconnected(self, event: ClientDisconnectedEvent)`
-- **Назна-чение:** Обработчик события отключения клиента.
-- **Аргументы:**
-    - `event`: Объект события, содержащий `client_id`.
-- **Действия:**
-    - Сохраняет позицию и имя игрока в базу данных (если это не dev-клиент).
-    - Удаляет игрока из активного списка `self.players`.
-    - Рассылает всем остальным клиентам сообщение `player_left`, чтобы они удалили модель персонажа из своего мира.
-
-### `on_message_received(self, event: MessageReceivedEvent)`
-- **Назначение:** Центральный обработчик входящих сообщений от клиентов.
-- **Аргументы:**
-    - `event`: Объект события, содержащий `client_id` и `data` (полезная нагрузка сообщения).
-- **Действия:**
-    - **`auth` / `dev_auth`**: Обрабатывает логику аутентификации или "быстрого входа" для разработки. При успехе создает игрока в мире и отправляет ему приветственное сообщение `welcome` со всей нужной информацией.
-    - **`move`**: Получает от клиента новые данные о его позиции и вращении. Обновляет состояние этого игрока в `self.players`. Эти данные затем рассылаются всем в `broadcast_world_state`.
-    - **Другие типы**: Передает сообщения другим системам через `EventManager` (например, для чата).
-
-### `async broadcast_world_state(self)`
-- **Назна-чение:** Основной цикл синхронизации состояния мира.
-- **Действия:**
-    - С заданной частотой (`tick_rate`) собирает данные обо всех игроках (`self.players`).
-    - Рассылает широковещательное сообщение `world_state` всем подключенным клиентам.
+This document provides a technical overview of the niNE project architecture, key components, and data flow.
 
 ---
 
-## `GameClient`
-**Файлы:** `client.py`, `dev_client.py`
+## Core Architecture
 
-Основной класс клиентского приложения. Управляет окном игры, вводом, рендерингом, подключением к серверу и локальным представлением игрового мира.
+The project uses a hybrid architecture combining **Panda3D** for 3D rendering and its task manager with Python's **asyncio** for modern, high-performance networking.
 
-### `__init__(self, ...)`
-- **Назначение:** Инициализирует клиент.
-- **Действия:**
-    - Загружает конфигурации из `config.json` и `server_config.json`.
-    - Инициализирует логгер, `PluginManager`, `UIManager` и `CameraController`.
-    - Устанавливает обработчики ввода с клавиатуры (`w`, `a`, `s`, `d`, `escape`).
-    - Запускает процесс подключения к серверу.
-
-### `game_update(self, task)` / `update_movement(self, task)`
-- **Назначение:** Главный игровой цикл на клиенте, выполняется каждый кадр.
-- **Действия:**
-    - Определяет, нажал ли игрок клавиши движения.
-    - Если да, вычисляет новый вектор движения на основе направления камеры.
-    - Обновляет позицию и вращение локального игрока (`self.player_actor`).
-    - Запускает анимацию ходьбы (`walk`) или простоя (`idle`).
-    - Отправляет на сервер сообщение `move` с новой позицией и вращением.
-
-### `handle_network_data(self, data: dict)`
-- **Назначение:** Центральный обработчик входящих сообщений от сервера.
-- **Аргументы:**
-    - `data`: Словарь с данными сообщения.
-- **Действия:**
-    - **`welcome`**: Вызывается при успешном входе в мир. Создает локального игрока (`player_actor`), других игроков, которые уже есть на сервере, и инициализирует `CameraController`.
-    - **`player_joined`**: Создает модель и анимации для нового игрока, подключившегося к серверу.
-    - **`player_left`**: Удаляет модель игрока, отключившегося от сервера.
-    - **`world_state`**: Принимает данные обо всех игроках. Обновляет позицию, вращение и анимацию для всех *других* игроков в мире.
-    - **`chat_broadcast`**: Отображает входящее сообщение чата в UI.
-
-### `enable_game_input(self)` / `disable_game_input(self)`
-- **Назначение:** Включает или отключает "игровой режим" управления.
-- **Действия:**
-    - Вызывает `self.camera_controller.start()` или `self.camera_controller.stop()` для переключения режима мыши и активации/деактивации вращения камеры.
-    - Включает/выключает игровой цикл `game_update`. Используется, когда нужно открыть меню или окно чата.
+-   **Panda3D's Task Manager** is used for the main game loop (`game_loop` on the server, `update_movement_task` on the client), physics simulation, and other frame-by-frame updates.
+-   **Asyncio** is used for all network communication, allowing the server to handle many concurrent clients efficiently and enabling non-blocking network calls on the client.
+-   The two systems are integrated via a special task (`poll_asyncio`) that runs the asyncio event loop for one iteration within the Panda3D game loop.
 
 ---
 
-## `CameraController`
-**Файл:** `nine/core/camera_controller.py`
+## Client-Server Communication
 
-Управляет камерой от третьего лица, ее вращением и следованием за персонажем.
+Communication is handled by a custom, SSL-encrypted, JSON-based protocol.
 
-### `__init__(self, base, camera, win, target, sensitivity)`
-- **Назначение:** Инициализирует контроллер камеры.
-- **Аргументы:**
-    - `base`: Основной экземпляр приложения (`ShowBase`).
-    - `camera`: Объект камеры Panda3D.
-    - `win`: Игровое окно.
-    - `target`: `NodePath` объекта, за которым камера должна следовать (персонаж игрока).
-    - `sensitivity`: Множитель чувствительности мыши (из `config.json`).
-- **Действия:**
-    - Создает `camera_pivot` - невидимый узел, который будет вращаться и за которым будет следовать камера.
-    - Устанавливает начальное расстояние и высоту камеры от цели.
-    - Сохраняет множитель чувствительности.
-
-### `start(self)` / `stop(self)`
-- **Назначение:** Активирует и деактивирует управление камерой.
-- **Действия:**
-    - `start()`: Включает относительный режим мыши (`M_relative`) и скрывает курсор. Запускает задачу `_update`.
-    - `stop()`: Возвращает абсолютный режим мыши (`M_absolute`) и показывает курсор. Останавливает задачу `_update`.
-
-### `_update(self, task)`
-- **Назна-чение:** Выполняется каждый кадр для обновления состояния камеры.
-- **Действия:**
-    - Перемещает `camera_pivot` точно в позицию цели (`target`).
-    - Получает смещение мыши (`dx`, `dy`) с момента последнего кадра.
-    - Вращает `camera_pivot` по горизонтали и вертикали на основе `dx`, `dy` и чувствительности.
-    - Если система не поддерживает относительный режим мыши, эмулирует его, принудительно возвращая курсор в центр экрана после каждого кадра.
+-   **Transport:** All communication occurs over a single TCP socket, secured with SSL/TLS. The server uses a self-signed certificate (`certs/cert.pem` and `certs/key.pem`) which the client must have to verify the connection.
+-   **Messaging Protocol:** Messages are sent as JSON strings. To handle message framing (i.e., knowing where one message ends and the next begins), each JSON payload is prefixed with a 4-byte header containing the length of the payload, packed as an unsigned integer.
+-   **Centralized Logic:** The core logic for sending and receiving these length-prefixed messages is centralized in the `nine.core.network` module, which is used by all clients.
 
 ---
 
-## `PluginManager`
-**Файл:** `nine/core/plugins.py`
+## The Server (`GameServer`)
 
-Отвечает за обнаружение, загрузку и выгрузку плагинов.
+**File:** `nine/server/game_server.py`
 
-### `load_plugins(self, ...)`
-- **Назначение:** Находит и загружает все плагины.
-- **Действия:**
-    - Сканирует директории (по умолчанию `nine/plugins`).
-    - Для каждого найденного Python-файла или пакета вызывает внутренние методы загрузки.
+The server is the authoritative source of truth for the game world. It manages game state, physics, and all client interactions.
 
-### `_initialize_plugin_classes(self, module, path)`
-- **Назначение:** Инициализирует классы плагинов из загруженного модуля.
-- **Действия:**
-    - Проверяет `plugin_type` класса плагина. Если тип не соответствует окружению (например, клиентский плагин на сервере), он пропускается.
-    - Создает экземпляр класса плагина.
-    - Вызывает метод `on_load()` плагина.
-
-### `unload_plugins(self)`
-- **Назначение:** Корректно выгружает все активные плагины.
-- **Действия:**
-    - Проходит по списку загруженных плагинов и вызывает у каждого метод `on_unload()`.
+-   **Responsibilities:**
+    -   Accepting and managing client connections.
+    -   Processing incoming messages (authentication, input, etc.).
+    -   Running the main game loop (`game_loop`) at a fixed `tick_rate`.
+    -   Simulating the physics world (`BulletWorld`).
+    -   Broadcasting the world state to all clients.
+-   **Authentication:**
+    -   **`auth`:** Standard authentication for regular clients. The server prevents multiple clients from logging in with the same name.
+    -   **`dev_auth`:** A special authentication path for development clients. If `allow_dev_client` is `true` in `server_config.json`, the server will bypass the unique name check, allowing multiple dev clients to connect for testing purposes.
 
 ---
 
-## `SettingsMenu`
-**Файл:** `nine/ui/settings_menu.py`
+## The Clients
 
-Класс UI-компонента для меню настроек.
+### 1. Main Game Client (`client.py`)
 
-### `_setup(self)`
-- **Назначение:** Создает все графические элементы меню.
-- **Действия:**
-    - Создает фрейм, заголовок, поля ввода и слайдеры с помощью `DirectGui`.
-    - Загружает начальные значения для элементов из глобального объекта `config`.
-    - Назначает команды (callback-функции) для кнопок и слайдера.
+This is the primary user-facing client.
 
-### `_on_sensitivity_changed(self)`
-- **Назначение:** Callback, который вызывается в реальном времени при движении слайдера чувствительности.
-- **Действия:**
-    - Получает новое значение слайдера.
-    - Обновляет текстовую метку, чтобы показать числовое значение.
-    - Напрямую обновляет `sensitivity_multiplier` в активном `camera_controller`, чтобы изменения применялись мгновенно.
+-   **Class:** `GameClient`
+-   **Functionality:**
+    -   Presents a full user interface (main menu, login screen, settings, etc.) managed by the `UIManager`.
+    -   In standard mode, it acts as a "dumb" client: it captures raw keyboard input (`w`, `a`, `s`, `d`) and sends it to the server via an `input` message. The server then simulates the movement and sends the new position back in the `world_state` broadcast.
+    -   **Dev Mode:** Can be launched in a development mode using the `--dev` flag. In this mode, it behaves similarly to the `DevGameClient`.
 
-### `_on_save_click(self)`
-- **Назначение:** Callback для кнопки "Save".
-- **Действия:**
-    - Получает значения из всех элементов UI (никнейм, разрешение, чувствительность).
-    - Сохраняет эти значения в глобальный объект `config` (который затем запишет их в `config.json`).
-    - Применяет некоторые настройки немедленно (например, разрешение окна).
-    - Закрывает меню настроек.
+### 2. Development Client (`dev_client.py`)
+
+This is a separate, streamlined client for rapid development and testing.
+
+-   **Class:** `DevGameClient`
+-   **Functionality:**
+    -   Has no main menu; it connects automatically to a specified host/port on launch.
+    -   Always uses `dev_auth`.
+    -   Uses **client-side prediction**. It calculates its own movement based on player input each frame and sends the resulting position to the server via a `move` message. This provides a smoother gameplay experience for the local player but makes the client authoritative over its own position. The server simply accepts this position and broadcasts it to other clients.
 
 ---
 
-## `EventManager`
-**Файл:** `nine/core/events.py`
+## Plugin System (`PluginManager`)
 
-Простой менеджер событий, реализующий шаблон "Издатель-подписчик" для слабой связи между различными компонентами системы.
+**File:** `nine/core/plugins.py`
 
-### `__init__(self)`
-- **Назначение:** Инициализирует менеджер событий.
-- **Действия:**
-    - Создает внутренний словарь `_listeners` для хранения списков обработчиков (слушателей) для каждого типа события.
+The project features a powerful, event-driven plugin system that allows for modular and decoupled feature development.
 
-### `subscribe(self, event_type: str, listener: Callable)`
-- **Назначение:** Подписывает обработчик (функцию или метод) на определенный тип события.
-- **Аргументы:**
-    - `event_type`: Строка, идентифицирующая событие (например, `"app_tick"` или `"player_joined"`).
-    - `listener`: Функция или метод, который будет вызван при возникновении события.
-- **Действия:**
-    - Добавляет `listener` в список обработчиков для данного `event_type`.
+-   **Discovery:** The `PluginManager` automatically discovers and loads Python files and packages from the `nine/plugins/` directory.
+-   **Filtering:** Each plugin class can have a `plugin_type` attribute, which can be `'client'`, `'server'`, or `'common'`. The manager will only load plugins appropriate for the current environment (e.g., it won't load a `'client'` plugin on the server).
+-   **Decoupling:** Plugins do not directly reference the main app or other components. Instead, they communicate using an `EventManager`.
+    -   **Subscribing:** A plugin can `subscribe` to events (e.g., a network message type like `"chat_broadcast"`, or a UI event like `"escape_key_pressed"`).
+    -   **Posting:** A plugin can `post` its own events to trigger actions in the core systems or other plugins (e.g., posting `"client_send_chat_message"` to make the client send a network packet).
+-   **Example:** The `chat_ui.py` plugin listens for the `"chat_broadcast"` network event to display messages and posts a `"client_send_chat_message"` event when the user enters text.
 
-### `unsubscribe(self, event_type: str, listener: Callable)`
-- **Назначение:** Отписывает обработчик от события.
-- **Аргументы:**
-    - `event_type`: Строка, идентифицирующая событие.
-    - `listener`: Функция или метод, который нужно отписать.
-- **Действия:**
-    - Удаляет `listener` из списка обработчиков для данного `event_type`.
+---
 
-### `post(self, event_type: str, data: Any = None)`
-- **Назначение:** Публикует (вызывает) событие, уведомляя всех подписчиков.
-- **Аргументы:**
-    - `event_type`: Строка, идентифицирующая событие.
-    - `data`: (Опционально) Данные, которые нужно передать в каждый обработчик события.
-- **Действия:**
-    - Последовательно вызывает все обработчики, подписанные на `event_type`.
-    - Передает `data` в качестве аргумента каждому обработчику.
-    - Включает обработку ошибок: если в каком-либо обработчике возникает исключение, оно выводится в консоль, но не прерывает выполнение остальных обработчиков.
+## UI System (`UIManager`)
 
-### Пример использования
+**File:** `nine/ui/manager.py`
 
-```python
-# Создаем экземпляр менеджера
-event_manager = EventManager()
+The UI is managed by a central `UIManager` that acts as a state machine, controlling which screen is currently active.
 
-# Определяем функцию-обработчик
-def on_player_death(player_data):
-    print(f"Игрок {player_data['name']} погиб!")
+-   **Base Component:** All UI screens (e.g., `MainMenu`, `LoginMenu`) inherit from `BaseUIComponent`, which ensures they have a consistent interface (`show`, `hide`, `destroy`) and that all DirectGUI elements are properly cleaned up to prevent memory leaks.
+-   **Callbacks:** The `UIManager` is initialized with a dictionary of callbacks, which allows the UI components to trigger actions in the main client class (e.g., `attempt_login`, `exit_game`) without being directly coupled to it.
 
-# Подписываемся на событие
-event_manager.subscribe("player_death", on_player_death)
+---
 
-# Где-то в другом месте кода вызываем событие
-player_info = {"name": "TrollSlayer_123", "level": 10}
-event_manager.post("player_death", player_info)
+## Configuration
 
-# Отписываемся от события
-event_manager.unsubscribe("player_death", on_player_death)
-```
+The project uses a clean separation between client and server configuration.
+
+-   **`config.json`:** Contains client-side settings like nickname, resolution, and camera sensitivity. It is only read by the clients.
+-   **`server_config.json`:** Contains server-side settings like host, port, tick rate, and the `allow_dev_client` flag. **This file should never be read by a client.** This separation was a key part of the recent architectural refactoring.
