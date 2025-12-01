@@ -58,8 +58,10 @@ class CharacterController:
             
             self.character_node.setLinearMovement(world_move_vec, True)
             
-            # Make the actor face the direction of movement
-            self.actor.lookAt(self.actor.getPos() + world_move_vec)
+            # Make the actor face the direction of movement.
+            # We must convert the world-space move vector to the actor's local coordinate space.
+            local_move_vec = self.actor.getParent().getRelativeVector(self.reference_node, world_move_vec)
+            self.actor.lookAt(self.actor.getPos() + local_move_vec)
         else:
             self.character_node.setLinearMovement(LVector3(0, 0, 0), True)
 
