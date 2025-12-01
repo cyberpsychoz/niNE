@@ -14,7 +14,7 @@ class ChatUIPlugin(BasePlugin, DirectObject):
         
         # --- Callbacks & Events ---
         self.ui_window.on_send_callback = self.send_chat_message
-        self.event_manager.subscribe("network_chat_broadcast", self.add_incoming_message)
+        self.event_manager.subscribe("chat_broadcast", self.add_incoming_message)
         
         # --- Keybindings ---
         self.accept('t', self.ui_window.toggle_input)
@@ -25,7 +25,7 @@ class ChatUIPlugin(BasePlugin, DirectObject):
     def on_unload(self):
         self.ignoreAll()
         if self.event_manager:
-            self.event_manager.unsubscribe("network_chat_broadcast", self.add_incoming_message)
+            self.event_manager.unsubscribe("chat_broadcast", self.add_incoming_message)
         if self.ui_window:
             self.ui_window.destroy()
         
