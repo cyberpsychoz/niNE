@@ -1,88 +1,88 @@
-# niNE Development Plan
+# План Разработки niNE
 
-This document outlines the recent architectural changes and provides a roadmap for turning the project into a full-fledged "Roleplay Constructor."
-
----
-
-## 1. Recent Architectural Overhaul (Completed)
-
-The project has recently undergone a significant refactoring to improve stability, maintainability, and architectural clarity.
-
--   **Client Unification:**
-    -   The redundant `dev_client.py` and `client.py` were merged. The main `client.py` now supports a `--dev` flag for development, which enables client-side movement prediction and developer authentication.
-    -   A dedicated, auto-connecting `dev_client.py` was re-created for rapid testing, using the same underlying `GameClient` logic but without a main menu.
-
--   **Decoupled Configuration:**
-    -   Clients no longer read `server_config.json`. This enforces a strict separation of concerns, where clients are unaware of server-specific settings.
-    -   Connection details (host, port) are now passed as command-line arguments or through the UI, with sensible defaults.
-
--   **Centralized Networking:**
-    -   All low-level networking logic (sending and receiving length-prefixed JSON messages over SSL) has been centralized into the `nine.core.network` module.
-    -   All clients (`client.py`, `dev_client.py`, `dev_cli_client.py`) now use this shared module, eliminating duplicated code.
-
--   **Improved Server Authentication:**
-    -   The server now has a dedicated `dev_auth` flow. When `allow_dev_client` is `true` in `server_config.json`, developers can connect multiple clients without being blocked by unique name checks.
+Этот документ описывает недавние архитектурные изменения и представляет дорожную карту по превращению проекта в полноценный "Конструктор ролевых игр".
 
 ---
 
-## 2. Roadmap: The Roleplay Constructor
+## 1. Недавняя переработка архитектуры (Завершено)
 
-To transform the project into a true "Roleplay Constructor," we need to build systems that allow for deep customization of characters, worlds, and stories. The following is a proposed roadmap.
+Проект недавно претерпел значительный рефакторинг для улучшения стабильности, поддерживаемости и архитектурной чистоты.
 
-### Phase 1: Foundational Systems
+-   **Унификация клиентов:**
+    -   Избыточные `dev_client.py` и `client.py` были объединены. Основной `client.py` теперь поддерживает флаг `--dev` для разработки, который включает предсказание движения на стороне клиента и аутентификацию для разработчиков.
+    -   Выделенный, автоматически подключающийся `dev_client.py` был воссоздан для быстрого тестирования, используя ту же базовую логику `GameClient`, но без главного меню.
 
-#### A. Advanced Character Persistence
--   **Goal:** Move beyond saving just the player's name and position. We need to store detailed character data.
--   **Implementation:**
-    1.  **Database Schema:** Extend the SQLite database (`nine.db`) with new tables: `characters`, `character_stats`, `character_appearance`, etc.
-    2.  **Player Class:** Modify the `Player` class in `nine/core/world.py` to hold complex data (e.g., stats, level, health, appearance attributes).
-    3.  **Data Loading/Saving:** Enhance `DatabaseManager` to load this data on `auth`/`dev_auth` and save it periodically or on `disconnect`. The current implementation of saving on disconnect is a good start, but periodic saving would prevent data loss on server crash.
-    4.  **Character Selection:** The `welcome` message should be preceded by a character selection step if an account has multiple characters. This will require a new UI screen.
+-   **Разделение конфигураций:**
+    -   Клиенты больше не читают `server_config.json`. Это обеспечивает строгое разделение ответственности, при котором клиенты не знают о специфичных настройках сервера.
+    -   Детали подключения (хост, порт) теперь передаются через аргументы командной строки или через UI, с разумными значениями по умолчанию.
 
-#### B. World & Zone Management
--   **Goal:** The server needs to be able to manage multiple zones or areas (e.g., a city, a dungeon) and persist the state of objects within them.
--   **Implementation:**
-    1.  **Database Schema:** Add tables for `zones`, `world_objects` (with position, rotation, scale, type), and `object_properties`.
-    2.  **World Class:** Refactor `GameWorld` to manage a dictionary of `Zone` objects. Each `Zone` would contain its own set of objects and players.
-    3.  **Zone Streaming:** Implement logic to load/unload zones as players move between them. The server would only send `world_state` updates for the player's current zone.
+-   **Централизация сетевого кода:**
+    -   Вся низкоуровневая сетевая логика (отправка и получение JSON-сообщений с префиксом длины через SSL) была централизована в модуле `nine.core.network`.
+    -   Все клиенты (`client.py`, `dev_client.py`, `dev_cli_client.py`) теперь используют этот общий модуль, что устраняет дублирование кода.
 
-### Phase 2: Content Creation Tools
+-   **Улучшенная аутентификация на сервере:**
+    -   Сервер теперь имеет выделенный поток аутентификации `dev_auth`. Когда в `server_config.json` установлен флаг `allow_dev_client: true`, разработчики могут подключать несколько клиентов без блокировки из-за уникальности имен.
 
-#### A. In-Game World Editor ("Game Master Mode")
--   **Goal:** Allow users with special permissions to create and modify the world in real-time.
--   **Implementation:**
-    1.  **Permissions System:** Add a `role` field to the `accounts` or `characters` table in the database (e.g., `player`, `moderator`, `admin`).
-    2.  **GM Client Mode:** Create a new client mode (e.g., `client.py --gm`) that enables editor-specific UI and controls.
-    3.  **New Network Messages:**
+---
+
+## 2. Дорожная карта: Конструктор ролевых игр
+
+Чтобы превратить проект в настоящий "Конструктор ролевых игр", нам необходимо создать системы, которые обеспечат глубокую кастомизацию персонажей, миров и историй. Ниже представлена предлагаемая дорожная карта.
+
+### Фаза 1: Фундаментальные системы
+
+#### A. Расширенное сохранение персонажей
+-   **Цель:** Перейти от сохранения только имени и позиции игрока к хранению детализированных данных о персонаже.
+-   **Реализация:**
+    1.  **Схема БД:** Расширить базу данных SQLite (`nine.db`) новыми таблицами: `characters`, `character_stats`, `character_appearance` и т.д.
+    2.  **Класс Player:** Изменить класс `Player` в `nine/core/world.py` для хранения сложных данных (например, характеристики, уровень, здоровье, атрибуты внешности).
+    3.  **Загрузка/сохранение данных:** Улучшить `DatabaseManager` для загрузки этих данных при `auth`/`dev_auth` и сохранения их периодически или при отключении.
+    4.  **Выбор персонажа:** Перед сообщением `welcome` должен появиться шаг выбора персонажа, если у аккаунта их несколько. Это потребует нового экрана в UI.
+
+#### B. Управление миром и зонами
+-   **Цель:** Сервер должен уметь управлять несколькими зонами (например, город, подземелье) и сохранять состояние объектов в них.
+-   **Реализация:**
+    1.  **Схема БД:** Добавить таблицы для `zones`, `world_objects` (с позицией, вращением, масштабом, типом) и `object_properties`.
+    2.  **Класс World:** Рефакторинг `GameWorld` для управления словарем объектов `Zone`. Каждая `Zone` будет содержать свой собственный набор объектов и игроков.
+    3.  **Стриминг зон:** Реализовать логику для загрузки/выгрузки зон по мере перемещения игроков между ними. Сервер будет отправлять обновления `world_state` только для текущей зоны игрока.
+
+### Фаза 2: Инструменты для создания контента
+
+#### A. Внутриигровой редактор мира ("Режим Мастера Игры")
+-   **Цель:** Позволить пользователям со специальными правами создавать и изменять мир в реальном времени.
+-   **Реализация:**
+    1.  **Система прав:** Добавить поле `role` в таблицу `accounts` или `characters` в БД (например, `player`, `moderator`, `admin`).
+    2.  **Режим клиента GM:** Создать новый режим клиента (например, `client.py --gm`), который активирует специфичный для редактора UI и управление.
+    3.  **Новые сетевые сообщения:**
         -   `gm_spawn_object(object_id, pos, rot)`
         -   `gm_delete_object(world_object_id)`
         -   `gm_set_object_property(world_object_id, key, value)`
-    4.  **Server Logic:** The server would validate that the client has 'admin' permissions before processing these messages and updating the database.
-    5.  **UI:** The GM client would have a simple UI for selecting objects to spawn and modifying their properties.
+    4.  **Логика сервера:** Сервер будет проверять, что у клиента есть права 'admin', прежде чем обрабатывать эти сообщения и обновлять БД.
+    5.  **UI:** Клиент GM будет иметь простой UI для выбора объектов для спавна и изменения их свойств.
 
-#### B. Data-Driven Quest & Dialogue System
--   **Goal:** Create a system for writing quests and NPC dialogues that doesn't require writing new Python code for each one.
--   **Implementation:**
-    1.  **Quest/Dialogue Files:** Define a format (JSON or YAML) for quest and dialogue files. These files would live in a new `content` directory.
-        -   A quest file might define objectives (e.g., `FETCH_ITEM`, `KILL_MONSTER`, `GO_TO_AREA`), rewards, and links to dialogue.
-        -   A dialogue file would define a tree of NPC text, player responses, and associated events (e.g., `start_quest`, `give_item`).
-    2.  **Server-Side Engines:**
-        -   **Quest Engine:** A new class on the server that loads all quest files, tracks player progress in the database (`player_quests` table), and checks for objective completion.
-        -   **Dialogue Engine:** A class that processes dialogue files and sends `show_dialogue_ui` messages to the client.
-    3.  **NPCs:** Create a basic `NPC` class. In the database, an NPC could have a `dialogue_id` that links it to a specific dialogue file.
+#### B. Система квестов и диалогов на основе данных
+-   **Цель:** Создать систему для написания квестов и диалогов с NPC, которая не требует написания нового кода на Python для каждого из них.
+-   **Реализация:**
+    1.  **Файлы квестов/диалогов:** Определить формат (JSON или YAML) для файлов квестов и диалогов. Эти файлы будут находиться в новом каталоге `content`.
+        -   Файл квеста может определять цели (например, `FETCH_ITEM`, `KILL_MONSTER`, `GO_TO_AREA`), награды и ссылки на диалоги.
+        -   Файл диалога будет определять дерево текста NPC, ответы игрока и связанные с ними события (например, `start_quest`, `give_item`).
+    2.  **Движки на стороне сервера:**
+        -   **Движок квестов:** Новый класс на сервере, который загружает все файлы квестов, отслеживает прогресс игрока в БД (таблица `player_quests`) и проверяет выполнение целей.
+        -   **Движок диалогов:** Класс, который обрабатывает файлы диалогов и отправляет клиенту сообщения `show_dialogue_ui`.
+    3.  **NPC:** Создать базовый класс `NPC`. В БД NPC может иметь `dialogue_id`, который связывает его с определенным файлом диалога.
 
-### Phase 3: Polish and Expansion
+### Фаза 3: Доработка и расширение
 
-#### A. Advanced Character Customization UI
--   **Goal:** A full in-game UI for creating a character's appearance.
--   **Implementation:**
-    1.  **Modular Characters:** The player model (`player.egg`) would need to be broken into modular parts (head, torso, legs) or support morph targets.
-    2.  **UI Screen:** A new UI screen with sliders and color pickers for modifying appearance.
-    3.  **Data Flow:** The UI would generate an appearance data structure (e.g., `{"hair_style": 3, "hair_color": [0.8, 0.2, 0.1]}`), which would be saved in the database. When a player enters the world, this data is sent to all clients, who then apply it to the character model.
+#### A. Расширенный UI кастомизации персонажа
+-   **Цель:** Полноценный внутриигровой UI для создания внешности персонажа.
+-   **Реализация:**
+    1.  **Модульные персонажи:** Модель игрока (`player.egg`) должна быть разделена на модульные части (голова, торс, ноги) или поддерживать морфинг.
+    2.  **Экран UI:** Новый экран UI со слайдерами и палитрами для изменения внешности.
+    3.  **Поток данных:** UI будет генерировать структуру данных о внешности (например, `{"hair_style": 3, "hair_color": [0.8, 0.2, 0.1]}`), которая будет сохраняться в БД. Когда игрок входит в мир, эти данные отправляются всем клиентам, которые затем применяют их к модели персонажа.
 
-#### B. Skills and Abilities
--   **Goal:** Implement a basic skill system.
--   **Implementation:**
-    1.  **Data-Driven Skills:** Define skills in JSON files (e.g., `{"id": "fireball", "damage": 10, "mana_cost": 5}`).
-    2.  **Server Logic:** The server validates if a player can use a skill and calculates its effect on the target.
-    3.  **Client-Side Feedback:** The client would need to play animations and visual effects when a skill is used. This is a perfect use case for the `EventManager` (`skill_used_event`, `damage_taken_event`).
+#### B. Навыки и способности
+-   **Цель:** Реализовать базовую систему навыков.
+-   **Реализация:**
+    1.  **Навыки на основе данных:** Определить навыки в JSON-файлах (например, `{"id": "fireball", "damage": 10, "mana_cost": 5}`).
+    2.  **Логика сервера:** Сервер проверяет, может ли игрок использовать навык, и рассчитывает его эффект на цель.
+    3.  **Обратная связь на клиенте:** Клиенту потребуется воспроизводить анимации и визуальные эффекты при использовании навыка. Это идеальный вариант использования для `EventManager` (`skill_used_event`, `damage_taken_event`).
