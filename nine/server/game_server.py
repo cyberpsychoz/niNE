@@ -80,9 +80,9 @@ class GameServer(ShowBase):
         # 3. Broadcast new state
         world_state = self.world.get_world_state()
         if world_state["players"]:
-             self.asyncio_loop.call_soon_threadsafe(
-                self.broadcast, world_state
-             )
+            asyncio.run_coroutine_threadsafe(
+                self.broadcast(world_state), self.asyncio_loop
+            )
         
         return task.cont
         
@@ -106,7 +106,9 @@ class GameServer(ShowBase):
                     "from_name": player.name,
                     "message": data.get("message", "")
                 }
-                self.asyncio_loop.call_soon_threadsafe(self.broadcast, broadcast_data)
+                asyncio.run_coroutine_threadsafe(
+                    self.broadcast(broadcast_data), self.asyncio_loop
+                )
         elif data.get("type") == "internal_disconnect":
             self.handle_disconnect(client_id)
 
@@ -136,10 +138,10 @@ class GameServer(ShowBase):
             "pos": player.get_state()["pos"],
             "players": other_players_state
         }
-        self.send_to_client(client_id, welcome_data)
+        asyncio.run_coroutine_threadsafe(self.send_to_client(client_id, welcome_data), self.asyncio_loop)
 
         join_data = {"type": "player_joined", "id": client_id, "player_info": player.get_state()}
-        self.broadcast(join_data, exclude_ids=[client_id])
+        asyncio.run_coroutine_threadsafe(self.broadcast(join_data, exclude_ids=[client_id]), self.asyncio_loop)
 
     def handle_auth(self, client_id, data):
         player_name = data.get("name")
@@ -170,11 +172,11 @@ class GameServer(ShowBase):
             "pos": player.get_state()["pos"],
             "players": other_players_state
         }
-        self.send_to_client(client_id, welcome_data)
+        asyncio.run_coroutine_threadsafe(self.send_to_client(client_id, welcome_data), self.asyncio_loop)
 
         # Inform other players
         join_data = {"type": "player_joined", "id": client_id, "player_info": player.get_state()}
-        self.broadcast(join_data, exclude_ids=[client_id])
+        asyncio.run_coroutine_threadsafe(self.broadcast(join_data, exclude_ids=[client_id]), self.asyncio_loop)
 
     def handle_disconnect(self, client_id):
         self.logger.info(f"Client #{client_id} processing disconnection.")
@@ -184,7 +186,7 @@ class GameServer(ShowBase):
         player_id = self.world.remove_player(client_id)
         if player_id is not None:
             leave_data = {"type": "player_left", "id": player_id}
-            self.broadcast(leave_data)
+            asyncio.run_coroutine_threadsafe(self.broadcast(leave_data), self.asyncio_loop)
 
     async def handle_connection(self, reader, writer):
         self.client_id_counter += 1
@@ -209,7 +211,7 @@ class GameServer(ShowBase):
              if client_id in self.clients:
                 self.message_queue.append((client_id, {"type": "internal_disconnect"}))
 
-    def broadcast(self, data, exclude_ids=None):
+    async def broadcast(self, data, exclude_ids=None):
         if exclude_ids is None:
             exclude_ids = []
         
@@ -218,18 +220,22 @@ class GameServer(ShowBase):
         
         for client_id, writer in self.clients.items():
             if client_id not in exclude_ids:
+                if writer.is_closing():
+                    continue
                 try:
                     writer.write(header + payload)
+                    await writer.drain()
                 except Exception as e:
                     self.logger.error(f"Error broadcasting to client {client_id}: {e}")
 
-    def send_to_client(self, client_id, data):
+    async def send_to_client(self, client_id, data):
         writer = self.clients.get(client_id)
-        if writer:
+        if writer and not writer.is_closing():
             payload = json.dumps(data).encode("utf-8")
             header = struct.pack("!I", len(payload))
             try:
                 writer.write(header + payload)
+                await writer.drain()
             except Exception as e:
                 self.logger.error(f"Error sending to client {client_id}: {e}")
 
