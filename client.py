@@ -21,6 +21,7 @@ from panda3d.core import (
 
 from nine.core.camera_controller import CameraController
 from nine.core.events import EventManager
+from nine.core.plugins import PluginManager
 from nine.core.network import send_message, read_messages
 from nine.ui.manager import UIManager
 
@@ -310,10 +311,10 @@ class GameClient(ShowBase):
             self.writer.close()
             self.writer = None
         self.is_connected = False
-        self.asyncio_loop.call_soon_threadsafe(self.cleanup_.game_state)
+        self.asyncio_loop.call_soon_threadsafe(self.cleanup_game_state)
 
-    async def poll_asyncio(self, task):
-        self.asyncio_loop.stop()
+    def poll_asyncio(self, task):
+        self.asyncio_loop.call_soon(self.asyncio_loop.stop)
         self.asyncio_loop.run_forever()
         return Task.cont
 
@@ -327,7 +328,9 @@ class GameClient(ShowBase):
             return
 
         try:
-            reader, self.writer = await asyncio.open_connection(host, port, ssl=ssl_context)
+            reader, self.writer = await asyncio.open_connection(
+                host, port, ssl=ssl_context, server_hostname=host
+            )
             self.is_connected = True
             self.logger.info(f"Connection to {host}:{port} successful.")
             self.on_successful_connection()
@@ -365,34 +368,8 @@ class GameClient(ShowBase):
             self.asyncio_loop.create_task(send_message(self.writer, {"type": "chat_message", "message": message}))
 
     def open_login_menu(self): self.ui.show_login_menu(default_ip="localhost:9009", default_name=self.character_name)
-    def close_login_menu(self): self.ui.hide_login_.menu(); self.ui.show_main_menu()
+    def close_login_menu(self): self.ui.hide_login_menu(); self.ui.show_main_menu()
     def show_settings_menu(self): self.ui.show_settings_menu(self)
-
-
-if __name__ == "__main__":
-    if "panda3d" not in sys.modules:
-        logging.basicConfig(level=logging.CRITICAL)
-        logging.critical("Fatal Error: Panda3D is not installed. Please run 'pip install panda3d'.")
-        sys.exit(1)
-
-    parser = argparse.ArgumentParser(description="nine game client.")
-    parser.add_argument("--dev", action="store_true", help="Enable development mode.")
-    parser.add_argument("--name", type=str, default="DevPlayer", help="Player name (dev mode).")
-    parser.add_argument("--uuid", type=str, default=None, help="Player UUID (dev mode).")
-    args = parser.parse_args()
-
-    app = GameClient(
-        dev_mode=args.dev,
-        name=args.name,
-        client_uuid=args.uuid
-    )
-    try:
-        app.run()
-    except (SystemExit, KeyboardInterrupt):
-        logging.info("Exiting application.")
-    finally:
-        if hasattr(app, 'asyncio_loop') and app.asyncio_loop.is_running():
-            app.asyncio_loop.stop()
 
 
 if __name__ == "__main__":
