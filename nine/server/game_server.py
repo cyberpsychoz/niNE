@@ -39,6 +39,7 @@ class GameServer(ShowBase):
         self.host = config.get("host", "localhost")
         self.port = config.get("port", 9009)
         self.tick_rate = config.get("tick_rate", 30)
+        self.allow_dev_client = config.get("allow_dev_client", False)
 
         # Init asyncio loop
         self.asyncio_loop = asyncio.get_event_loop()
@@ -88,12 +89,15 @@ class GameServer(ShowBase):
     def process_message(self, client_id, data):
         msg_type = data.get("type")
 
-        # Auth is a special case handled before a player is fully in the world
         if msg_type == "auth":
             self.handle_auth(client_id, data)
+        elif msg_type == "dev_auth":
+            self.handle_dev_auth(client_id, data)
         elif msg_type == "input":
              self.world.handle_input(client_id, data.get("state", {}))
-        # Handle other message types like chat, etc.
+        elif msg_type == "move": # Dev clients send their own position
+            if self.allow_dev_client:
+                self.world.handle_move(client_id, data)
         elif msg_type == "chat_message":
             player = self.world.players.get(client_id)
             if player:
@@ -103,15 +107,52 @@ class GameServer(ShowBase):
                     "message": data.get("message", "")
                 }
                 self.asyncio_loop.call_soon_threadsafe(self.broadcast, broadcast_data)
+        elif data.get("type") == "internal_disconnect":
+            self.handle_disconnect(client_id)
+
+    def handle_dev_auth(self, client_id, data):
+        if not self.allow_dev_client:
+            self.logger.warning(f"Client {client_id} attempted dev_auth, but it is disabled. Disconnecting.")
+            writer = self.clients.get(client_id)
+            if writer:
+                self.asyncio_loop.call_soon_threadsafe(writer.close)
+            return
+        
+        player_name = data.get("name", f"DevPlayer_{client_id}")
+        
+        # Dev clients can have duplicate names, just log a warning.
+        for p in self.world.players.values():
+            if p.name == player_name:
+                self.logger.warning(f"Player '{player_name}' is already logged in. Allowing duplicate for dev client.")
+                break
+
+        player = self.world.add_player(client_id, player_name)
+        self.logger.info(f"Dev player '{player_name}' (Client #{client_id}) authenticated.")
+
+        other_players_state = {pid: p.get_state() for pid, p in self.world.players.items() if pid != client_id}
+        welcome_data = {
+            "type": "welcome",
+            "id": client_id,
+            "pos": player.get_state()["pos"],
+            "players": other_players_state
+        }
+        self.send_to_client(client_id, welcome_data)
+
+        join_data = {"type": "player_joined", "id": client_id, "player_info": player.get_state()}
+        self.broadcast(join_data, exclude_ids=[client_id])
 
     def handle_auth(self, client_id, data):
         player_name = data.get("name")
-        # NOTE: For simplicity, skipping database/password check from old server
         
-        # Check if player with same name is already logged in
+        if not player_name:
+            self.logger.warning(f"Client {client_id} sent auth request with no name. Disconnecting.")
+            writer = self.clients.get(client_id)
+            if writer:
+                self.asyncio_loop.call_soon_threadsafe(writer.close)
+            return
+
         for p in self.world.players.values():
             if p.name == player_name:
-                # For now, just disconnect the new client
                 self.logger.warning(f"Player '{player_name}' is already logged in. Disconnecting new client {client_id}.")
                 writer = self.clients.get(client_id)
                 if writer:
@@ -119,6 +160,7 @@ class GameServer(ShowBase):
                 return
 
         player = self.world.add_player(client_id, player_name)
+        self.logger.info(f"Player '{player_name}' (Client #{client_id}) authenticated.")
 
         # Prepare welcome message
         other_players_state = {pid: p.get_state() for pid, p in self.world.players.items() if pid != client_id}
