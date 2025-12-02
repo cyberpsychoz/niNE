@@ -3,7 +3,7 @@ import sys
 import logging
 
 def main():
-    # It's important to import Panda3D and the GameServer class after
+    # It's important to import Panda3D and the  GameServer class after
     # the asyncio event loop is running, especially on some platforms.
     try:
         from nine.server.game_server import GameServer
