@@ -220,7 +220,7 @@ class GameClient(ShowBase):
         self.asyncio_loop.create_task(send_message(self.writer, auth_data))
 
     def load_actor(self, player_id, color, is_local_player=False):
-        anims = {"walk": "nine/assets/models/player.egg", "idle": "nine/assets/models/player.egg"}
+        anims = {"idle": "nine/assets/models/player.egg"}
         actor = Actor("nine/assets/models/player.egg", anims)
         actor.set_scale(0.3)
         actor.setColor(color)
@@ -276,7 +276,10 @@ class GameClient(ShowBase):
 
                 actor_to_update.setHpr(*p_info["rot"])
                 anim_state = p_info.get("anim_state", "idle")
-                if actor_to_update.getCurrentAnim() != anim_state:
+                if anim_state == "walk":
+                    if actor_to_update.getCurrentAnim() is not None:
+                        actor_to_update.stop()
+                elif actor_to_update.getCurrentAnim() != anim_state:
                     actor_to_update.loop(anim_state)
         else:
             self.event_manager.post(msg_type, data)
