@@ -1,35 +1,65 @@
 """
 Клиентский модуль UI чата.
-Отображает окно чата и обрабатывает ввод пользователя.
+Отображает окно чата в стиле Garry's Mod.
 """
+
+import importlib.util
+from pathlib import Path
 
 from direct.showbase.DirectObject import DirectObject
 from nine.core.plugins import PluginModule
 from nine.ui.chat_window import ChatWindow
 
 
+def _load_config(plugin_path: Path):
+    """Загружает конфиг из папки плагина."""
+    config_path = plugin_path / "sh_config.py"
+    if not config_path.exists():
+        return None
+
+    spec = importlib.util.spec_from_file_location("chat_config", config_path)
+    if spec is None:
+        return None
+
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 class ChatUIModule(PluginModule, DirectObject):
     """
     Клиентский модуль UI чата.
-    Создает окно чата, обрабатывает ввод и отображает сообщения.
+
+    Режимы работы:
+    - Закрытый: сообщения появляются и fade out
+    - Открытый (T): полная история + ввод
+
+    Конфигурация загружается из sh_config.py
     """
 
     def on_load(self):
         self.logger.info("Клиентский модуль UI чата загружен")
 
-        # Инициализация UI
-        # app.ui - экземпляр UIManager
-        self.ui_window = ChatWindow(self.app.ui)
+        # Загружаем конфиг из папки плагина
+        config = _load_config(self.plugin_path)
 
-        # Callbacks и события
+        # Инициализация UI с конфигом из плагина
+        self.ui_window = ChatWindow(self.app.ui, config=config)
+
+        # Callback для отправки сообщений
         self.ui_window.on_send_callback = self.send_chat_message
-        self.event_manager.subscribe("chat_broadcast", self.add_incoming_message)
+
+        # Подписываемся на события
+        self.event_manager.subscribe("chat_broadcast", self.on_chat_broadcast)
+        self.event_manager.subscribe("client_disconnected", self.on_disconnect)
 
         # Keybindings
-        self.accept('t', self.ui_window.toggle_input)
+        self.accept('t', self.on_chat_key)
+        self.accept('escape', self.on_escape_key)
 
-        # Monkey-patch для проверки активности чата
+        # Предоставляем методы клиенту
         self.app.is_chat_active = self.is_active
+        self.app.chat_window = self.ui_window
 
     def on_unload(self):
         # Отписываемся от клавиш
@@ -37,30 +67,52 @@ class ChatUIModule(PluginModule, DirectObject):
 
         # Отписываемся от событий
         if self.event_manager:
-            self.event_manager.unsubscribe("chat_broadcast", self.add_incoming_message)
+            self.event_manager.unsubscribe("chat_broadcast", self.on_chat_broadcast)
+            self.event_manager.unsubscribe("client_disconnected", self.on_disconnect)
 
         # Уничтожаем UI
         if self.ui_window:
             self.ui_window.destroy()
+            self.ui_window = None
 
-        # Очищаем monkey-patch
+        # Очищаем ссылки
         if hasattr(self.app, 'is_chat_active'):
             del self.app.is_chat_active
+        if hasattr(self.app, 'chat_window'):
+            del self.app.chat_window
 
         self.logger.info("Клиентский модуль UI чата выгружен")
+
+    def on_chat_key(self):
+        """Нажатие T - открыть чат."""
+        if not self.ui_window.is_open():
+            self.ui_window.open()
+
+    def on_escape_key(self):
+        """Нажатие Escape - закрыть чат если открыт."""
+        if self.ui_window.is_open():
+            self.ui_window.close()
 
     def send_chat_message(self, message: str):
         """Отправка сообщения через event system."""
         self.event_manager.post("client_send_chat_message", message)
-        # Скрываем ввод после отправки
-        self.ui_window.toggle_input()
 
-    def add_incoming_message(self, data: dict):
+    def on_chat_broadcast(self, data: dict):
         """Обработка входящего сообщения от сервера."""
-        self.ui_window.add_message(data['from_name'], data['message'])
+        sender = data.get('from_name', 'Unknown')
+        message = data.get('message', '')
+        is_system = data.get('is_system', False)
+
+        self.ui_window.add_message(sender, message, is_system)
+
+    def on_disconnect(self, data: dict = None):
+        """При отключении от сервера - очищаем историю."""
+        if self.ui_window:
+            self.ui_window.clear_history()
+            self.logger.debug("История чата очищена при отключении")
 
     def is_active(self) -> bool:
         """Активно ли поле ввода чата."""
         if not self.ui_window:
             return False
-        return self.ui_window.is_visible()
+        return self.ui_window.is_open()
