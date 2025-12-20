@@ -3,9 +3,25 @@
 Управляет здоровьем игроков на сервере.
 """
 
+import importlib.util
+from pathlib import Path
 from typing import Dict
 from nine.core.plugins import PluginModule
-from .sh_constants import DEFAULT_HEALTH, MAX_HEALTH, MIN_HEALTH
+
+
+def _load_constants():
+    """Загружает константы из sh_constants.py в той же папке."""
+    constants_path = Path(__file__).parent / "sh_constants.py"
+    spec = importlib.util.spec_from_file_location("health_constants", constants_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_constants = _load_constants()
+DEFAULT_HEALTH = _constants.DEFAULT_HEALTH
+MAX_HEALTH = _constants.MAX_HEALTH
+MIN_HEALTH = _constants.MIN_HEALTH
 
 
 class HealthServerModule(PluginModule):

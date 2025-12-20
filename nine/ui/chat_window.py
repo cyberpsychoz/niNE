@@ -18,6 +18,7 @@ from direct.gui.DirectGui import DirectScrolledFrame, DirectEntry, DirectFrame
 from direct.interval.IntervalGlobal import Sequence, LerpFunc, Func
 from direct.showbase.DirectObject import DirectObject
 from panda3d.core import TextNode, LColor, NodePath, TransparencyAttrib, WindowProperties
+from panda3d.core import TextPropertiesManager, TextProperties
 
 from .base_component import BaseUIComponent
 
@@ -30,10 +31,14 @@ logger = logging.getLogger(__name__)
 
 def _get_clipboard_text() -> str:
     """Получает текст из буфера обмена."""
+    # Пробуем pyperclip
     try:
         import pyperclip
         return pyperclip.paste()
     except ImportError:
+        pass
+    except Exception:
+        # pyperclip установлен, но не работает (нет xclip/xsel)
         pass
 
     # Fallback на tkinter
@@ -52,11 +57,15 @@ def _get_clipboard_text() -> str:
 
 def _set_clipboard_text(text: str):
     """Копирует текст в буфер обмена."""
+    # Пробуем pyperclip
     try:
         import pyperclip
         pyperclip.copy(text)
         return
     except ImportError:
+        pass
+    except Exception:
+        # pyperclip установлен, но не работает (нет xclip/xsel)
         pass
 
     # Fallback на tkinter
@@ -102,6 +111,14 @@ class DefaultChatConfig:
     SHADOW_COLOR = (0, 0, 0, 0.9)
     HINT_TEXT = "[ T ] Открыть чат"
 
+    # RP Chat colors
+    COLOR_EMOTE = (1.0, 0.85, 0.4, 1.0)      # /me действие (жёлто-оранжевый)
+    COLOR_IT = (1.0, 0.85, 0.4, 1.0)         # /it безличное (тот же цвет)
+    COLOR_LOOC_TAG = (0.9, 0.2, 0.2, 1.0)    # [LOOC] тег - красный
+    COLOR_LOOC_TEXT = (0.7, 0.7, 0.7, 1.0)   # LOOC текст - серый
+    COLOR_OOC_TAG = (0.9, 0.2, 0.2, 1.0)     # [OOC] тег - красный
+    COLOR_OOC_TEXT = (0.7, 0.7, 0.7, 1.0)    # OOC текст - серый
+
 
 # =============================================================================
 # Классы данных
@@ -114,6 +131,8 @@ class ChatMessageData:
     text: str
     timestamp: float
     is_system: bool = False
+    chat_type: str = "ic"  # ic, emote, it, looc, ooc
+    formatted_message: Optional[str] = None  # Pre-formatted message (e.g., for /me, /it)
 
 
 @dataclass
@@ -186,11 +205,32 @@ class ChatWindow(BaseUIComponent, DirectObject):
         # Текст подсказки
         self.hint_text_str = getattr(cfg, 'HINT_TEXT', "[ T ] Открыть чат")
 
+        # RP Chat colors
+        self.color_emote = LColor(*getattr(cfg, 'COLOR_EMOTE', (1.0, 0.85, 0.4, 1.0)))
+        self.color_it = LColor(*getattr(cfg, 'COLOR_IT', (1.0, 0.85, 0.4, 1.0)))
+        self.color_looc_tag = getattr(cfg, 'COLOR_LOOC_TAG', (0.9, 0.2, 0.2, 1.0))
+        self.color_looc_text = LColor(*getattr(cfg, 'COLOR_LOOC_TEXT', (0.7, 0.7, 0.7, 1.0)))
+        self.color_ooc_tag = getattr(cfg, 'COLOR_OOC_TAG', (0.9, 0.2, 0.2, 1.0))
+        self.color_ooc_text = LColor(*getattr(cfg, 'COLOR_OOC_TEXT', (0.7, 0.7, 0.7, 1.0)))
+
+        # Настраиваем TextProperties для цветных тегов
+        self._setup_text_properties()
+
         # --- Состояние ---
         self.message_history: List[ChatMessageData] = []
         self.visible_messages: List[VisibleMessage] = []
         self._is_open = False
         self.on_send_callback: Callable[[str], None] = None
+
+        # История отправленных сообщений (для стрелок вверх/вниз)
+        self.input_history: List[str] = []
+        self.input_history_index: int = -1  # -1 = текущий ввод
+        self.input_history_max: int = 50
+        self.current_input_backup: str = ""  # Сохраняем текущий ввод при навигации
+
+        # Выделение текста (логическое, без визуального отображения)
+        self.selection_start: int = -1  # -1 = нет выделения
+        self.selection_end: int = -1
 
         # --- Создание UI ---
         self._create_ui()
@@ -281,12 +321,38 @@ class ChatWindow(BaseUIComponent, DirectObject):
         node.set_transparency(TransparencyAttrib.M_alpha)
         return self._add_element('hint', node)
 
+    def _setup_text_properties(self):
+        """Настраивает TextProperties для цветных тегов в тексте."""
+        tp_mgr = TextPropertiesManager.getGlobalPtr()
+
+        # Свойства для красного тега LOOC
+        tp_looc = TextProperties()
+        tp_looc.setTextColor(*self.color_looc_tag)
+        tp_mgr.setProperties("looc_tag", tp_looc)
+
+        # Свойства для красного тега OOC
+        tp_ooc = TextProperties()
+        tp_ooc.setTextColor(*self.color_ooc_tag)
+        tp_mgr.setProperties("ooc_tag", tp_ooc)
+
     def _setup_keybindings(self):
         """Устанавливает keybindings для чата."""
         self.accept('control-v', self._on_paste)
         self.accept('control-c', self._on_copy)
         self.accept('control-a', self._on_select_all)
         self.accept('control-x', self._on_cut)
+        self.accept('arrow_up', self._on_history_up)
+        self.accept('arrow_down', self._on_history_down)
+        # Выделение текста
+        self.accept('shift-arrow_left', self._on_select_left)
+        self.accept('shift-arrow_right', self._on_select_right)
+        self.accept('shift-home', self._on_select_home)
+        self.accept('shift-end', self._on_select_end)
+        # Сброс выделения при обычном движении
+        self.accept('arrow_left', self._on_cursor_move)
+        self.accept('arrow_right', self._on_cursor_move)
+        self.accept('home', self._on_cursor_move)
+        self.accept('end', self._on_cursor_move)
 
     def _remove_keybindings(self):
         """Убирает keybindings."""
@@ -294,6 +360,16 @@ class ChatWindow(BaseUIComponent, DirectObject):
         self.ignore('control-c')
         self.ignore('control-a')
         self.ignore('control-x')
+        self.ignore('arrow_up')
+        self.ignore('arrow_down')
+        self.ignore('shift-arrow_left')
+        self.ignore('shift-arrow_right')
+        self.ignore('shift-home')
+        self.ignore('shift-end')
+        self.ignore('arrow_left')
+        self.ignore('arrow_right')
+        self.ignore('home')
+        self.ignore('end')
 
     def _on_paste(self):
         """Вставка из буфера обмена."""
@@ -305,12 +381,17 @@ class ChatWindow(BaseUIComponent, DirectObject):
             # Убираем переносы строк
             clipboard_text = clipboard_text.replace('\n', ' ').replace('\r', '')
 
-            # Получаем текущий текст и позицию курсора
             current_text = self.input.get()
-            cursor_pos = self.input.guiItem.getCursorPosition()
 
-            # Вставляем текст
-            new_text = current_text[:cursor_pos] + clipboard_text + current_text[cursor_pos:]
+            # Если есть выделение - заменяем выделенный текст
+            if self.selection_start != -1 and self.selection_end != -1:
+                start = min(self.selection_start, self.selection_end)
+                end = max(self.selection_start, self.selection_end)
+                new_text = current_text[:start] + clipboard_text + current_text[end:]
+                cursor_pos = start
+            else:
+                cursor_pos = self.input.guiItem.getCursorPosition()
+                new_text = current_text[:cursor_pos] + clipboard_text + current_text[cursor_pos:]
 
             # Ограничиваем длину
             if len(new_text) > self.max_input_chars:
@@ -320,37 +401,170 @@ class ChatWindow(BaseUIComponent, DirectObject):
             # Перемещаем курсор после вставленного текста
             new_cursor_pos = min(cursor_pos + len(clipboard_text), len(new_text))
             self.input.guiItem.setCursorPosition(new_cursor_pos)
+            self._clear_selection()
 
     def _on_copy(self):
         """Копирование выделенного текста."""
         if not self._is_open:
             return
 
-        # DirectEntry не поддерживает выделение напрямую,
-        # копируем весь текст
-        text = self.input.get()
+        text = self._get_selected_text()
         if text:
             _set_clipboard_text(text)
 
     def _on_cut(self):
-        """Вырезание текста."""
+        """Вырезание выделенного текста."""
         if not self._is_open:
             return
 
-        text = self.input.get()
-        if text:
-            _set_clipboard_text(text)
+        full_text = self.input.get()
+
+        if self.selection_start != -1 and self.selection_end != -1:
+            # Вырезаем выделенный текст
+            start = min(self.selection_start, self.selection_end)
+            end = max(self.selection_start, self.selection_end)
+            selected = full_text[start:end]
+            if selected:
+                _set_clipboard_text(selected)
+                # Удаляем выделенную часть
+                new_text = full_text[:start] + full_text[end:]
+                self.input.enterText(new_text)
+                self.input.guiItem.setCursorPosition(start)
+                self._clear_selection()
+        elif full_text:
+            # Нет выделения - вырезаем всё
+            _set_clipboard_text(full_text)
             self.input.enterText('')
+            self._clear_selection()
 
     def _on_select_all(self):
-        """Выделение всего текста (помечаем для копирования)."""
+        """Выделение всего текста."""
         if not self._is_open:
             return
-        # DirectEntry не поддерживает выделение,
-        # но Ctrl+A обычно ожидает выделения всего текста
-        # Просто перемещаем курсор в конец
         text = self.input.get()
+        self.selection_start = 0
+        self.selection_end = len(text)
         self.input.guiItem.setCursorPosition(len(text))
+
+    def _on_cursor_move(self):
+        """Сброс выделения при обычном движении курсора."""
+        self._clear_selection()
+
+    def _on_select_left(self):
+        """Расширение выделения влево."""
+        if not self._is_open:
+            return
+        cursor_pos = self.input.guiItem.getCursorPosition()
+
+        # Начинаем выделение если его нет
+        if self.selection_start == -1:
+            self.selection_start = cursor_pos
+            self.selection_end = cursor_pos
+
+        # Расширяем влево
+        if cursor_pos > 0:
+            new_pos = cursor_pos - 1
+            self.input.guiItem.setCursorPosition(new_pos)
+            # Обновляем границы выделения
+            if new_pos < self.selection_start:
+                self.selection_start = new_pos
+            else:
+                self.selection_end = new_pos
+
+    def _on_select_right(self):
+        """Расширение выделения вправо."""
+        if not self._is_open:
+            return
+        text = self.input.get()
+        cursor_pos = self.input.guiItem.getCursorPosition()
+
+        # Начинаем выделение если его нет
+        if self.selection_start == -1:
+            self.selection_start = cursor_pos
+            self.selection_end = cursor_pos
+
+        # Расширяем вправо
+        if cursor_pos < len(text):
+            new_pos = cursor_pos + 1
+            self.input.guiItem.setCursorPosition(new_pos)
+            # Обновляем границы выделения
+            if new_pos > self.selection_end:
+                self.selection_end = new_pos
+            else:
+                self.selection_start = new_pos
+
+    def _on_select_home(self):
+        """Выделение до начала строки."""
+        if not self._is_open:
+            return
+        cursor_pos = self.input.guiItem.getCursorPosition()
+
+        if self.selection_start == -1:
+            self.selection_end = cursor_pos
+
+        self.selection_start = 0
+        self.input.guiItem.setCursorPosition(0)
+
+    def _on_select_end(self):
+        """Выделение до конца строки."""
+        if not self._is_open:
+            return
+        text = self.input.get()
+        cursor_pos = self.input.guiItem.getCursorPosition()
+
+        if self.selection_start == -1:
+            self.selection_start = cursor_pos
+
+        self.selection_end = len(text)
+        self.input.guiItem.setCursorPosition(len(text))
+
+    def _clear_selection(self):
+        """Сбрасывает выделение."""
+        self.selection_start = -1
+        self.selection_end = -1
+
+    def _get_selected_text(self) -> str:
+        """Возвращает выделенный текст или весь текст если выделения нет."""
+        text = self.input.get()
+        if self.selection_start != -1 and self.selection_end != -1:
+            start = min(self.selection_start, self.selection_end)
+            end = max(self.selection_start, self.selection_end)
+            return text[start:end]
+        return text
+
+    def _on_history_up(self):
+        """Навигация вверх по истории отправленных сообщений."""
+        if not self._is_open or not self.input_history:
+            return
+
+        # Сохраняем текущий ввод если это первое нажатие
+        if self.input_history_index == -1:
+            self.current_input_backup = self.input.get()
+
+        # Переходим к предыдущему сообщению
+        if self.input_history_index < len(self.input_history) - 1:
+            self.input_history_index += 1
+            # История хранится от нового к старому (индекс 0 = последнее)
+            history_text = self.input_history[self.input_history_index]
+            self.input.enterText(history_text)
+            self.input.guiItem.setCursorPosition(len(history_text))
+
+    def _on_history_down(self):
+        """Навигация вниз по истории отправленных сообщений."""
+        if not self._is_open:
+            return
+
+        if self.input_history_index > 0:
+            # Переходим к более новому сообщению
+            self.input_history_index -= 1
+            history_text = self.input_history[self.input_history_index]
+            self.input.enterText(history_text)
+            self.input.guiItem.setCursorPosition(len(history_text))
+        elif self.input_history_index == 0:
+            # Возвращаемся к текущему вводу
+            self.input_history_index = -1
+            self.input.enterText(self.current_input_backup)
+            self.input.guiItem.setCursorPosition(len(self.current_input_backup))
 
     def _on_send_message(self, text: str):
         """Обработка отправки сообщения."""
@@ -362,8 +576,19 @@ class ChatWindow(BaseUIComponent, DirectObject):
 
         self.input.enterText('')
 
-        if text and self.on_send_callback:
-            self.on_send_callback(text)
+        if text:
+            # Сохраняем в историю (в начало списка = самое новое)
+            if not self.input_history or self.input_history[0] != text:
+                self.input_history.insert(0, text)
+                if len(self.input_history) > self.input_history_max:
+                    self.input_history.pop()
+
+            if self.on_send_callback:
+                self.on_send_callback(text)
+
+        # Сбрасываем индекс истории
+        self.input_history_index = -1
+        self.current_input_backup = ""
 
         self.close()
 
@@ -393,18 +618,54 @@ class ChatWindow(BaseUIComponent, DirectObject):
         """Добавляет системное сообщение."""
         self.add_message("", message_text, is_system=True)
 
+    def add_rp_message(
+        self,
+        sender: str,
+        message: str,
+        chat_type: str = "ic",
+        formatted_message: Optional[str] = None,
+        is_system: bool = False
+    ):
+        """
+        Добавляет RP сообщение в чат с поддержкой разных типов.
+
+        Args:
+            sender: Имя отправителя
+            message: Текст сообщения
+            chat_type: Тип сообщения (ic, emote, it, looc, ooc)
+            formatted_message: Предварительно отформатированное сообщение
+            is_system: Системное ли сообщение
+        """
+        if not message.strip() and not formatted_message:
+            return
+
+        msg_data = ChatMessageData(
+            sender=sender,
+            text=message.strip(),
+            timestamp=time.time(),
+            is_system=is_system,
+            chat_type=chat_type,
+            formatted_message=formatted_message,
+        )
+
+        self.message_history.append(msg_data)
+
+        if len(self.message_history) > self.max_history:
+            self.message_history.pop(0)
+
+        if self._is_open:
+            self._rebuild_history_view()
+        else:
+            self._show_visible_message(msg_data)
+
     def _show_visible_message(self, msg_data: ChatMessageData):
         """Показывает сообщение в закрытом режиме."""
         while len(self.visible_messages) >= self.max_visible:
             old_msg = self.visible_messages.pop(0)
             old_msg.destroy()
 
-        if msg_data.is_system:
-            text = f"* {msg_data.text}"
-            color = self.color_system_msg
-        else:
-            text = f"{msg_data.sender}: {msg_data.text}"
-            color = self.color_player_msg
+        # Определяем текст и цвет в зависимости от типа сообщения
+        text, color = self._format_message_for_display(msg_data)
 
         tn = TextNode('visible_msg')
         tn.set_font(self.ui_manager.font)
@@ -424,16 +685,70 @@ class ChatWindow(BaseUIComponent, DirectObject):
         self._redraw_visible_messages()
         self._start_fade_out(visible_msg)
 
+    def _format_message_for_display(self, msg_data: ChatMessageData) -> tuple:
+        """
+        Форматирует сообщение для отображения.
+        Возвращает (текст, цвет).
+        """
+        chat_type = msg_data.chat_type
+
+        if msg_data.is_system:
+            return f"* {msg_data.text}", self.color_system_msg
+
+        if chat_type == "emote":
+            # /me - "**Имя игрока действие"
+            if msg_data.formatted_message:
+                return msg_data.formatted_message, self.color_emote
+            return f"**{msg_data.sender} {msg_data.text}", self.color_emote
+
+        elif chat_type == "it":
+            # /it - "**текст"
+            if msg_data.formatted_message:
+                return msg_data.formatted_message, self.color_it
+            return f"**{msg_data.text}", self.color_it
+
+        elif chat_type == "looc":
+            # LOOC - "[LOOC]" красный, остальное серое
+            # Используем TextProperties: \1property_name\1text\2
+            tag = "\1looc_tag\1[LOOC]\2"
+            return f"{tag} {msg_data.sender}: {msg_data.text}", self.color_looc_text
+
+        elif chat_type == "ooc":
+            # OOC - "[OOC]" красный, остальное серое
+            tag = "\1ooc_tag\1[OOC]\2"
+            return f"{tag} {msg_data.sender}: {msg_data.text}", self.color_ooc_text
+
+        else:
+            # IC - обычный чат "Имя: сообщение"
+            return f"{msg_data.sender}: {msg_data.text}", self.color_player_msg
+
     def _redraw_visible_messages(self):
-        """Перерисовывает позиции видимых сообщений."""
-        y_pos = 0
+        """
+        Перерисовывает позиции видимых сообщений.
+        Сообщения растут вверх от нижней границы чата.
+        Новые сообщения внизу, старые вверху.
+        """
+        # Сначала вычисляем высоту каждого сообщения
+        heights = []
         for visible_msg in self.visible_messages:
             if not visible_msg.node_path:
+                heights.append(0)
                 continue
-            visible_msg.node_path.set_pos(0, 0, y_pos)
-
             min_b, max_b = visible_msg.node_path.get_tight_bounds()
             height = max_b.z - min_b.z
+            heights.append(height)
+
+        # Позиционируем снизу вверх
+        # Последнее сообщение (самое новое) внизу, первое (самое старое) вверху
+        y_pos = 0
+        for i in range(len(self.visible_messages) - 1, -1, -1):
+            visible_msg = self.visible_messages[i]
+            if not visible_msg.node_path:
+                continue
+
+            height = heights[i]
+            # Сдвигаем текст вверх на его высоту, чтобы он рос вверх, а не вниз
+            visible_msg.node_path.set_pos(0, 0, y_pos + height)
             y_pos += height + self.line_height * 0.3
 
     def _start_fade_out(self, visible_msg: VisibleMessage):
@@ -462,12 +777,8 @@ class ChatWindow(BaseUIComponent, DirectObject):
 
         y_pos = -self.line_height
         for msg_data in self.message_history:
-            if msg_data.is_system:
-                text = f"* {msg_data.text}"
-                color = self.color_system_msg
-            else:
-                text = f"{msg_data.sender}: {msg_data.text}"
-                color = self.color_player_msg
+            # Используем общий метод форматирования
+            text, color = self._format_message_for_display(msg_data)
 
             tn = TextNode('history_msg')
             tn.set_font(self.ui_manager.font)
@@ -515,6 +826,11 @@ class ChatWindow(BaseUIComponent, DirectObject):
             return
 
         self._is_open = True
+
+        # Сбрасываем состояние клавиш движения
+        if hasattr(self.base, 'keyMap'):
+            for key in self.base.keyMap:
+                self.base.keyMap[key] = False
 
         self._enable_mouse_cursor()
         self._setup_keybindings()

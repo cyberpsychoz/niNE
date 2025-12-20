@@ -3,9 +3,24 @@
 Управляет инвентарями игроков на сервере.
 """
 
+import importlib.util
+from pathlib import Path
 from typing import Dict, List, Optional
 from nine.core.plugins import PluginModule
-from .sh_items import ItemStack, get_item_definition
+
+
+def _load_items_module():
+    """Загружает модуль sh_items.py из той же папки."""
+    items_path = Path(__file__).parent / "sh_items.py"
+    spec = importlib.util.spec_from_file_location("inventory_items", items_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_items = _load_items_module()
+ItemStack = _items.ItemStack
+get_item_definition = _items.get_item_definition
 
 
 class InventoryServerModule(PluginModule):

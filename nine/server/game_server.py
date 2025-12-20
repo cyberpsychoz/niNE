@@ -12,6 +12,8 @@ from panda3d.core import loadPrcFileData, Vec3
 from panda3d.bullet import BulletWorld
 
 from nine.core.world import GameWorld
+from nine.core.events import EventManager
+from nine.core.plugins import PluginManager
 
 # Load server-specific PRC file data
 loadPrcFileData("", """
@@ -53,6 +55,17 @@ class GameServer(ShowBase):
         self.physics_world = BulletWorld()
         self.physics_world.setGravity(Vec3(0, 0, -9.81))
         self.world = GameWorld(self.physics_world, self.render)
+
+        # Event system and plugins
+        self.is_server = True  # Plugins check this flag
+        self.event_manager = EventManager()
+        self.plugin_manager = PluginManager(self, self.event_manager)
+
+        # Subscribe to chat events from plugins
+        self.event_manager.subscribe("chat_send_to_clients", self.handle_chat_send)
+
+        # Load plugins
+        self.plugin_manager.load_plugins()
 
         # Setup game loop
         self.taskMgr.add(self.game_loop, "game_loop")
@@ -101,14 +114,14 @@ class GameServer(ShowBase):
         elif msg_type == "chat_message":
             player = self.world.players.get(client_id)
             if player:
-                broadcast_data = {
-                    "type": "chat_broadcast",
-                    "from_name": player.name,
-                    "message": data.get("message", "")
-                }
-                asyncio.run_coroutine_threadsafe(
-                    self.broadcast(broadcast_data), self.asyncio_loop
-                )
+                # Send to plugin for processing
+                player_pos = player.get_state()["pos"]
+                self.event_manager.post("chat_message_received", {
+                    "client_id": client_id,
+                    "player_name": player.name,
+                    "message": data.get("message", ""),
+                    "player_pos": player_pos
+                })
         elif data.get("type") == "internal_disconnect":
             self.handle_disconnect(client_id)
 
@@ -178,11 +191,47 @@ class GameServer(ShowBase):
         join_data = {"type": "player_joined", "id": client_id, "player_info": player.get_state()}
         asyncio.run_coroutine_threadsafe(self.broadcast(join_data, exclude_ids=[client_id]), self.asyncio_loop)
 
+    def handle_chat_send(self, event_data: dict):
+        """
+        Handles chat_send_to_clients event from chat plugin.
+        event_data = {
+            "data": broadcast_data,
+            "recipients": list of client_ids or None for all
+        }
+        """
+        broadcast_data = event_data.get("data", {})
+        recipients = event_data.get("recipients")
+
+        if recipients is None:
+            # Send to all clients
+            asyncio.run_coroutine_threadsafe(
+                self.broadcast(broadcast_data), self.asyncio_loop
+            )
+        else:
+            # Send only to specific clients
+            asyncio.run_coroutine_threadsafe(
+                self.send_to_clients(broadcast_data, recipients), self.asyncio_loop
+            )
+
+    async def send_to_clients(self, data, client_ids):
+        """Sends a message to specific clients."""
+        payload = json.dumps(data).encode("utf-8")
+        header = struct.pack("!I", len(payload))
+
+        for client_id in client_ids:
+            writer = self.clients.get(client_id)
+            if writer and not writer.is_closing():
+                try:
+                    writer.write(header + payload)
+                    await writer.drain()
+                except Exception as e:
+                    self.logger.error(f"Error sending to client {client_id}: {e}")
+
     def handle_disconnect(self, client_id):
         self.logger.info(f"Client #{client_id} processing disconnection.")
         if client_id in self.clients:
             del self.clients[client_id]
-        
+
         player_id = self.world.remove_player(client_id)
         if player_id is not None:
             leave_data = {"type": "player_left", "id": player_id}
