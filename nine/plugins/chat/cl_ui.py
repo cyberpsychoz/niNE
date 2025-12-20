@@ -1,6 +1,7 @@
 """
 Клиентский модуль UI чата.
 Отображает окно чата в стиле Garry's Mod.
+Поддерживает RP команды: /me, /it, /looc, /ooc
 """
 
 import importlib.util
@@ -34,6 +35,13 @@ class ChatUIModule(PluginModule, DirectObject):
     - Закрытый: сообщения появляются и fade out
     - Открытый (T): полная история + ввод
 
+    Поддерживаемые типы сообщений:
+    - ic: обычный внутриигровой чат
+    - emote: /me действие
+    - it: /it безличное действие
+    - looc: локальный OOC
+    - ooc: глобальный OOC
+
     Конфигурация загружается из sh_config.py
     """
 
@@ -41,10 +49,10 @@ class ChatUIModule(PluginModule, DirectObject):
         self.logger.info("Клиентский модуль UI чата загружен")
 
         # Загружаем конфиг из папки плагина
-        config = _load_config(self.plugin_path)
+        self.config = _load_config(self.plugin_path)
 
         # Инициализация UI с конфигом из плагина
-        self.ui_window = ChatWindow(self.app.ui, config=config)
+        self.ui_window = ChatWindow(self.app.ui, config=self.config)
 
         # Callback для отправки сообщений
         self.ui_window.on_send_callback = self.send_chat_message
@@ -101,9 +109,18 @@ class ChatUIModule(PluginModule, DirectObject):
         """Обработка входящего сообщения от сервера."""
         sender = data.get('from_name', 'Unknown')
         message = data.get('message', '')
+        chat_type = data.get('chat_type', 'ic')
+        formatted_message = data.get('formatted_message')
         is_system = data.get('is_system', False)
 
-        self.ui_window.add_message(sender, message, is_system)
+        # Передаем в UI с типом сообщения
+        self.ui_window.add_rp_message(
+            sender=sender,
+            message=message,
+            chat_type=chat_type,
+            formatted_message=formatted_message,
+            is_system=is_system
+        )
 
     def on_disconnect(self, data: dict = None):
         """При отключении от сервера - очищаем историю."""

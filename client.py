@@ -130,6 +130,9 @@ class GameClient(ShowBase):
         ground_visual.setPos(0, 0, 0)
 
     def update_key_map(self, key, state):
+        # Блокируем ввод движения когда чат открыт
+        if self.is_chat_active():
+            return
         self.keyMap[key] = state
 
     def disable_game_input(self):
@@ -351,7 +354,10 @@ class GameClient(ShowBase):
         self.userExit()
 
     def is_chat_active(self) -> bool:
-        return False  # Simplified
+        # Проверяем реальное состояние чата (устанавливается плагином)
+        if hasattr(self, 'chat_window') and self.chat_window:
+            return self.chat_window.is_open()
+        return False
 
     def handle_escape(self):
         if self.is_chat_active():
