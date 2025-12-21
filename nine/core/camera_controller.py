@@ -1,6 +1,14 @@
-from panda3d.core import NodePath, WindowProperties, LVector3, Vec3
+"""
+Third-person orbit camera controller.
+
+Camera orbits around the player target. Mouse moves the camera, not the player.
+Player rotation is handled separately based on movement direction.
+"""
+
+from math import sin, cos, radians, pi
+
+from panda3d.core import NodePath, WindowProperties, Vec3
 from direct.task import Task
-from direct.showbase.ShowBaseGlobal import globalClock
 
 
 class CameraController:
@@ -10,101 +18,163 @@ class CameraController:
         self.win = win
         self.target = target
 
-        self.camera_pivot = self.base.render.attachNewNode("camera_pivot")
-        self.camera.reparentTo(self.camera_pivot)
-        self.camera.setPos(0, -8, 3)
-        self.camera.lookAt(self.camera_pivot)
+        # Camera orbit parameters
+        self.distance = 6.0
+        self.height_offset = 1.2  # Height above player to look at
+        self.min_distance = 2.0
+        self.max_distance = 20.0
 
-        self.sensitivity_multiplier = sensitivity
-        self.min_pitch = -60
-        self.max_pitch = 30
-        
-        self.last_x = None
-        self.last_y = None
-        
+        # Camera angles (degrees)
+        self.yaw = 0.0      # Horizontal angle around player (0 = behind player looking at +Y)
+        self.pitch = 20.0   # Vertical angle (positive = looking down from above)
+        self.min_pitch = -20.0
+        self.max_pitch = 70.0
+
+        # Sensitivity (adjust for comfortable feel)
+        self.sensitivity = sensitivity * 30.0
+
+        # Smoothing
+        self.smoothing = 0.15  # Lower = smoother but more lag
+        self.target_yaw = self.yaw
+        self.target_pitch = self.pitch
+
+        # State
         self._task = None
 
     def start(self):
+        """Start camera updates and capture mouse."""
         self.stop()
-        self._task = taskMgr.add(self._update, "camera-controller-update")
+        self._task = self.base.taskMgr.add(self._update, "camera-update")
+
+        # Hide cursor and capture mouse
         props = WindowProperties()
         props.setCursorHidden(True)
-        # We request relative mode, but the _update logic will handle fallback
         props.setMouseMode(WindowProperties.M_relative)
         self.win.requestProperties(props)
-        
-        # Initialize mouse position for delta calculation
-        if self.base.mouseWatcherNode.hasMouse():
-            self.last_x = self.base.mouseWatcherNode.getMouseX()
-            self.last_y = self.base.mouseWatcherNode.getMouseY()
 
     def stop(self):
+        """Stop camera updates and release mouse."""
         if self._task:
-            taskMgr.remove(self._task)
+            self.base.taskMgr.remove(self._task)
             self._task = None
+
         props = WindowProperties()
         props.setCursorHidden(False)
         props.setMouseMode(WindowProperties.M_absolute)
         self.win.requestProperties(props)
-        
-        self.last_x = None
-        self.last_y = None
 
     def _update(self, task):
         if not self.target or self.target.isEmpty():
             return Task.cont
 
-        # Follow the target
-        self.camera_pivot.setPos(self.target.getPos() + Vec3(0, 0, 1))
+        # Process mouse movement
+        self._handle_mouse()
 
-        if not self.base.mouseWatcherNode.hasMouse():
-            return Task.cont
-        
-        # Get current mouse data
-        x = self.base.mouseWatcherNode.getMouseX()
-        y = self.base.mouseWatcherNode.getMouseY()
-        
-        dx = 0
-        dy = 0
+        # Update camera position
+        self._position_camera()
 
-        # Calculate delta based on mouse mode
-        if self.win.getProperties().getMouseMode() == WindowProperties.M_relative:
-            # In relative mode, the values are already the deltas
-            dx = x
-            dy = y
-        elif self.last_x is not None:
-            # In absolute mode, calculate the delta from the last position
-            dx = x - self.last_x
-            dy = y - self.last_y
-        
-        # Apply rotation if there was movement
-        if dx != 0 or dy != 0:
-            # Base sensitivity is scaled by the multiplier from config
-            sensitivity = 50.0 * self.sensitivity_multiplier
-
-            # Horizontal rotation (yaw)
-            self.camera_pivot.setH(self.camera_pivot.getH() - dx * sensitivity)
-            
-            # Vertical rotation (pitch)
-            new_pitch = self.camera_pivot.getP() - dy * sensitivity
-            self.camera_pivot.setP(max(self.min_pitch, min(self.max_pitch, new_pitch)))
-
-        # In absolute mode, re-center the pointer to allow continuous movement
-        if self.win.getProperties().getMouseMode() == WindowProperties.M_absolute:
-            self.win.movePointer(0, self.win.getXSize() // 2, self.win.getYSize() // 2)
-            # After re-centering, the new "last" position becomes the center of the screen,
-            # which corresponds to (0,0) in the -1 to 1 coordinate space.
-            self.last_x = 0
-            self.last_y = 0
-        
         return Task.cont
 
-    def get_camera_pivot(self):
-        return self.camera_pivot
+    def _handle_mouse(self):
+        """Handle mouse input for camera rotation with smoothing."""
+        if not self.base.mouseWatcherNode.hasMouse():
+            return
+
+        # Get mouse position (-1 to 1 range, or deltas in relative mode)
+        mx = self.base.mouseWatcherNode.getMouseX()
+        my = self.base.mouseWatcherNode.getMouseY()
+
+        is_relative = self.win.getProperties().getMouseMode() == WindowProperties.M_relative
+
+        if is_relative:
+            dx = mx
+            dy = my
+        else:
+            # Fallback: recenter mouse
+            dx = mx
+            dy = my
+            self.win.movePointer(0, self.win.getXSize() // 2, self.win.getYSize() // 2)
+
+        # Update target angles (raw input)
+        self.target_yaw += dx * self.sensitivity
+        self.target_pitch -= dy * self.sensitivity
+
+        # Clamp target pitch
+        self.target_pitch = max(self.min_pitch, min(self.max_pitch, self.target_pitch))
+
+        # Smooth interpolation towards target
+        self.yaw += (self.target_yaw - self.yaw) * self.smoothing
+        self.pitch += (self.target_pitch - self.pitch) * self.smoothing
+
+        # Keep yaw in reasonable range
+        self.yaw = self.yaw % 360.0
+        self.target_yaw = self.target_yaw % 360.0
+
+    def _position_camera(self):
+        """Position camera in orbit around target."""
+        # Get target position
+        target_pos = self.target.getPos()
+        look_at = Vec3(target_pos.x, target_pos.y, target_pos.z + self.height_offset)
+
+        # Convert spherical coordinates to cartesian
+        # yaw=0 means camera is behind target (negative Y relative to target)
+        # yaw increases clockwise when viewed from above
+        yaw_rad = radians(self.yaw)
+        pitch_rad = radians(self.pitch)
+
+        # Calculate camera offset from target
+        cos_pitch = cos(pitch_rad)
+        sin_pitch = sin(pitch_rad)
+
+        # Camera position relative to look_at point
+        # At yaw=0: camera at (0, -distance, height) looking at target
+        cam_x = self.distance * cos_pitch * sin(yaw_rad)
+        cam_y = -self.distance * cos_pitch * cos(yaw_rad)
+        cam_z = self.distance * sin_pitch
+
+        # Set camera position
+        self.camera.setPos(look_at.x + cam_x, look_at.y + cam_y, look_at.z + cam_z)
+        self.camera.lookAt(look_at)
+
+    def get_forward_vector(self):
+        """
+        Get forward direction based on camera yaw.
+        This is where the player will move when pressing W.
+        """
+        yaw_rad = radians(self.yaw)
+        # Forward is where camera is looking (opposite of camera offset direction)
+        return Vec3(sin(yaw_rad), cos(yaw_rad), 0)
+
+    def get_right_vector(self):
+        """Get right direction based on camera yaw."""
+        yaw_rad = radians(self.yaw)
+        return Vec3(cos(yaw_rad), -sin(yaw_rad), 0)
+
+    def get_movement_vector(self, input_x, input_y):
+        """
+        Convert WASD input to world movement direction.
+
+        Args:
+            input_x: -1 (A), 0, or 1 (D)
+            input_y: -1 (S), 0, or 1 (W)
+
+        Returns:
+            Normalized Vec3 movement direction in world space
+        """
+        if input_x == 0 and input_y == 0:
+            return Vec3(0, 0, 0)
+
+        forward = self.get_forward_vector()
+        right = self.get_right_vector()
+
+        move_dir = forward * input_y + right * input_x
+        move_dir.normalize()
+        return move_dir
+
+    def zoom(self, delta):
+        """Adjust camera distance."""
+        self.distance = max(self.min_distance, min(self.max_distance, self.distance + delta))
 
     def destroy(self):
+        """Clean up."""
         self.stop()
-        if self.camera_pivot:
-            self.camera_pivot.removeNode()
-            self.camera_pivot = None
-        self.camera.reparentTo(self.base.render)
