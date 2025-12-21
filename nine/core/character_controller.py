@@ -1,75 +1,131 @@
+"""
+Server-side character controller.
+
+Simple movement model:
+- Character rotates smoothly to face movement direction
+- Only uses forward animations (idle, walk_forward, run_forward)
+- Movement direction is provided as a world-space vector from client
+"""
+
+from math import atan2, degrees
+
 from panda3d.bullet import BulletCharacterControllerNode, BulletCapsuleShape
 from panda3d.core import LVector3, NodePath
 
+
 class CharacterController:
-    """
-    Server-side character controller. Manages the physics and movement
-    of a single character based on input state.
-    """
     def __init__(self, actor_nodepath: NodePath, physics_world):
         self.actor = actor_nodepath
         self.physics_world = physics_world
-        self.move_speed = 10.0
-        
-        # Movement is processed relative to the main render node, making it world-relative.
-        # A future improvement would be to use a client-provided orientation vector.
+
+        # Movement parameters
+        self.walk_speed = 5.0
+        self.run_speed = 10.0
+        self.acceleration = 30.0
+        self.deceleration = 40.0
+        self.current_speed = 0.0
+        self.rotation_speed = 10.0  # How fast character turns
+
+        # State
+        self.is_moving = False
+        self.is_running = False
+        self.move_direction = LVector3(0, 1, 0)  # World-space movement direction
+        self.current_heading = 0.0  # Current facing direction
+
         self.reference_node = self.actor.getParent()
 
+        # Physics capsule
         height = 1.8
         radius = 0.4
         shape = BulletCapsuleShape(radius, height - 2 * radius, 2)
-        # The character node needs a unique name.
-        self.character_node = BulletCharacterControllerNode(shape, 0.4, f'Player_{self.actor.getName()}')
+        self.character_node = BulletCharacterControllerNode(
+            shape, 0.4, f'Player_{self.actor.getName()}'
+        )
         self.character_np = self.reference_node.attachNewNode(self.character_node)
         self.physics_world.attachCharacter(self.character_node)
-        
-        # Reparent the actor nodepath to the physics controller nodepath
-        self.actor.reparentTo(self.character_np)
-        self.actor.setPos(0, 0, -height/2 + radius) # Center the model
 
-        self.is_moving = False
+        # Reparent actor to physics node
+        self.actor.reparentTo(self.character_np)
+        self.actor.setPos(0, 0, -height/2 + radius)
 
     def jump(self):
         if self.character_node.isOnGround():
             self.character_node.doJump()
-        
-    def update(self, dt, input_map):
-        """
-        Updates the character's position based on the current input state.
-        The input_map is a dictionary like {'w': True, 'a': False, ...}.
-        Returns the new position and rotation if moved, otherwise None.
-        """
-        speed = LVector3(0, 0, 0)
 
-        if input_map.get("w"): speed.y = 1
-        if input_map.get("s"): speed.y = -1
-        if input_map.get("a"): speed.x = -1
-        if input_map.get("d"): speed.x = 1
-        if input_map.get("space"): self.jump()
-        
-        self.is_moving = speed.length_squared() > 0
+    def get_anim_state(self):
+        """Returns animation name: idle, walk_forward, or run_forward."""
+        if not self.is_moving:
+            return "idle"
+        return "run_forward" if self.is_running else "walk_forward"
+
+    def _lerp_angle(self, current, target, factor):
+        """Smoothly interpolate between angles, handling wraparound."""
+        diff = (target - current + 180) % 360 - 180
+        return current + diff * factor
+
+    def update(self, dt, move_vector, is_running=False, do_jump=False):
+        """
+        Updates character position based on movement vector.
+
+        Args:
+            dt: Delta time
+            move_vector: World-space movement direction (normalized or zero)
+            is_running: Whether shift is held
+            do_jump: Whether to jump
+
+        Returns:
+            Tuple of (position, rotation)
+        """
+        if do_jump:
+            self.jump()
+
+        self.is_running = is_running
+        has_input = move_vector.length_squared() > 0.01
+
+        # Store movement direction for rotation
+        if has_input:
+            self.move_direction = LVector3(move_vector)
+            self.move_direction.normalize()
+
+        # Calculate target speed
+        if has_input:
+            target_speed = self.run_speed if is_running else self.walk_speed
+            self.current_speed = min(
+                self.current_speed + self.acceleration * dt,
+                target_speed
+            )
+        else:
+            self.current_speed = max(
+                self.current_speed - self.deceleration * dt,
+                0.0
+            )
+
+        self.is_moving = self.current_speed > 0.1
 
         if self.is_moving:
-            speed.normalize()
-            speed *= self.move_speed
-            
-            # This is now a world-relative move vector
-            world_move_vec = self.reference_node.getRelativeVector(self.reference_node, speed)
-            
-            self.character_node.setLinearMovement(world_move_vec, True)
-            
-            # Make the actor face the direction of movement.
-            # We must convert the world-space move vector to the actor's local coordinate space.
-            local_move_vec = self.actor.getParent().getRelativeVector(self.reference_node, world_move_vec)
-            self.actor.lookAt(self.actor.getPos() + local_move_vec)
+            # Apply movement
+            velocity = self.move_direction * self.current_speed
+            self.character_node.setLinearMovement(velocity, True)
+
+            # Smooth rotation towards movement direction
+            # Add 180 because model faces -Y by default
+            target_heading = degrees(atan2(-self.move_direction.x, self.move_direction.y)) + 180
+            self.current_heading = self._lerp_angle(
+                self.current_heading, target_heading, self.rotation_speed * dt
+            )
+            self.actor.setH(self.current_heading)
         else:
             self.character_node.setLinearMovement(LVector3(0, 0, 0), True)
 
-        # The physics simulation will move the character_np
-        new_pos = self.character_np.getPos()
-        new_rot = self.actor.getHpr()
-        
-        return new_pos, new_rot
+        return self.character_np.getPos(), self.actor.getHpr()
+
+    def set_position(self, pos):
+        """Directly set position (for dev clients)."""
+        self.character_np.setPos(LVector3(*pos))
+
+    def set_rotation(self, hpr):
+        """Set character rotation."""
+        self.actor.setHpr(LVector3(*hpr))
 
     def cleanup(self):
         if hasattr(self, 'character_node') and self.character_node:
