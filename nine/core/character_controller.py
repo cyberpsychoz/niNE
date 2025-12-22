@@ -45,8 +45,11 @@ class CharacterController:
         self.physics_world.attachCharacter(self.character_node)
 
         # Reparent actor to physics node
+        # Offset actor so feet are at the bottom of the capsule
+        # When capsule stands on ground (z=0), its center is at z=height/2
+        # Actor origin (feet) should be at z=0, so offset = -height/2
         self.actor.reparentTo(self.character_np)
-        self.actor.setPos(0, 0, -height/2 + radius)
+        self.actor.setPos(0, 0, -height/2)
 
     def jump(self):
         if self.character_node.isOnGround():
@@ -120,8 +123,17 @@ class CharacterController:
         return self.character_np.getPos(), self.actor.getHpr()
 
     def set_position(self, pos):
-        """Directly set position (for dev clients)."""
-        self.character_np.setPos(LVector3(*pos))
+        """Directly set position (for dev clients).
+
+        The pos argument is the actor's visual position. We need to compute
+        the physics node position by reversing the actor offset.
+        """
+        actor_pos = LVector3(*pos)
+        # Reverse the actor offset (actor is at -height/2 + radius relative to physics node)
+        # So physics node should be at actor_pos - offset = actor_pos + (height/2 - radius)
+        physics_offset = self.actor.getPos()  # This is the local offset from physics node
+        physics_pos = actor_pos - physics_offset
+        self.character_np.setPos(physics_pos)
 
     def set_rotation(self, hpr):
         """Set character rotation."""
