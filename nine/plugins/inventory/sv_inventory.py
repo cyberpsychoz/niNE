@@ -1,39 +1,34 @@
 """
-Серверный модуль системы инвентаря.
+Серверный модуль системы инвентаря с поддержкой Entity.
 Управляет инвентарями игроков на сервере.
 """
 
-import importlib.util
-from pathlib import Path
 from typing import Dict, List, Optional
 from nine.core.plugins import PluginModule
-
-
-def _load_items_module():
-    """Загружает модуль sh_items.py из той же папки."""
-    items_path = Path(__file__).parent / "sh_items.py"
-    spec = importlib.util.spec_from_file_location("inventory_items", items_path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-_items = _load_items_module()
-ItemStack = _items.ItemStack
-get_item_definition = _items.get_item_definition
+from nine.core.entity import Entity, ENTITY_REGISTRY, EntityManager
 
 
 class InventoryServerModule(PluginModule):
     """
     Серверный модуль управления инвентарем.
-    Отслеживает предметы игроков и обрабатывает операции.
+    Использует Entity систему для предметов.
     """
 
     def on_load(self):
-        # {player_uuid: [ItemStack, ...]}
-        self.inventories: Dict[str, List[ItemStack]] = {}
+        # {player_uuid: [Entity, ...]} - инвентарь каждого игрока
+        self.inventories: Dict[str, List[Entity]] = {}
         # Максимальный размер инвентаря
         self.max_slots = 20
+
+        # Entity manager для предметов в мире
+        self.entity_manager: Optional[EntityManager] = None
+        if hasattr(self.app, 'world'):
+            self.entity_manager = EntityManager(self.app.world, self.event_manager)
+
+        # Загружаем entity из папки entities
+        from nine.plugins.inventory.entities import load_entities
+        loaded = load_entities()
+        self.logger.info(f"Загружено entity: {', '.join(loaded) if loaded else 'нет'}")
 
         # Подписки на события
         self.event_manager.subscribe("player_joined", self.on_player_join)
@@ -41,8 +36,9 @@ class InventoryServerModule(PluginModule):
         self.event_manager.subscribe("item_pickup", self.on_item_pickup)
         self.event_manager.subscribe("item_drop", self.on_item_drop)
         self.event_manager.subscribe("item_use", self.on_item_use)
+        self.event_manager.subscribe("give_item", self.on_give_item)
 
-        self.logger.info("Серверный модуль инвентаря загружен")
+        self.logger.info("Серверный модуль инвентаря загружен (Entity система)")
 
     def on_unload(self):
         self.event_manager.unsubscribe("player_joined", self.on_player_join)
@@ -50,8 +46,13 @@ class InventoryServerModule(PluginModule):
         self.event_manager.unsubscribe("item_pickup", self.on_item_pickup)
         self.event_manager.unsubscribe("item_drop", self.on_item_drop)
         self.event_manager.unsubscribe("item_use", self.on_item_use)
+        self.event_manager.unsubscribe("give_item", self.on_give_item)
 
         self.logger.info("Серверный модуль инвентаря выгружен")
+
+    # -------------------------------------------------------------------------
+    # Event handlers
+    # -------------------------------------------------------------------------
 
     def on_player_join(self, data: dict):
         """Игрок присоединился - инициализируем инвентарь."""
@@ -60,7 +61,6 @@ class InventoryServerModule(PluginModule):
             return
 
         # TODO: Загрузить инвентарь из БД
-        # Пока создаем пустой инвентарь
         self.inventories[player_uuid] = []
 
         self.logger.debug(f"Инвентарь игрока {player_uuid} инициализирован")
@@ -75,36 +75,60 @@ class InventoryServerModule(PluginModule):
         if player_uuid in self.inventories:
             del self.inventories[player_uuid]
 
-    def on_item_pickup(self, data: dict):
-        """Игрок подобрал предмет."""
+    def on_give_item(self, data: dict):
+        """
+        Выдать предмет игроку.
+        data: {uuid, class_id, count?, data?}
+        """
         player_uuid = data.get("uuid")
-        item_id = data.get("item_id")
+        class_id = data.get("class_id")
         count = data.get("count", 1)
+        extra_data = data.get("data", {})
+
+        if not player_uuid or not class_id:
+            return
+
+        success = self.give_item(player_uuid, class_id, count, extra_data)
+        if success:
+            self.logger.debug(f"Выдан {count}x {class_id} игроку {player_uuid}")
+
+    def on_item_pickup(self, data: dict):
+        """Игрок подобрал предмет из мира."""
+        player_uuid = data.get("uuid")
+        entity_id = data.get("entity_id")  # unique_id entity в мире
+
+        if not player_uuid or not entity_id:
+            return
 
         if player_uuid not in self.inventories:
             return
 
-        # Проверяем существование предмета
-        item_def = get_item_definition(item_id)
-        if not item_def:
-            self.logger.warning(f"Неизвестный предмет: {item_id}")
+        # Получаем entity из мира
+        entity = None
+        if self.entity_manager:
+            entity = self.entity_manager.get(entity_id)
+
+        if not entity:
+            # Fallback: создаём по class_id
+            class_id = data.get("class_id")
+            count = data.get("count", 1)
+            if class_id:
+                self.give_item(player_uuid, class_id, count)
             return
 
-        # Пытаемся добавить в существующий стак
-        added = self._add_to_existing_stack(player_uuid, item_id, count, item_def.max_stack)
-
-        # Если не удалось добавить в стак, создаем новый
-        if not added:
-            if len(self.inventories[player_uuid]) >= self.max_slots:
-                self.logger.debug(f"Инвентарь игрока {player_uuid} полон")
-                self.event_manager.post("inventory_full", {"uuid": player_uuid})
+        # Проверяем можно ли подобрать
+        if hasattr(entity, 'on_pickup'):
+            if not entity.on_pickup(player_uuid):
                 return
 
-            self.inventories[player_uuid].append(ItemStack(item_id, count))
+        # Удаляем из мира
+        if self.entity_manager:
+            self.entity_manager.remove(entity_id)
 
-        self.logger.debug(f"Игрок {player_uuid} подобрал {count}x {item_id}")
+        # Добавляем в инвентарь
+        self._add_entity_to_inventory(player_uuid, entity)
 
-        # Уведомляем клиента
+        self.logger.debug(f"Игрок {player_uuid} подобрал {entity.CLASS_ID}")
         self._send_inventory_update(player_uuid)
 
     def on_item_drop(self, data: dict):
@@ -112,6 +136,7 @@ class InventoryServerModule(PluginModule):
         player_uuid = data.get("uuid")
         slot_index = data.get("slot")
         count = data.get("count", 1)
+        position = data.get("position")  # Позиция для спавна
 
         if player_uuid not in self.inventories:
             return
@@ -120,30 +145,31 @@ class InventoryServerModule(PluginModule):
         if slot_index < 0 or slot_index >= len(inventory):
             return
 
-        item_stack = inventory[slot_index]
-        item_def = get_item_definition(item_stack.item_id)
+        entity = inventory[slot_index]
 
-        if item_def and not item_def.droppable:
-            self.logger.debug(f"Предмет {item_stack.item_id} нельзя выбросить")
-            return
+        # Проверяем можно ли выбросить
+        if hasattr(entity, 'on_drop'):
+            if not entity.on_drop(player_uuid, position):
+                self.logger.debug(f"Предмет {entity.CLASS_ID} нельзя выбросить")
+                return
 
-        # Уменьшаем количество или удаляем стак
-        if item_stack.count <= count:
-            inventory.pop(slot_index)
+        # Уменьшаем количество или удаляем
+        if entity.count <= count:
+            dropped_entity = inventory.pop(slot_index)
         else:
-            item_stack.count -= count
+            entity.count -= count
+            # Создаём копию для мира
+            dropped_entity = ENTITY_REGISTRY.create(entity.CLASS_ID)
+            if dropped_entity:
+                dropped_entity.count = count
+                dropped_entity.data = entity.data.copy()
 
-        self.logger.debug(f"Игрок {player_uuid} выбросил {count}x {item_stack.item_id}")
+        # Спавним в мире
+        if dropped_entity and self.entity_manager and position:
+            self.entity_manager.spawn(dropped_entity, position)
 
-        # Уведомляем клиента
+        self.logger.debug(f"Игрок {player_uuid} выбросил {count}x {entity.CLASS_ID}")
         self._send_inventory_update(player_uuid)
-
-        # Создаем предмет в мире
-        self.event_manager.post("item_spawned", {
-            "item_id": item_stack.item_id,
-            "count": count,
-            "player_uuid": player_uuid,  # Для определения позиции спавна
-        })
 
     def on_item_use(self, data: dict):
         """Игрок использовал предмет."""
@@ -157,81 +183,159 @@ class InventoryServerModule(PluginModule):
         if slot_index < 0 or slot_index >= len(inventory):
             return
 
-        item_stack = inventory[slot_index]
-        item_def = get_item_definition(item_stack.item_id)
+        entity = inventory[slot_index]
 
-        if not item_def:
+        # Устанавливаем event_manager для entity
+        if hasattr(entity, 'set_event_manager'):
+            entity.set_event_manager(self.event_manager)
+
+        # Вызываем on_use
+        consumed = False
+        if hasattr(entity, 'on_use'):
+            consumed = entity.on_use(player_uuid)
+
+        if consumed:
+            # Уменьшаем количество
+            if entity.count <= 1:
+                inventory.pop(slot_index)
+            else:
+                entity.count -= 1
+
+            self.logger.debug(f"Игрок {player_uuid} использовал {entity.CLASS_ID}")
+            self._send_inventory_update(player_uuid)
+
+    # -------------------------------------------------------------------------
+    # Inventory operations
+    # -------------------------------------------------------------------------
+
+    def give_item(
+        self,
+        player_uuid: str,
+        class_id: str,
+        count: int = 1,
+        extra_data: dict = None
+    ) -> bool:
+        """
+        Выдать предмет игроку.
+        Возвращает True если успешно.
+        """
+        if player_uuid not in self.inventories:
+            return False
+
+        # Создаём entity
+        entity = ENTITY_REGISTRY.create(class_id)
+        if not entity:
+            self.logger.warning(f"Неизвестный предмет: {class_id}")
+            return False
+
+        entity.count = count
+        if extra_data:
+            entity.data.update(extra_data)
+
+        # Устанавливаем event_manager
+        if hasattr(entity, 'set_event_manager'):
+            entity.set_event_manager(self.event_manager)
+
+        # Добавляем в инвентарь
+        self._add_entity_to_inventory(player_uuid, entity)
+        self._send_inventory_update(player_uuid)
+
+        return True
+
+    def _add_entity_to_inventory(self, player_uuid: str, entity: Entity):
+        """Добавляет entity в инвентарь, объединяя стеки если возможно."""
+        inventory = self.inventories[player_uuid]
+
+        # Пытаемся добавить в существующий стек
+        for existing in inventory:
+            if existing.can_stack_with(entity):
+                existing.count += entity.count
+                return
+
+        # Проверяем свободные слоты
+        if len(inventory) >= self.max_slots:
+            self.event_manager.post("inventory_full", {"uuid": player_uuid})
             return
 
-        # Обрабатываем использование в зависимости от типа
-        if item_def.category == "consumable":
-            self._use_consumable(player_uuid, item_stack, slot_index)
-
-        self.logger.debug(f"Игрок {player_uuid} использовал {item_stack.item_id}")
-
-    def _add_to_existing_stack(
-        self,
-        player_uuid: str,
-        item_id: str,
-        count: int,
-        max_stack: int
-    ) -> bool:
-        """Пытается добавить предметы в существующий стак."""
-        for stack in self.inventories[player_uuid]:
-            if stack.item_id == item_id and stack.count < max_stack:
-                space = max_stack - stack.count
-                to_add = min(count, space)
-                stack.count += to_add
-                return to_add == count  # True если все добавлено
-        return False
-
-    def _use_consumable(
-        self,
-        player_uuid: str,
-        item_stack: ItemStack,
-        slot_index: int
-    ):
-        """Использует расходуемый предмет."""
-        # Обрабатываем эффект
-        if item_stack.item_id == "health_potion":
-            self.event_manager.post("player_heal", {
-                "uuid": player_uuid,
-                "amount": 50,
-            })
-        elif item_stack.item_id == "mana_potion":
-            self.event_manager.post("player_restore_mana", {
-                "uuid": player_uuid,
-                "amount": 50,
-            })
-
-        # Уменьшаем количество
-        inventory = self.inventories[player_uuid]
-        if item_stack.count <= 1:
-            inventory.pop(slot_index)
-        else:
-            item_stack.count -= 1
-
-        self._send_inventory_update(player_uuid)
+        # Добавляем как новый предмет
+        inventory.append(entity)
 
     def _send_inventory_update(self, player_uuid: str):
         """Отправляет обновление инвентаря клиенту."""
         inventory = self.inventories.get(player_uuid, [])
+
+        items = []
+        for entity in inventory:
+            item_data = {
+                "class_id": entity.CLASS_ID,
+                "unique_id": entity.unique_id,
+                "count": entity.count,
+                "data": entity.data,
+                "name": getattr(entity, 'NAME', entity.CLASS_ID),
+                "description": getattr(entity, 'DESCRIPTION', ''),
+                "category": getattr(entity, 'CATEGORY', 'misc'),
+                "icon": getattr(entity, 'ICON', ''),
+            }
+            items.append(item_data)
+
         self.event_manager.post("inventory_updated", {
             "uuid": player_uuid,
-            "inventory": [stack.to_dict() for stack in inventory],
+            "inventory": items,
             "max_slots": self.max_slots,
         })
 
-    def get_inventory(self, player_uuid: str) -> List[ItemStack]:
+    # -------------------------------------------------------------------------
+    # Public API
+    # -------------------------------------------------------------------------
+
+    def get_inventory(self, player_uuid: str) -> List[Entity]:
         """Получить инвентарь игрока."""
         return self.inventories.get(player_uuid, [])
 
-    def has_item(self, player_uuid: str, item_id: str, count: int = 1) -> bool:
+    def has_item(self, player_uuid: str, class_id: str, count: int = 1) -> bool:
         """Проверить наличие предмета у игрока."""
         total = 0
-        for stack in self.inventories.get(player_uuid, []):
-            if stack.item_id == item_id:
-                total += stack.count
+        for entity in self.inventories.get(player_uuid, []):
+            if entity.CLASS_ID == class_id:
+                total += entity.count
                 if total >= count:
                     return True
         return False
+
+    def remove_item(self, player_uuid: str, class_id: str, count: int = 1) -> bool:
+        """Удалить предмет из инвентаря."""
+        if not self.has_item(player_uuid, class_id, count):
+            return False
+
+        remaining = count
+        inventory = self.inventories.get(player_uuid, [])
+        to_remove = []
+
+        for i, entity in enumerate(inventory):
+            if entity.CLASS_ID == class_id and remaining > 0:
+                if entity.count <= remaining:
+                    remaining -= entity.count
+                    to_remove.append(i)
+                else:
+                    entity.count -= remaining
+                    remaining = 0
+
+        # Удаляем пустые слоты (в обратном порядке)
+        for i in reversed(to_remove):
+            inventory.pop(i)
+
+        self._send_inventory_update(player_uuid)
+        return True
+
+    def get_registered_items(self) -> Dict[str, dict]:
+        """Получить список всех зарегистрированных предметов."""
+        result = {}
+        for class_id, cls in ENTITY_REGISTRY.get_all_classes().items():
+            if hasattr(cls, 'get_info'):
+                result[class_id] = cls.get_info()
+            else:
+                result[class_id] = {
+                    "class_id": class_id,
+                    "name": getattr(cls, 'NAME', class_id),
+                }
+        return result

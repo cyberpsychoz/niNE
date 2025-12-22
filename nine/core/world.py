@@ -57,9 +57,11 @@ class Player:
             return LVector3(0, 0, 0)
 
         # Calculate forward and right vectors from camera yaw
+        # Forward = direction from camera to player = (-sin(yaw), cos(yaw))
+        # Right = 90° clockwise from forward = (cos(yaw), sin(yaw))
         yaw_rad = radians(self.camera_yaw)
-        forward = LVector3(-sin(yaw_rad), -cos(yaw_rad), 0)
-        right = LVector3(-cos(yaw_rad), sin(yaw_rad), 0)
+        forward = LVector3(-sin(yaw_rad), cos(yaw_rad), 0)
+        right = LVector3(cos(yaw_rad), sin(yaw_rad), 0)
 
         move = forward * input_y + right * input_x
         move.normalize()
@@ -67,7 +69,9 @@ class Player:
 
     def get_state(self):
         """Gets the player's state for broadcasting."""
-        pos = self.character_controller.character_np.getPos()
+        # Get actor position in world coordinates (not physics node position)
+        # This ensures client receives the visual position, not physics capsule center
+        pos = self.actor.getPos(self.character_controller.reference_node)
         rot = self.actor.getHpr()
 
         anim_state = self.character_controller.get_anim_state()
@@ -94,19 +98,22 @@ class GameWorld:
         self.players = {}
         self.db = DatabaseManager()
 
+        # Spawn points - Z=0 means actor feet are at ground level
+        # Physics capsule will be positioned higher automatically
         self.spawn_points = cycle([
-            [0, 0, 1], [5, 5, 1], [-5, 5, 1], [5, -5, 1], [-5, -5, 1]
+            [0, 0, 0], [5, 5, 0], [-5, 5, 0], [5, -5, 0], [-5, -5, 0]
         ])
 
         self._setup_scene()
 
     def _setup_scene(self):
         """Sets up the static physical world."""
+        # BulletPlaneShape(normal, offset) creates an infinite plane at z=offset
+        # We want the ground at z=0 to match the visual ground on the client
         ground_shape = BulletPlaneShape(Vec3(0, 0, 1), 0)
         ground_body_node = BulletRigidBodyNode('Ground')
         ground_body_node.addShape(ground_shape)
         ground_np = self.render.attachNewNode(ground_body_node)
-        ground_np.setPos(0, 0, -0.5)
         self.physics_world.attachRigidBody(ground_body_node)
 
     def get_world_state(self):
@@ -162,8 +169,9 @@ class GameWorld:
 
         player = Player(client_id, name, actor, self.physics_world)
 
+        # Set spawn position (for actor, not physics node)
         spawn_pos = next(self.spawn_points)
-        player.character_controller.character_np.setPos(Vec3(*spawn_pos))
+        player.character_controller.set_position(spawn_pos)
 
         self.players[client_id] = player
 
