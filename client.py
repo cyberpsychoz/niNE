@@ -67,6 +67,7 @@ class GameClient(ShowBase):
         self.client_uuid = client_uuid if client_uuid else self._get_or_create_uuid()
 
         self.player_actor = None
+        self.player_actor_model = None  # Actual Actor for animations
         self.other_players = {}
 
         self.writer = None
@@ -101,6 +102,17 @@ class GameClient(ShowBase):
         self.accept("space-up", self.update_key_map, ["space", False])
         self.accept("shift", self.update_key_map, ["shift", True])
         self.accept("shift-up", self.update_key_map, ["shift", False])
+        # Handle WASD when Shift is held (Panda3D generates "shift-w" instead of "w")
+        self.accept("shift-w", self.update_key_map, ["w", True])
+        self.accept("shift-w-up", self.update_key_map, ["w", False])
+        self.accept("shift-a", self.update_key_map, ["a", True])
+        self.accept("shift-a-up", self.update_key_map, ["a", False])
+        self.accept("shift-s", self.update_key_map, ["s", True])
+        self.accept("shift-s-up", self.update_key_map, ["s", False])
+        self.accept("shift-d", self.update_key_map, ["d", True])
+        self.accept("shift-d-up", self.update_key_map, ["d", False])
+        self.accept("shift-space", self.update_key_map, ["space", True])
+        self.accept("shift-space-up", self.update_key_map, ["space", False])
         self.accept("escape", self.handle_escape)
 
         # --- Panda3D Tasks & Dev Mode ---
@@ -290,6 +302,7 @@ class GameClient(ShowBase):
                 'current_speed': 0.0,
                 'move_direction': LVector3(0, 1, 0),
                 'current_heading': 0.0,
+                'current_anim_rate': 1.0,
             }
 
         # Movement parameters
@@ -331,15 +344,17 @@ class GameClient(ShowBase):
         is_moving = self._dev_state['current_speed'] > 0.1
 
         if is_moving:
-            # Select animation
+            # Select animation (use actor model, not wrapper)
             target_anim = "run_forward" if is_running else "walk_forward"
-            if self.player_actor.getCurrentAnim() != target_anim:
-                self.player_actor.loop(target_anim)
+            if self.player_actor_model.getCurrentAnim() != target_anim:
+                self.player_actor_model.loop(target_anim)
 
-            # Sync animation speed
+            # Sync animation speed (only update if changed significantly to avoid jitter)
             speed_ratio = self._dev_state['current_speed'] / run_speed
-            anim_rate = 0.3 + (speed_ratio * 0.7)
-            self.player_actor.setPlayRate(anim_rate, target_anim)
+            target_anim_rate = 0.5 + (speed_ratio * 0.5)
+            if abs(target_anim_rate - self._dev_state['current_anim_rate']) > 0.05:
+                self._dev_state['current_anim_rate'] = target_anim_rate
+                self.player_actor_model.setPlayRate(target_anim_rate, target_anim)
 
             # Move player
             move_dir = self._dev_state['move_direction']
@@ -354,9 +369,9 @@ class GameClient(ShowBase):
             self._dev_state['current_heading'] = new_heading
             self.player_actor.setH(new_heading)
         else:
-            if self.player_actor.getCurrentAnim() != "idle":
-                self.player_actor.loop("idle")
-            self.player_actor.setPlayRate(1.0, "idle")
+            if self.player_actor_model.getCurrentAnim() != "idle":
+                self.player_actor_model.loop("idle")
+                self._dev_state['current_anim_rate'] = 1.0
 
         # Send movement data to server
         pos = self.player_actor.getPos()
@@ -404,15 +419,23 @@ class GameClient(ShowBase):
         actor = Actor("nine/assets/models/player.bam")
         actor.set_scale(0.3)
         actor.setColor(color)
-        actor.reparentTo(self.render)
+
+        # Create wrapper node for positioning to avoid root motion jitter
+        # We move the wrapper, actor stays at origin relative to it
+        wrapper = self.render.attachNewNode(f"player_{player_id}")
+        actor.reparentTo(wrapper)
+
         # Start with idle animation
         actor.loop("idle")
 
         if is_local_player:
-            self.player_actor = actor
+            self.player_actor = wrapper
+            self.player_actor_model = actor  # Keep reference to actual actor for animations
         else:
-            self.other_players[player_id] = actor
-        return actor
+            self.other_players[player_id] = wrapper
+            # Store actor reference on wrapper for animation access
+            wrapper.setPythonTag("actor", actor)
+        return wrapper
 
     def handle_network_data(self, data: dict):
         msg_type = data.get("type")
@@ -439,38 +462,46 @@ class GameClient(ShowBase):
         elif msg_type == "player_left":
             p_id = data["id"]
             if p_id in self.other_players:
-                actor = self.other_players.pop(p_id)
-                actor.cleanup()
-                actor.removeNode()
+                wrapper = self.other_players.pop(p_id)
+                actor = wrapper.getPythonTag("actor")
+                if actor:
+                    actor.cleanup()
+                wrapper.removeNode()
 
         elif msg_type == "world_state":
             for p_id_str, p_info in data.get("players", {}).items():
                 p_id = int(p_id_str)
-                actor_to_update = self.player_actor if p_id == self.player_id else self.other_players.get(p_id)
-                if not actor_to_update:
-                    actor_to_update = self.load_actor(p_id, LColor(0.8, 0.8, 0.8, 1))
+                wrapper = self.player_actor if p_id == self.player_id else self.other_players.get(p_id)
+                if not wrapper:
+                    wrapper = self.load_actor(p_id, LColor(0.8, 0.8, 0.8, 1))
+
+                # Get the actual actor model for animations
+                if p_id == self.player_id:
+                    actor_model = self.player_actor_model
+                else:
+                    actor_model = wrapper.getPythonTag("actor")
 
                 # Server-authoritative clients get position/rotation from server.
                 # Dev mode clients only update other players, not themselves.
                 is_other_player = p_id != self.player_id
                 if not self.dev_mode or is_other_player:
-                    actor_to_update.setPos(*p_info["pos"])
-                    actor_to_update.setHpr(*p_info["rot"])
+                    wrapper.setPos(*p_info["pos"])
+                    wrapper.setHpr(*p_info["rot"])
                 # Update animations (dev mode handles own player's animations locally)
-                if not self.dev_mode or is_other_player:
+                if (not self.dev_mode or is_other_player) and actor_model:
                     anim_state = p_info.get("anim_state", "idle")
                     speed_ratio = p_info.get("speed_ratio", 0.0)
 
-                    current_anim = actor_to_update.getCurrentAnim()
+                    current_anim = actor_model.getCurrentAnim()
                     if current_anim != anim_state:
-                        actor_to_update.loop(anim_state)
+                        actor_model.loop(anim_state)
 
                     # Sync animation speed with movement speed
                     if anim_state != "idle" and speed_ratio > 0:
                         anim_rate = 0.3 + (speed_ratio * 0.7)
-                        actor_to_update.setPlayRate(anim_rate, anim_state)
+                        actor_model.setPlayRate(anim_rate, anim_state)
                     else:
-                        actor_to_update.setPlayRate(1.0, anim_state)
+                        actor_model.setPlayRate(1.0, anim_state)
         else:
             self.event_manager.post(msg_type, data)
 
@@ -479,12 +510,16 @@ class GameClient(ShowBase):
         self.disable_game_input()
 
         if self.player_actor:
-            self.player_actor.cleanup()
+            if self.player_actor_model:
+                self.player_actor_model.cleanup()
+                self.player_actor_model = None
             self.player_actor.removeNode()
             self.player_actor = None
-        for actor in self.other_players.values():
-            actor.cleanup()
-            actor.removeNode()
+        for wrapper in self.other_players.values():
+            actor = wrapper.getPythonTag("actor")
+            if actor:
+                actor.cleanup()
+            wrapper.removeNode()
         self.other_players.clear()
 
         if self.camera_controller:

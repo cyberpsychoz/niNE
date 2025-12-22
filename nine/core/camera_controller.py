@@ -19,10 +19,10 @@ class CameraController:
         self.target = target
 
         # Camera orbit parameters
-        self.distance = 6.0
-        self.height_offset = 1.2  # Height above player to look at
+        self.distance = 2.0  # Closer to player
+        self.height_offset = 0.5  # Height above player to look at
         self.min_distance = 2.0
-        self.max_distance = 20.0
+        self.max_distance = 15.0
 
         # Camera angles (degrees)
         self.yaw = 0.0      # Horizontal angle around player (0 = behind player looking at +Y)
@@ -102,13 +102,11 @@ class CameraController:
         # Clamp target pitch
         self.target_pitch = max(self.min_pitch, min(self.max_pitch, self.target_pitch))
 
-        # Smooth interpolation towards target
-        self.yaw += (self.target_yaw - self.yaw) * self.smoothing
+        # Smooth interpolation towards target (using angle-aware lerp for yaw)
+        # This prevents camera jumping when crossing 0/360 boundary
+        yaw_diff = (self.target_yaw - self.yaw + 180) % 360 - 180
+        self.yaw += yaw_diff * self.smoothing
         self.pitch += (self.target_pitch - self.pitch) * self.smoothing
-
-        # Keep yaw in reasonable range
-        self.yaw = self.yaw % 360.0
-        self.target_yaw = self.target_yaw % 360.0
 
     def _position_camera(self):
         """Position camera in orbit around target."""
@@ -140,15 +138,22 @@ class CameraController:
         """
         Get forward direction based on camera yaw.
         This is where the player will move when pressing W.
+
+        Camera position formula: (dist*sin(yaw), -dist*cos(yaw), height)
+        Forward = direction from camera to player = -camera_offset
+        So forward = (-sin(yaw), cos(yaw), 0)
         """
         yaw_rad = radians(self.yaw)
-        # Forward is where camera is looking (opposite of camera offset direction)
-        return Vec3(sin(yaw_rad), cos(yaw_rad), 0)
+        return Vec3(-sin(yaw_rad), cos(yaw_rad), 0)
 
     def get_right_vector(self):
-        """Get right direction based on camera yaw."""
+        """
+        Get right direction based on camera yaw.
+        This is the direction player moves when pressing D.
+        Right = 90° clockwise from forward (when viewed from above)
+        """
         yaw_rad = radians(self.yaw)
-        return Vec3(cos(yaw_rad), -sin(yaw_rad), 0)
+        return Vec3(cos(yaw_rad), sin(yaw_rad), 0)
 
     def get_movement_vector(self, input_x, input_y):
         """
