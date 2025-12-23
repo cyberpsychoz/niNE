@@ -27,6 +27,7 @@ class ChatType(Enum):
     IT = "it"           # /it безличное действие
     LOOC = "looc"       # Локальный OOC
     OOC = "ooc"         # Глобальный OOC
+    COMMAND = "command" # Серверная команда (не отправляется в чат)
 
 
 @dataclass
@@ -34,6 +35,12 @@ class ParsedMessage:
     """Результат парсинга сообщения."""
     chat_type: ChatType
     content: str
+    command: str = ""      # Для команд: имя команды
+    args: list = None      # Для команд: аргументы
+
+    def __post_init__(self):
+        if self.args is None:
+            self.args = []
 
 
 def _load_config(plugin_path: Path):
@@ -100,6 +107,22 @@ class ChatBroadcastModule(PluginModule):
             content = message[5:].strip()
             return ParsedMessage(ChatType.OOC, content)
 
+        # /give <class_id> [count] - выдать предмет себе
+        if message.lower().startswith("/give "):
+            parts = message[6:].strip().split()
+            if parts:
+                class_id = parts[0]
+                count = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 1
+                return ParsedMessage(ChatType.COMMAND, "", command="give", args=[class_id, count])
+
+        # /spawn <class_id> [count] - заспавнить предмет (пока = give)
+        if message.lower().startswith("/spawn "):
+            parts = message[7:].strip().split()
+            if parts:
+                class_id = parts[0]
+                count = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 1
+                return ParsedMessage(ChatType.COMMAND, "", command="spawn", args=[class_id, count])
+
         # Обычное сообщение (IC)
         return ParsedMessage(ChatType.IC, message)
 
@@ -147,6 +170,11 @@ class ChatBroadcastModule(PluginModule):
         # Парсим сообщение
         parsed = self.parse_message(raw_message)
 
+        # Обрабатываем команды (не отправляем в чат)
+        if parsed.chat_type == ChatType.COMMAND:
+            self._handle_command(client_id, player_name, parsed)
+            return
+
         # Формируем данные для отправки в зависимости от типа
         broadcast_data = {
             "type": "chat_broadcast",
@@ -190,4 +218,53 @@ class ChatBroadcastModule(PluginModule):
         self.event_manager.post("chat_send_to_clients", {
             "data": broadcast_data,
             "recipients": recipients  # None = всем, list = конкретным клиентам
+        })
+
+    def _handle_command(self, client_id: int, player_name: str, parsed: ParsedMessage):
+        """Обрабатывает серверные команды."""
+        command = parsed.command
+        args = parsed.args
+
+        if command == "give":
+            # /give <class_id> [count]
+            if len(args) >= 1:
+                class_id = args[0]
+                count = args[1] if len(args) > 1 else 1
+
+                # Отправляем событие плагину инвентаря
+                self.event_manager.post("give_item", {
+                    "uuid": client_id,
+                    "class_id": class_id,
+                    "count": count,
+                })
+
+                # Отправляем подтверждение игроку
+                self._send_system_message(client_id, f"Выдано: {count}x {class_id}")
+                self.logger.info(f"{player_name} использовал /give {class_id} {count}")
+
+        elif command == "spawn":
+            # /spawn <class_id> [count] - пока просто выдаём в инвентарь
+            if len(args) >= 1:
+                class_id = args[0]
+                count = args[1] if len(args) > 1 else 1
+
+                self.event_manager.post("give_item", {
+                    "uuid": client_id,
+                    "class_id": class_id,
+                    "count": count,
+                })
+
+                self._send_system_message(client_id, f"Заспавнено: {count}x {class_id}")
+                self.logger.info(f"{player_name} использовал /spawn {class_id} {count}")
+
+    def _send_system_message(self, client_id: int, message: str):
+        """Отправляет системное сообщение игроку."""
+        self.event_manager.post("chat_send_to_clients", {
+            "data": {
+                "type": "chat_broadcast",
+                "chat_type": "system",
+                "from_name": "Система",
+                "message": message,
+            },
+            "recipients": [client_id]
         })
