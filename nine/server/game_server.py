@@ -67,6 +67,8 @@ class GameServer(ShowBase):
         self.event_manager.subscribe("stats_send_to_client", self.handle_stats_send)
         # Subscribe to world config events from plugins
         self.event_manager.subscribe("world_config_send_to_client", self.handle_world_config_send)
+        # Subscribe to inventory events from plugins
+        self.event_manager.subscribe("inventory_send_to_client", self.handle_inventory_send)
 
         # Load plugins
         self.plugin_manager.load_plugins()
@@ -126,6 +128,12 @@ class GameServer(ShowBase):
                     "message": data.get("message", ""),
                     "player_pos": player_pos
                 })
+        elif msg_type == "item_use":
+            # Отправляем событие плагину инвентаря
+            self.event_manager.post("item_use", {
+                "uuid": client_id,
+                "slot": data.get("slot", 0),
+            })
         elif data.get("type") == "internal_disconnect":
             self.handle_disconnect(client_id)
 
@@ -253,6 +261,22 @@ class GameServer(ShowBase):
         if client_id is not None:
             asyncio.run_coroutine_threadsafe(
                 self.send_to_client(client_id, config_data), self.asyncio_loop
+            )
+
+    def handle_inventory_send(self, event_data: dict):
+        """
+        Handles inventory_send_to_client event from inventory plugin.
+        event_data = {
+            "client_id": client_id,
+            "data": inventory_data
+        }
+        """
+        client_id = event_data.get("client_id")
+        inventory_data = event_data.get("data", {})
+
+        if client_id is not None:
+            asyncio.run_coroutine_threadsafe(
+                self.send_to_client(client_id, inventory_data), self.asyncio_loop
             )
 
     async def send_to_clients(self, data, client_ids):

@@ -278,10 +278,14 @@ class InventoryServerModule(PluginModule):
             }
             items.append(item_data)
 
-        self.event_manager.post("inventory_updated", {
-            "uuid": player_uuid,
-            "inventory": items,
-            "max_slots": self.max_slots,
+        # Отправляем клиенту через событие
+        self.event_manager.post("inventory_send_to_client", {
+            "client_id": player_uuid,
+            "data": {
+                "type": "inventory_update",
+                "inventory": items,
+                "max_slots": self.max_slots,
+            }
         })
 
     # -------------------------------------------------------------------------
