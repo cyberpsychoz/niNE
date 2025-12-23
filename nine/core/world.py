@@ -73,16 +73,19 @@ class Player:
         # This ensures client receives the visual position, not physics capsule center
         pos = self.actor.getPos(self.character_controller.reference_node)
         rot = self.actor.getHpr()
+        vel = self.character_controller.get_velocity()
 
         anim_state = self.character_controller.get_anim_state()
         speed_ratio = 0.0
-        if self.character_controller.is_moving:
+        speed = vel.length()
+        if speed > 0.1:
             max_speed = self.character_controller.run_speed
-            speed_ratio = self.character_controller.current_speed / max_speed
+            speed_ratio = min(speed / max_speed, 1.0)
 
         return {
             "pos": [pos.x, pos.y, pos.z],
             "rot": [rot.x, rot.y, rot.z],
+            "vel": [vel.x, vel.y, vel.z],
             "name": self.name,
             "anim_state": anim_state,
             "speed_ratio": speed_ratio
