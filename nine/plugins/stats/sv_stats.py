@@ -162,12 +162,16 @@ class StatsServerModule(PluginModule):
             return
 
         stats = self.stats_data[player_uuid]
-        self.event_manager.post("stats_updated", {
-            "uuid": player_uuid,
-            "health": stats["health"],
-            "max_health": MAX_HEALTH,
-            "hunger": stats["hunger"],
-            "max_hunger": MAX_HUNGER,
+        # Публикуем событие для отправки по сети
+        self.event_manager.post("stats_send_to_client", {
+            "client_id": player_uuid,
+            "data": {
+                "type": "stats_update",
+                "health": stats["health"],
+                "max_health": MAX_HEALTH,
+                "hunger": stats["hunger"],
+                "max_hunger": MAX_HUNGER,
+            }
         })
 
     # Публичные методы

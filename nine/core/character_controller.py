@@ -1,10 +1,11 @@
 """
-Server-side character controller.
+Server-side character controller with Source-like physics.
 
-Simple movement model:
-- Character rotates smoothly to face movement direction
-- Only uses forward animations (idle, walk_forward, run_forward)
-- Movement direction is provided as a world-space vector from client
+Features:
+- Velocity-based movement with inertia
+- Ground friction for smooth deceleration
+- Air control for limited movement while jumping
+- Smooth rotation towards movement direction
 """
 
 from math import atan2, degrees
@@ -14,23 +15,38 @@ from panda3d.core import LVector3, NodePath
 
 
 class CharacterController:
+    """
+    Character controller with Source engine-like physics.
+
+    Movement feels smooth with gradual acceleration and friction-based stopping.
+    """
+
     def __init__(self, actor_nodepath: NodePath, physics_world):
         self.actor = actor_nodepath
         self.physics_world = physics_world
 
-        # Movement parameters
-        self.walk_speed = 5.0
-        self.run_speed = 10.0
-        self.acceleration = 30.0
-        self.deceleration = 40.0
-        self.current_speed = 0.0
-        self.rotation_speed = 10.0  # How fast character turns
+        # === Movement parameters (Source-like) ===
+        # Speeds (units per second, 1 unit ≈ 1 meter)
+        self.walk_speed = 1.25     # Normal walking speed
+        self.run_speed = 2.5       # Running speed (with shift)
 
-        # State
+        # Acceleration
+        self.ground_accel = 8.0    # How fast we accelerate on ground
+        self.air_accel = 2.0       # Air control (much lower)
+
+        # Friction (Source-like friction model)
+        self.friction = 6.0        # Ground friction coefficient
+        self.stop_speed = 0.5      # Below this, apply full friction
+
+        # Rotation
+        self.rotation_speed = 12.0  # Degrees per second multiplier
+
+        # === State ===
+        self.velocity = LVector3(0, 0, 0)  # Current velocity vector
         self.is_moving = False
         self.is_running = False
-        self.move_direction = LVector3(0, 1, 0)  # World-space movement direction
-        self.current_heading = 0.0  # Current facing direction
+        self.move_direction = LVector3(0, 1, 0)
+        self.current_heading = 0.0
 
         self.reference_node = self.actor.getParent()
 
@@ -45,9 +61,6 @@ class CharacterController:
         self.physics_world.attachCharacter(self.character_node)
 
         # Reparent actor to physics node
-        # Offset actor so feet are at the bottom of the capsule
-        # When capsule stands on ground (z=0), its center is at z=height/2
-        # Actor origin (feet) should be at z=0, so offset = -height/2
         self.actor.reparentTo(self.character_np)
         self.actor.setPos(0, 0, -height/2)
 
@@ -56,7 +69,7 @@ class CharacterController:
             self.character_node.doJump()
 
     def get_anim_state(self):
-        """Returns animation name: idle, walk_forward, or run_forward."""
+        """Returns animation name based on movement state."""
         if not self.is_moving:
             return "idle"
         return "run_forward" if self.is_running else "walk_forward"
@@ -66,9 +79,55 @@ class CharacterController:
         diff = (target - current + 180) % 360 - 180
         return current + diff * factor
 
+    def _apply_friction(self, dt):
+        """
+        Apply Source-like friction to velocity.
+
+        Friction is proportional to speed, but has a minimum threshold
+        (stop_speed) to ensure characters actually stop.
+        """
+        speed = self.velocity.length()
+        if speed < 0.01:
+            self.velocity = LVector3(0, 0, 0)
+            return
+
+        # Control calculation - higher of speed or stop_speed
+        control = max(speed, self.stop_speed)
+
+        # Calculate friction drop
+        drop = control * self.friction * dt
+
+        # Scale velocity by remaining speed
+        new_speed = max(speed - drop, 0)
+        if speed > 0:
+            self.velocity *= (new_speed / speed)
+
+    def _accelerate(self, wish_dir, wish_speed, accel, dt):
+        """
+        Source-like acceleration.
+
+        Projects current velocity onto wish direction and accelerates
+        only if we're below wish_speed in that direction.
+        """
+        # Current speed in desired direction
+        current_speed = self.velocity.dot(wish_dir)
+
+        # How much we need to add
+        add_speed = wish_speed - current_speed
+        if add_speed <= 0:
+            return
+
+        # Acceleration amount
+        accel_speed = accel * wish_speed * dt
+        if accel_speed > add_speed:
+            accel_speed = add_speed
+
+        # Add to velocity
+        self.velocity += wish_dir * accel_speed
+
     def update(self, dt, move_vector, is_running=False, do_jump=False):
         """
-        Updates character position based on movement vector.
+        Updates character position with Source-like physics.
 
         Args:
             dt: Delta time
@@ -83,6 +142,8 @@ class CharacterController:
             self.jump()
 
         self.is_running = is_running
+        on_ground = self.character_node.isOnGround()
+
         has_input = move_vector.length_squared() > 0.01
 
         # Store movement direction for rotation
@@ -91,53 +152,64 @@ class CharacterController:
             self.move_direction.normalize()
 
         # Calculate target speed
-        if has_input:
-            target_speed = self.run_speed if is_running else self.walk_speed
-            self.current_speed = min(
-                self.current_speed + self.acceleration * dt,
-                target_speed
-            )
+        wish_speed = self.run_speed if is_running else self.walk_speed
+
+        if on_ground:
+            # Apply friction first (only on ground)
+            if not has_input:
+                self._apply_friction(dt)
+            else:
+                # Reduced friction when moving (allows smoother direction changes)
+                self._apply_friction(dt * 0.3)
+
+            # Then accelerate towards input direction
+            if has_input:
+                self._accelerate(self.move_direction, wish_speed, self.ground_accel, dt)
         else:
-            self.current_speed = max(
-                self.current_speed - self.deceleration * dt,
-                0.0
-            )
+            # Air control - much less acceleration
+            if has_input:
+                self._accelerate(self.move_direction, wish_speed, self.air_accel, dt)
 
-        self.is_moving = self.current_speed > 0.1
+        # Check if we're actually moving
+        speed = self.velocity.length()
+        self.is_moving = speed > 0.1
 
-        if self.is_moving:
-            # Apply movement
-            velocity = self.move_direction * self.current_speed
-            self.character_node.setLinearMovement(velocity, True)
+        # Apply velocity to character
+        self.character_node.setLinearMovement(self.velocity, True)
 
-            # Smooth rotation towards movement direction
-            # Add 180 because model faces -Y by default
-            target_heading = degrees(atan2(-self.move_direction.x, self.move_direction.y)) + 180
+        # Smooth rotation towards velocity direction (if moving)
+        if self.is_moving and speed > 0.5:
+            # Rotate towards velocity direction, not input direction
+            # This gives more natural-feeling rotation
+            vel_dir = LVector3(self.velocity)
+            vel_dir.normalize()
+            target_heading = degrees(atan2(-vel_dir.x, vel_dir.y)) + 180
             self.current_heading = self._lerp_angle(
                 self.current_heading, target_heading, self.rotation_speed * dt
             )
             self.actor.setH(self.current_heading)
-        else:
-            self.character_node.setLinearMovement(LVector3(0, 0, 0), True)
 
         return self.character_np.getPos(), self.actor.getHpr()
 
     def set_position(self, pos):
-        """Directly set position (for dev clients).
-
-        The pos argument is the actor's visual position. We need to compute
-        the physics node position by reversing the actor offset.
-        """
+        """Directly set position (for dev clients)."""
         actor_pos = LVector3(*pos)
-        # Reverse the actor offset (actor is at -height/2 + radius relative to physics node)
-        # So physics node should be at actor_pos - offset = actor_pos + (height/2 - radius)
-        physics_offset = self.actor.getPos()  # This is the local offset from physics node
+        physics_offset = self.actor.getPos()
         physics_pos = actor_pos - physics_offset
         self.character_np.setPos(physics_pos)
 
     def set_rotation(self, hpr):
         """Set character rotation."""
         self.actor.setHpr(LVector3(*hpr))
+        self.current_heading = hpr[0]
+
+    def set_velocity(self, vel):
+        """Set velocity directly (for network sync)."""
+        self.velocity = LVector3(*vel) if isinstance(vel, (list, tuple)) else vel
+
+    def get_velocity(self):
+        """Get current velocity."""
+        return self.velocity
 
     def cleanup(self):
         if hasattr(self, 'character_node') and self.character_node:

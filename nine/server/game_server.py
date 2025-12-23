@@ -63,6 +63,10 @@ class GameServer(ShowBase):
 
         # Subscribe to chat events from plugins
         self.event_manager.subscribe("chat_send_to_clients", self.handle_chat_send)
+        # Subscribe to stats events from plugins
+        self.event_manager.subscribe("stats_send_to_client", self.handle_stats_send)
+        # Subscribe to world config events from plugins
+        self.event_manager.subscribe("world_config_send_to_client", self.handle_world_config_send)
 
         # Load plugins
         self.plugin_manager.load_plugins()
@@ -144,6 +148,9 @@ class GameServer(ShowBase):
         player = self.world.add_player(client_id, player_name)
         self.logger.info(f"Dev player '{player_name}' (Client #{client_id}) authenticated.")
 
+        # Notify plugins about player join
+        self.event_manager.post("player_joined", {"uuid": client_id, "name": player_name})
+
         other_players_state = {pid: p.get_state() for pid, p in self.world.players.items() if pid != client_id}
         welcome_data = {
             "type": "welcome",
@@ -176,6 +183,9 @@ class GameServer(ShowBase):
 
         player = self.world.add_player(client_id, player_name)
         self.logger.info(f"Player '{player_name}' (Client #{client_id}) authenticated.")
+
+        # Notify plugins about player join
+        self.event_manager.post("player_joined", {"uuid": client_id, "name": player_name})
 
         # Prepare welcome message
         other_players_state = {pid: p.get_state() for pid, p in self.world.players.items() if pid != client_id}
@@ -213,6 +223,38 @@ class GameServer(ShowBase):
                 self.send_to_clients(broadcast_data, recipients), self.asyncio_loop
             )
 
+    def handle_stats_send(self, event_data: dict):
+        """
+        Handles stats_send_to_client event from stats plugin.
+        event_data = {
+            "client_id": client_id,
+            "data": stats_data
+        }
+        """
+        client_id = event_data.get("client_id")
+        stats_data = event_data.get("data", {})
+
+        if client_id is not None:
+            asyncio.run_coroutine_threadsafe(
+                self.send_to_client(client_id, stats_data), self.asyncio_loop
+            )
+
+    def handle_world_config_send(self, event_data: dict):
+        """
+        Handles world_config_send_to_client event from world_config plugin.
+        event_data = {
+            "client_id": client_id,
+            "data": world_config_data
+        }
+        """
+        client_id = event_data.get("client_id")
+        config_data = event_data.get("data", {})
+
+        if client_id is not None:
+            asyncio.run_coroutine_threadsafe(
+                self.send_to_client(client_id, config_data), self.asyncio_loop
+            )
+
     async def send_to_clients(self, data, client_ids):
         """Sends a message to specific clients."""
         payload = json.dumps(data).encode("utf-8")
@@ -231,6 +273,9 @@ class GameServer(ShowBase):
         self.logger.info(f"Client #{client_id} processing disconnection.")
         if client_id in self.clients:
             del self.clients[client_id]
+
+        # Notify plugins about player leave before removing
+        self.event_manager.post("player_left", {"uuid": client_id})
 
         player_id = self.world.remove_player(client_id)
         if player_id is not None:
