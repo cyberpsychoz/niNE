@@ -83,6 +83,7 @@ class GameClient(ShowBase):
         }
         self.ui = UIManager(self, callbacks)
         self.event_manager.subscribe("client_send_chat_message", self.send_chat_packet)
+        self.event_manager.subscribe("client_item_use", self.send_item_use_packet)
 
         # --- Final Initializations ---
         self.plugin_manager.load_plugins()
@@ -484,6 +485,10 @@ class GameClient(ShowBase):
             self.event_manager.post("world_config", data)
             self.logger.info("World config received and applied")
 
+        elif msg_type == "inventory_update":
+            # Передаём плагину инвентаря
+            self.event_manager.post("inventory_update", data)
+
         elif msg_type == "world_state":
             import time
             for p_id_str, p_info in data.get("players", {}).items():
@@ -635,6 +640,15 @@ class GameClient(ShowBase):
     def send_chat_packet(self, message: str):
         if message.strip():
             self.asyncio_loop.create_task(send_message(self.writer, {"type": "chat_message", "message": message}))
+
+    def send_item_use_packet(self, data: dict):
+        """Отправляет запрос на использование предмета."""
+        if self.is_connected and self.player_id >= 0:
+            packet = {
+                "type": "item_use",
+                "slot": data.get("slot", 0),
+            }
+            self.asyncio_loop.create_task(send_message(self.writer, packet))
 
     def open_login_menu(self): self.ui.show_login_menu(default_ip="localhost:9009", default_name=self.character_name)
     def close_login_menu(self): self.ui.hide_login_menu(); self.ui.show_main_menu()
