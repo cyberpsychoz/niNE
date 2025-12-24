@@ -47,6 +47,7 @@ class StatsServerModule(PluginModule):
         self.event_manager.subscribe("player_damage", self.on_player_damage)
         self.event_manager.subscribe("player_heal", self.on_player_heal)
         self.event_manager.subscribe("player_feed", self.on_player_feed)
+        self.event_manager.subscribe("player_restore_hunger", self.on_player_feed)  # Alias
         self.event_manager.subscribe("stats_request", self.on_stats_request)
 
         self.logger.info("Серверный модуль характеристик загружен")
@@ -57,6 +58,7 @@ class StatsServerModule(PluginModule):
         self.event_manager.unsubscribe("player_damage", self.on_player_damage)
         self.event_manager.unsubscribe("player_heal", self.on_player_heal)
         self.event_manager.unsubscribe("player_feed", self.on_player_feed)
+        self.event_manager.unsubscribe("player_restore_hunger", self.on_player_feed)
         self.event_manager.unsubscribe("stats_request", self.on_stats_request)
 
         self.logger.info("Серверный модуль характеристик выгружен")

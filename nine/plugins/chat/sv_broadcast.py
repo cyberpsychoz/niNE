@@ -123,6 +123,10 @@ class ChatBroadcastModule(PluginModule):
                 count = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 1
                 return ParsedMessage(ChatType.COMMAND, "", command="spawn", args=[class_id, count])
 
+        # /items - список доступных предметов
+        if message.lower().strip() == "/items":
+            return ParsedMessage(ChatType.COMMAND, "", command="items", args=[])
+
         # Обычное сообщение (IC)
         return ParsedMessage(ChatType.IC, message)
 
@@ -256,6 +260,16 @@ class ChatBroadcastModule(PluginModule):
 
                 self._send_system_message(client_id, f"Заспавнено: {count}x {class_id}")
                 self.logger.info(f"{player_name} использовал /spawn {class_id} {count}")
+
+        elif command == "items":
+            # /items - список всех доступных предметов
+            from nine.core.entity import ENTITY_REGISTRY
+            items = ENTITY_REGISTRY.get_all_classes()
+            if items:
+                item_list = ", ".join(items.keys())
+                self._send_system_message(client_id, f"Доступные предметы: {item_list}")
+            else:
+                self._send_system_message(client_id, "Нет зарегистрированных предметов")
 
     def _send_system_message(self, client_id: int, message: str):
         """Отправляет системное сообщение игроку."""
