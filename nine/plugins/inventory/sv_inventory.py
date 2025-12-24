@@ -65,6 +65,9 @@ class InventoryServerModule(PluginModule):
 
         self.logger.debug(f"Инвентарь игрока {player_uuid} инициализирован")
 
+        # Отправляем текущий инвентарь клиенту
+        self._send_inventory_update(player_uuid)
+
     def on_player_leave(self, data: dict):
         """Игрок вышел - сохраняем и очищаем данные."""
         player_uuid = data.get("uuid")
@@ -91,6 +94,12 @@ class InventoryServerModule(PluginModule):
         success = self.give_item(player_uuid, class_id, count, extra_data)
         if success:
             self.logger.debug(f"Выдан {count}x {class_id} игроку {player_uuid}")
+        else:
+            # Отправляем сообщение об ошибке
+            self.event_manager.post("system_message_to_client", {
+                "client_id": player_uuid,
+                "message": f"Предмет '{class_id}' не существует. Используйте /items для списка.",
+            })
 
     def on_item_pickup(self, data: dict):
         """Игрок подобрал предмет из мира."""
@@ -248,8 +257,14 @@ class InventoryServerModule(PluginModule):
 
         # Пытаемся добавить в существующий стек
         for existing in inventory:
-            if existing.can_stack_with(entity):
+            can_stack = existing.can_stack_with(entity)
+            self.logger.debug(
+                f"Stack check: {existing.CLASS_ID}(count={existing.count}) + "
+                f"{entity.CLASS_ID}(count={entity.count}) = {can_stack}"
+            )
+            if can_stack:
                 existing.count += entity.count
+                self.logger.debug(f"Stacked! New count: {existing.count}")
                 return
 
         # Проверяем свободные слоты
@@ -259,6 +274,7 @@ class InventoryServerModule(PluginModule):
 
         # Добавляем как новый предмет
         inventory.append(entity)
+        self.logger.debug(f"Added new slot: {entity.CLASS_ID} (count={entity.count})")
 
     def _send_inventory_update(self, player_uuid: str):
         """Отправляет обновление инвентаря клиенту."""

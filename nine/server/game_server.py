@@ -69,6 +69,8 @@ class GameServer(ShowBase):
         self.event_manager.subscribe("world_config_send_to_client", self.handle_world_config_send)
         # Subscribe to inventory events from plugins
         self.event_manager.subscribe("inventory_send_to_client", self.handle_inventory_send)
+        # Subscribe to system messages
+        self.event_manager.subscribe("system_message_to_client", self.handle_system_message)
 
         # Load plugins
         self.plugin_manager.load_plugins()
@@ -133,6 +135,21 @@ class GameServer(ShowBase):
             self.event_manager.post("item_use", {
                 "uuid": client_id,
                 "slot": data.get("slot", 0),
+            })
+        elif msg_type == "item_drop":
+            # Получаем позицию игрока для спавна предмета
+            player = self.world.players.get(client_id)
+            position = None
+            if player:
+                pos = player.get_state()["pos"]
+                # Спавним перед игроком
+                position = (pos[0], pos[1] + 1, pos[2])
+
+            self.event_manager.post("item_drop", {
+                "uuid": client_id,
+                "slot": data.get("slot", 0),
+                "count": data.get("count", 1),
+                "position": position,
             })
         elif data.get("type") == "internal_disconnect":
             self.handle_disconnect(client_id)
@@ -277,6 +294,28 @@ class GameServer(ShowBase):
         if client_id is not None:
             asyncio.run_coroutine_threadsafe(
                 self.send_to_client(client_id, inventory_data), self.asyncio_loop
+            )
+
+    def handle_system_message(self, event_data: dict):
+        """
+        Отправляет системное сообщение клиенту через чат.
+        event_data = {
+            "client_id": client_id,
+            "message": str
+        }
+        """
+        client_id = event_data.get("client_id")
+        message = event_data.get("message", "")
+
+        if client_id is not None and message:
+            chat_data = {
+                "type": "chat_broadcast",
+                "chat_type": "system",
+                "from_name": "Система",
+                "message": message,
+            }
+            asyncio.run_coroutine_threadsafe(
+                self.send_to_client(client_id, chat_data), self.asyncio_loop
             )
 
     async def send_to_clients(self, data, client_ids):

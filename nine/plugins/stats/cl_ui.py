@@ -3,29 +3,59 @@
 Показывает горизонтальные прогресс-бары здоровья и голода справа сверху.
 """
 
-from direct.gui.DirectGui import DirectFrame, DirectWaitBar
+import os
+
+from direct.gui.DirectGui import DirectFrame
 from direct.gui.OnscreenText import OnscreenText
-from panda3d.core import TextNode
+from panda3d.core import (
+    CardMaker,
+    NodePath,
+    TextNode,
+    Texture,
+    TransparencyAttrib,
+    Vec2,
+)
 
 from nine.core.plugins import PluginModule
 
+# Путь к текстурам
+TEXTURES_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "assets", "materials", "textures")
 
-class StatsBar:
-    """Горизонтальный прогресс-бар характеристики."""
 
-    def __init__(self, parent, position, bar_color, label, max_value=100):
+class TexturedStatsBar:
+    """Горизонтальный прогресс-бар с текстурами."""
+
+    def __init__(self, parent, position, fill_texture_path, empty_texture_path, label, max_value=100, uv_row=0, total_rows=4):
+        """
+        Args:
+            parent: Родительский узел
+            position: Позиция (x, y, z)
+            fill_texture_path: Путь к текстуре заполненного бара
+            empty_texture_path: Путь к текстуре пустого бара
+            label: Подпись слева
+            max_value: Максимальное значение
+            uv_row: Номер ряда в текстуре (0 = верхний)
+            total_rows: Общее количество рядов в текстуре
+        """
         self.max_value = max_value
         self.current_value = max_value
-        self.bar_color = bar_color
+        self.uv_row = uv_row
+        self.total_rows = total_rows
 
-        # Ширина и высота бара
-        self.bar_width = 0.25
-        self.bar_height = 0.025
+        # Размеры бара в экранных координатах
+        self.bar_width = 0.3
+        self.bar_height = 0.04
 
-        # Контейнер для бара и текста
+        # Рассчитываем UV координаты для нужного ряда
+        # UV: V=0 внизу, V=1 вверху. Для верхнего ряда (row=0): v_top=1.0, v_bottom=0.75
+        row_height = 1.0 / total_rows
+        self.v_top = 1.0 - (uv_row * row_height)
+        self.v_bottom = self.v_top - row_height
+
+        # Контейнер
         self.container = DirectFrame(
             parent=parent,
-            frameSize=(0, self.bar_width + 0.1, -self.bar_height, self.bar_height),
+            frameSize=(0, self.bar_width + 0.12, -self.bar_height, self.bar_height),
             frameColor=(0, 0, 0, 0),
             pos=position,
         )
@@ -41,23 +71,25 @@ class StatsBar:
             mayChange=False,
         )
 
-        # Фон полоски (тёмный)
-        self.bg = DirectFrame(
-            parent=self.container,
-            frameSize=(0, self.bar_width, -self.bar_height / 2, self.bar_height / 2),
-            frameColor=(0.15, 0.15, 0.15, 0.85),
-            pos=(0, 0, 0),
-        )
+        # Загружаем текстуры
+        self.empty_texture = self._load_texture(empty_texture_path)
+        self.fill_texture = self._load_texture(fill_texture_path)
 
-        # Заполненная часть
-        self.fill = DirectFrame(
-            parent=self.bg,
-            frameSize=(0.002, self.bar_width - 0.002, -self.bar_height / 2 + 0.002, self.bar_height / 2 - 0.002),
-            frameColor=bar_color,
-            pos=(0, 0, 0),
+        # Создаём фоновый бар (пустой)
+        self.bg_node = self._create_textured_card(
+            "bg_bar", self.empty_texture, self.bar_width, self.bar_height
         )
+        self.bg_node.reparentTo(self.container)
+        self.bg_node.setPos(0, 0, 0)
 
-        # Значение справа от бара
+        # Создаём заполненный бар
+        self.fill_node = self._create_textured_card(
+            "fill_bar", self.fill_texture, self.bar_width, self.bar_height
+        )
+        self.fill_node.reparentTo(self.container)
+        self.fill_node.setPos(0, 0, 0.001)  # Чуть впереди фона
+
+        # Значение справа
         self.value_text = OnscreenText(
             text=f"{int(max_value)}",
             parent=self.container,
@@ -68,39 +100,80 @@ class StatsBar:
             mayChange=True,
         )
 
+    def _load_texture(self, path):
+        """Загрузка текстуры с настройками."""
+        tex = Texture()
+        tex.read(path)
+        tex.setMagfilter(Texture.FT_nearest)  # Пиксельный стиль
+        tex.setMinfilter(Texture.FT_nearest)
+        tex.setWrapU(Texture.WM_clamp)
+        tex.setWrapV(Texture.WM_clamp)
+        return tex
+
+    def _create_textured_card(self, name, texture, width, height):
+        """Создаёт карточку с текстурой и нужными UV координатами."""
+        cm = CardMaker(name)
+        # Геометрия карточки
+        cm.setFrame(0, width, -height / 2, height / 2)
+        # UV координаты: используем только нужный ряд текстуры
+        cm.setUvRange(Vec2(0, self.v_bottom), Vec2(1, self.v_top))
+
+        node = NodePath(cm.generate())
+        node.setTexture(texture)
+        node.setTransparency(TransparencyAttrib.M_alpha)
+        return node
+
     def set_value(self, value, max_value=None):
         """Обновить значение полоски."""
         if max_value is not None:
             self.max_value = max_value
 
         self.current_value = max(0, min(value, self.max_value))
-
-        # Обновляем ширину заполнения
         ratio = self.current_value / self.max_value if self.max_value > 0 else 0
-        fill_width = (self.bar_width - 0.004) * ratio
 
-        if fill_width > 0.001:
-            self.fill["frameSize"] = (0.002, 0.002 + fill_width, -self.bar_height / 2 + 0.002, self.bar_height / 2 - 0.002)
-            self.fill.show()
+        # Обрезаем заполненную часть с помощью scissor
+        # Scissor работает в нормализованных координатах экрана [0,1]
+        # Мы обрезаем справа, показывая только ratio часть
+        # НИ В КОЕМ БЛЯТЬ СЛУЧАЕ НЕ ПРОБОВАТЬ РАСШИРЯТЬ ИЛИ СУЖАТЬ АХТУНГ!!!!!
+        if ratio > 0.001:
+            self.fill_node.show()
+            # ScissorAttrib обрезает по экранным координатам
+            # Но для 2D GUI проще перегенерировать карточку с нужной шириной
+            # Иначе случится АХТУНГ х2
+            self._update_fill_width(ratio)
         else:
-            self.fill.hide()
-
-        # Меняем цвет при низком значении
-        if ratio < 0.25:
-            # Критический уровень - красноватый оттенок
-            self.fill["frameColor"] = (0.9, 0.2, 0.2, 1)
-        elif ratio < 0.5:
-            # Низкий уровень - желтоватый
-            self.fill["frameColor"] = (0.9, 0.7, 0.2, 1)
-        else:
-            # Нормальный уровень - исходный цвет
-            self.fill["frameColor"] = self.bar_color
+            self.fill_node.hide()
 
         # Обновляем текст
         self.value_text.setText(f"{int(self.current_value)}")
 
+    def _update_fill_width(self, ratio):
+        """Перегенерирует карточку заполнения с нужной шириной."""
+        # Удаляем старую карточку
+        if self.fill_node:
+            self.fill_node.removeNode()
+
+        # Новая ширина
+        fill_width = self.bar_width * ratio
+
+        # Создаём новую карточку с обрезанным UV
+        cm = CardMaker("fill_bar")
+        cm.setFrame(0, fill_width, -self.bar_height / 2, self.bar_height / 2)
+        # UV: показываем только часть текстуры соответствующую ratio
+        cm.setUvRange(Vec2(0, self.v_bottom), Vec2(ratio, self.v_top))
+
+        self.fill_node = NodePath(cm.generate())
+        self.fill_node.setTexture(self.fill_texture)
+        self.fill_node.setTransparency(TransparencyAttrib.M_alpha)
+        self.fill_node.reparentTo(self.container)
+        self.fill_node.setPos(0, 0, 0.001)
+
     def destroy(self):
         """Очистка ресурсов."""
+        if self.bg_node:
+            self.bg_node.removeNode()
+        if self.fill_node:
+            self.fill_node.removeNode()
         self.container.destroy()
 
 
@@ -147,30 +220,41 @@ class StatsUIModule(PluginModule):
         if self.stats_frame:
             return
 
+        # Пути к текстурам
+        health_tex = os.path.join(TEXTURES_PATH, "health_bar.png")
+        food_tex = os.path.join(TEXTURES_PATH, "food_bar.png")
+        empty_tex = os.path.join(TEXTURES_PATH, "empty_bar.png")
+
         # Контейнер справа сверху
         self.stats_frame = DirectFrame(
-            frameSize=(-0.4, 0, -0.15, 0.05),
+            frameSize=(-0.5, 0, -0.2, 0.1),
             frameColor=(0, 0, 0, 0),
-            pos=(1.25, 0, 0.85),
+            pos=(1.3, 0, 0.85),
             parent=self.app.aspect2d,
         )
 
-        # Полоска здоровья (красная) - сверху
-        self.health_bar = StatsBar(
+        # Полоска здоровья - сверху
+        self.health_bar = TexturedStatsBar(
             parent=self.stats_frame,
-            position=(-0.32, 0, 0),
-            bar_color=(0.8, 0.25, 0.25, 1),
+            position=(-0.38, 0, 0),
+            fill_texture_path=health_tex,
+            empty_texture_path=empty_tex,
             label="HP",
             max_value=100,
+            uv_row=0,  # Верхний ряд текстуры
+            total_rows=4,
         )
 
-        # Полоска голода (оранжевая) - ниже
-        self.hunger_bar = StatsBar(
+        # Полоска еды - ниже
+        self.hunger_bar = TexturedStatsBar(
             parent=self.stats_frame,
-            position=(-0.32, 0, -0.05),
-            bar_color=(0.9, 0.6, 0.2, 1),
+            position=(-0.38, 0, -0.06),
+            fill_texture_path=food_tex,
+            empty_texture_path=empty_tex,
             label="Еда",
             max_value=100,
+            uv_row=0,  # Верхний ряд текстуры
+            total_rows=4,
         )
 
         self.stats_frame.hide()
