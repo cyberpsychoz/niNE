@@ -4,17 +4,21 @@
 """
 
 from direct.gui.DirectGui import (
-    DirectFrame, DirectButton, DirectLabel, OnscreenText
+    DirectFrame, DirectButton, DirectLabel, DirectSlider, DGG
 )
 from direct.gui.OnscreenText import OnscreenText
 from direct.showbase.DirectObject import DirectObject
-from panda3d.core import TextNode, TransparencyAttrib
+from panda3d.core import TextNode
 
 from nine.core.plugins import PluginModule
 
 
 class InventoryClientModule(PluginModule, DirectObject):
     """Клиентский модуль управления UI инвентаря."""
+
+    def __init__(self, context):
+        PluginModule.__init__(self, context)
+        DirectObject.__init__(self)
 
     def on_load(self):
         # Данные инвентаря
@@ -25,8 +29,22 @@ class InventoryClientModule(PluginModule, DirectObject):
         # UI элементы
         self.inventory_frame = None
         self.slots = []
-        self.tooltip = None
         self.crosshair = None
+
+        # Tooltip элементы
+        self.tooltip_frame = None
+        self.tooltip_name = None
+        self.tooltip_desc = None
+        self.hovered_slot = -1
+
+        # Контекстное меню
+        self.context_menu = None
+        self.context_slot = -1
+
+        # Диалог выбора количества
+        self.drop_dialog = None
+        self.drop_slot = -1
+        self.drop_count = 1
 
         # Подписки на события
         self.event_manager.subscribe("inventory_update", self.on_inventory_update)
@@ -73,6 +91,11 @@ class InventoryClientModule(PluginModule, DirectObject):
 
     def toggle_inventory(self):
         """Открывает/закрывает инвентарь."""
+        # Не открываем если активен чат
+        if not self.is_open:
+            if hasattr(self.app, 'is_chat_active') and self.app.is_chat_active():
+                return
+
         if self.is_open:
             self.close_inventory()
         else:
@@ -83,14 +106,17 @@ class InventoryClientModule(PluginModule, DirectObject):
         if self.is_open:
             return
 
+        # Не открываем если активен чат
+        if hasattr(self.app, 'is_chat_active') and self.app.is_chat_active():
+            return
+
         self.is_open = True
+
+        # Останавливаем камеру (отключает захват мыши)
+        if hasattr(self.app, 'camera_controller') and self.app.camera_controller:
+            self.app.camera_controller.stop()
+
         self._create_ui()
-
-        # Показываем курсор мыши
-        props = self.app.win.getProperties()
-        props.setCursorHidden(False)
-        self.app.win.requestProperties(props)
-
         self.logger.debug("Инвентарь открыт")
 
     def close_inventory(self):
@@ -101,11 +127,9 @@ class InventoryClientModule(PluginModule, DirectObject):
         self.is_open = False
         self._destroy_ui()
 
-        # Скрываем курсор мыши если камера активна
+        # Возобновляем камеру
         if hasattr(self.app, 'camera_controller') and self.app.camera_controller:
-            props = self.app.win.getProperties()
-            props.setCursorHidden(True)
-            self.app.win.requestProperties(props)
+            self.app.camera_controller.start()
 
         self.logger.debug("Инвентарь закрыт")
 
@@ -163,16 +187,8 @@ class InventoryClientModule(PluginModule, DirectObject):
                 slot = self._create_slot(slot_index, x, y, slot_size)
                 self.slots.append(slot)
 
-        # Tooltip для отображения названия
-        self.tooltip = OnscreenText(
-            text="",
-            pos=(0, -0.52),
-            scale=0.04,
-            fg=(1, 1, 0.8, 1),
-            shadow=(0, 0, 0, 0.8),
-            parent=self.inventory_frame,
-            align=TextNode.ACenter,
-        )
+        # Клик вне меню закрывает его
+        self.accept("mouse1", self._on_click_outside)
 
         self._update_slots()
 
@@ -194,8 +210,11 @@ class InventoryClientModule(PluginModule, DirectObject):
             command=self._on_slot_click,
             extraArgs=[index],
         )
-        slot_btn.bind("enter", self._on_slot_hover, [index])
-        slot_btn.bind("exit", self._on_slot_unhover)
+
+        # События мыши - используем DGG константы
+        slot_btn.bind(DGG.ENTER, self._on_slot_hover, [index])
+        slot_btn.bind(DGG.EXIT, self._on_slot_unhover)
+        slot_btn.bind(DGG.B3PRESS, self._on_slot_right_click, [index])
 
         # Название предмета
         item_label = DirectLabel(
@@ -225,6 +244,8 @@ class InventoryClientModule(PluginModule, DirectObject):
             "label": item_label,
             "count": count_label,
             "index": index,
+            "pos_x": x,
+            "pos_y": y,
         }
 
     def _update_slots(self):
@@ -248,41 +269,379 @@ class InventoryClientModule(PluginModule, DirectObject):
                 slot["button"]["frameColor"] = (0.3, 0.3, 0.35, 0.5)
 
     def _on_slot_click(self, index: int):
-        """Клик по слоту - использовать предмет."""
+        """Клик по слоту - закрыть контекстное меню."""
+        self._hide_context_menu()
+
+    def _on_slot_hover(self, index: int, event):
+        """Наведение на слот - показать tooltip."""
+        self.hovered_slot = index
+        if index < len(self.inventory_items):
+            self._show_tooltip(index)
+
+    def _on_slot_unhover(self, event):
+        """Убрали курсор со слота."""
+        self.hovered_slot = -1
+        self._hide_tooltip()
+
+    def _on_slot_right_click(self, index: int, event):
+        """Правый клик по слоту - контекстное меню."""
+        if index < len(self.inventory_items):
+            self._show_context_menu(index)
+
+    def _on_click_outside(self):
+        """Клик вне контекстного меню."""
+        self._hide_context_menu()
+
+    # -------------------------------------------------------------------------
+    # Tooltip
+    # -------------------------------------------------------------------------
+
+    def _show_tooltip(self, index: int):
+        """Показывает tooltip для предмета."""
+        if index >= len(self.inventory_items):
+            return
+
+        item = self.inventory_items[index]
+        slot = self.slots[index]
+
+        # Получаем данные предмета
+        name = item.get("name", item.get("class_id", "???"))
+        desc = item.get("description", "")
+        category = item.get("category", "misc")
+        rarity = item.get("rarity", "common")
+        count = item.get("count", 1)
+
+        # Цвет редкости
+        rarity_colors = {
+            "common": (0.9, 0.9, 0.9, 1),
+            "uncommon": (0.3, 0.9, 0.3, 1),
+            "rare": (0.3, 0.5, 0.9, 1),
+            "epic": (0.7, 0.3, 0.9, 1),
+            "legendary": (0.9, 0.7, 0.2, 1),
+        }
+        name_color = rarity_colors.get(rarity, (1, 1, 1, 1))
+
+        # Удаляем старый tooltip
+        self._hide_tooltip()
+
+        # Позиция справа от слота
+        tooltip_x = slot["pos_x"] + 0.2
+        tooltip_y = slot["pos_y"]
+
+        # Корректируем если выходит за край
+        if tooltip_x > 0.3:
+            tooltip_x = slot["pos_x"] - 0.2
+
+        # Создаём фрейм tooltip
+        self.tooltip_frame = DirectFrame(
+            frameColor=(0.08, 0.08, 0.12, 0.95),
+            frameSize=(-0.15, 0.15, -0.12, 0.06),
+            pos=(tooltip_x, 0, tooltip_y),
+            parent=self.inventory_frame,
+            sortOrder=100,
+        )
+
+        # Название предмета
+        self.tooltip_name = DirectLabel(
+            text=name,
+            text_scale=0.035,
+            text_fg=name_color,
+            text_align=TextNode.ALeft,
+            frameColor=(0, 0, 0, 0),
+            pos=(-0.13, 0, 0.02),
+            parent=self.tooltip_frame,
+        )
+
+        # Описание
+        if desc:
+            self.tooltip_desc = DirectLabel(
+                text=desc,
+                text_scale=0.025,
+                text_fg=(0.8, 0.8, 0.8, 1),
+                text_align=TextNode.ALeft,
+                text_wordwrap=10,
+                frameColor=(0, 0, 0, 0),
+                pos=(-0.13, 0, -0.03),
+                parent=self.tooltip_frame,
+            )
+
+        # Категория
+        category_names = {
+            "consumable": "Расходуемое",
+            "weapon": "Оружие",
+            "armor": "Броня",
+            "tool": "Инструмент",
+            "currency": "Валюта",
+            "misc": "Разное",
+        }
+        cat_text = category_names.get(category, category)
+
+        DirectLabel(
+            text=cat_text,
+            text_scale=0.02,
+            text_fg=(0.6, 0.6, 0.6, 1),
+            text_align=TextNode.ALeft,
+            frameColor=(0, 0, 0, 0),
+            pos=(-0.13, 0, -0.09),
+            parent=self.tooltip_frame,
+        )
+
+    def _hide_tooltip(self):
+        """Скрывает tooltip."""
+        if self.tooltip_frame:
+            self.tooltip_frame.destroy()
+            self.tooltip_frame = None
+        self.tooltip_name = None
+        self.tooltip_desc = None
+
+    # -------------------------------------------------------------------------
+    # Контекстное меню
+    # -------------------------------------------------------------------------
+
+    def _show_context_menu(self, index: int):
+        """Показывает контекстное меню для предмета."""
+        if index >= len(self.inventory_items):
+            return
+
+        item = self.inventory_items[index]
+        slot = self.slots[index]
+
+        # Закрываем предыдущее меню
+        self._hide_context_menu()
+        self.context_slot = index
+
+        # Позиция меню
+        menu_x = slot["pos_x"] + 0.1
+        menu_y = slot["pos_y"] - 0.05
+
+        # Корректируем если выходит за край
+        if menu_x > 0.35:
+            menu_x = slot["pos_x"] - 0.1
+
+        # Определяем доступные действия
+        category = item.get("category", "misc")
+        droppable = item.get("droppable", True)
+
+        # Можно использовать consumable
+        can_use = category == "consumable"
+
+        # Создаём меню
+        menu_height = 0.08
+        if can_use:
+            menu_height += 0.05
+        if droppable:
+            menu_height += 0.05
+
+        self.context_menu = DirectFrame(
+            frameColor=(0.15, 0.15, 0.2, 0.98),
+            frameSize=(-0.1, 0.1, -menu_height, 0.02),
+            pos=(menu_x, 0, menu_y),
+            parent=self.inventory_frame,
+            sortOrder=200,
+        )
+
+        btn_y = -0.02
+
+        # Кнопка "Использовать"
+        if can_use:
+            DirectButton(
+                text="Использовать",
+                text_scale=0.03,
+                text_fg=(1, 1, 1, 1),
+                frameColor=(0.25, 0.4, 0.25, 1),
+                frameSize=(-0.09, 0.09, -0.02, 0.025),
+                pos=(0, 0, btn_y),
+                parent=self.context_menu,
+                command=self._use_item,
+                extraArgs=[index],
+            )
+            btn_y -= 0.05
+
+        # Кнопка "Выбросить"
+        if droppable:
+            DirectButton(
+                text="Выбросить",
+                text_scale=0.03,
+                text_fg=(1, 1, 1, 1),
+                frameColor=(0.4, 0.25, 0.25, 1),
+                frameSize=(-0.09, 0.09, -0.02, 0.025),
+                pos=(0, 0, btn_y),
+                parent=self.context_menu,
+                command=self._drop_item,
+                extraArgs=[index],
+            )
+            btn_y -= 0.05
+
+        # Кнопка "Отмена"
+        DirectButton(
+            text="Отмена",
+            text_scale=0.03,
+            text_fg=(0.8, 0.8, 0.8, 1),
+            frameColor=(0.3, 0.3, 0.35, 1),
+            frameSize=(-0.09, 0.09, -0.02, 0.025),
+            pos=(0, 0, btn_y),
+            parent=self.context_menu,
+            command=self._hide_context_menu,
+        )
+
+    def _hide_context_menu(self):
+        """Скрывает контекстное меню."""
+        if self.context_menu:
+            self.context_menu.destroy()
+            self.context_menu = None
+        self.context_slot = -1
+
+    def _use_item(self, index: int):
+        """Использовать предмет из контекстного меню."""
+        self._hide_context_menu()
+
         if index < len(self.inventory_items):
             item = self.inventory_items[index]
             self.logger.debug(f"Использование предмета: {item.get('name')} (слот {index})")
 
-            # Отправляем событие использования на сервер
-            # Используем player_id как uuid
             if hasattr(self.app, 'player_id') and self.app.player_id >= 0:
                 self.event_manager.post("client_item_use", {
                     "slot": index,
                 })
 
-    def _on_slot_hover(self, index: int, event):
-        """Наведение на слот - показать tooltip."""
+    def _drop_item(self, index: int):
+        """Выбросить предмет - показать диалог выбора количества."""
+        self._hide_context_menu()
+
         if index < len(self.inventory_items):
             item = self.inventory_items[index]
-            name = item.get("name", item.get("class_id", "???"))
-            desc = item.get("description", "")
+            count = item.get("count", 1)
 
-            tooltip_text = name
-            if desc:
-                tooltip_text += f"\n{desc}"
+            if count == 1:
+                # Если только 1 предмет, выбрасываем сразу
+                self._do_drop(index, 1)
+            else:
+                # Показываем диалог выбора количества
+                self._show_drop_dialog(index, count)
 
-            if self.tooltip:
-                self.tooltip.setText(tooltip_text)
+    def _show_drop_dialog(self, index: int, max_count: int):
+        """Показывает диалог выбора количества для выбрасывания."""
+        self._hide_drop_dialog()
 
-    def _on_slot_unhover(self, event):
-        """Убрали курсор со слота."""
-        if self.tooltip:
-            self.tooltip.setText("")
+        self.drop_slot = index
+        self.drop_count = 1
+        item = self.inventory_items[index]
+        item_name = item.get("name", item.get("class_id", "???"))
+
+        # Создаём диалог
+        self.drop_dialog = DirectFrame(
+            frameColor=(0.1, 0.1, 0.15, 0.98),
+            frameSize=(-0.25, 0.25, -0.18, 0.12),
+            pos=(0, 0, 0),
+            parent=self.app.aspect2d,
+            sortOrder=300,
+        )
+
+        # Заголовок
+        DirectLabel(
+            text=f"Выбросить: {item_name}",
+            text_scale=0.04,
+            text_fg=(1, 1, 1, 1),
+            frameColor=(0, 0, 0, 0),
+            pos=(0, 0, 0.07),
+            parent=self.drop_dialog,
+        )
+
+        # Текст количества
+        self.drop_count_label = DirectLabel(
+            text=f"Количество: 1 / {max_count}",
+            text_scale=0.035,
+            text_fg=(1, 1, 0.8, 1),
+            frameColor=(0, 0, 0, 0),
+            pos=(0, 0, 0.02),
+            parent=self.drop_dialog,
+        )
+
+        # Слайдер
+        self.drop_slider = DirectSlider(
+            range=(1, max_count),
+            value=1,
+            pageSize=1,
+            scale=0.4,
+            pos=(0, 0, -0.04),
+            parent=self.drop_dialog,
+            command=self._on_drop_slider_change,
+        )
+
+        # Кнопки
+        DirectButton(
+            text="Выбросить",
+            text_scale=0.035,
+            text_fg=(1, 1, 1, 1),
+            frameColor=(0.4, 0.25, 0.25, 1),
+            frameSize=(-0.1, 0.1, -0.025, 0.035),
+            pos=(-0.1, 0, -0.12),
+            parent=self.drop_dialog,
+            command=self._confirm_drop,
+        )
+
+        DirectButton(
+            text="Отмена",
+            text_scale=0.035,
+            text_fg=(0.8, 0.8, 0.8, 1),
+            frameColor=(0.3, 0.3, 0.35, 1),
+            frameSize=(-0.08, 0.08, -0.025, 0.035),
+            pos=(0.1, 0, -0.12),
+            parent=self.drop_dialog,
+            command=self._hide_drop_dialog,
+        )
+
+    def _on_drop_slider_change(self):
+        """Обновляет текст при изменении слайдера."""
+        if self.drop_slider and self.drop_count_label:
+            value = int(self.drop_slider['value'])
+            self.drop_count = value
+
+            if self.drop_slot < len(self.inventory_items):
+                max_count = self.inventory_items[self.drop_slot].get("count", 1)
+                self.drop_count_label['text'] = f"Количество: {value} / {max_count}"
+
+    def _confirm_drop(self):
+        """Подтверждение выбрасывания."""
+        slot = self.drop_slot
+        count = self.drop_count
+        self._hide_drop_dialog()
+        self._do_drop(slot, count)
+
+    def _do_drop(self, index: int, count: int):
+        """Фактически выбрасывает предмет."""
+        if index < len(self.inventory_items):
+            item = self.inventory_items[index]
+            self.logger.debug(f"Выбрасывание: {count}x {item.get('name')} (слот {index})")
+
+            if hasattr(self.app, 'player_id') and self.app.player_id >= 0:
+                self.event_manager.post("client_item_drop", {
+                    "slot": index,
+                    "count": count,
+                })
+
+    def _hide_drop_dialog(self):
+        """Скрывает диалог выбора количества."""
+        if self.drop_dialog:
+            self.drop_dialog.destroy()
+            self.drop_dialog = None
+        self.drop_slot = -1
+        self.drop_count = 1
+        self.drop_slider = None
+        self.drop_count_label = None
+
+    # -------------------------------------------------------------------------
+    # Cleanup
+    # -------------------------------------------------------------------------
 
     def _destroy_ui(self):
         """Уничтожает UI инвентаря."""
+        self._hide_tooltip()
+        self._hide_context_menu()
+        self._hide_drop_dialog()
+        self.ignore("mouse1")
+
         if self.inventory_frame:
             self.inventory_frame.destroy()
             self.inventory_frame = None
         self.slots = []
-        self.tooltip = None

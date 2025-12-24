@@ -84,6 +84,7 @@ class GameClient(ShowBase):
         self.ui = UIManager(self, callbacks)
         self.event_manager.subscribe("client_send_chat_message", self.send_chat_packet)
         self.event_manager.subscribe("client_item_use", self.send_item_use_packet)
+        self.event_manager.subscribe("client_item_drop", self.send_item_drop_packet)
 
         # --- Final Initializations ---
         self.plugin_manager.load_plugins()
@@ -647,6 +648,16 @@ class GameClient(ShowBase):
             packet = {
                 "type": "item_use",
                 "slot": data.get("slot", 0),
+            }
+            self.asyncio_loop.create_task(send_message(self.writer, packet))
+
+    def send_item_drop_packet(self, data: dict):
+        """Отправляет запрос на выбрасывание предмета."""
+        if self.is_connected and self.player_id >= 0:
+            packet = {
+                "type": "item_drop",
+                "slot": data.get("slot", 0),
+                "count": data.get("count", 1),
             }
             self.asyncio_loop.create_task(send_message(self.writer, packet))
 

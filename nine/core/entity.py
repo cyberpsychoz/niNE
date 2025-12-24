@@ -244,9 +244,8 @@ class Entity(ABC):
         return self._node
 
     def _create_default_cube(self, render_node: 'NodePath') -> 'NodePath':
-        """Создаёт жёлтый куб как дефолтную модель."""
-        from panda3d.core import GeomNode, Geom, GeomVertexFormat, GeomVertexData
-        from panda3d.core import GeomVertexWriter, GeomTriangles, Vec4
+        """Создаёт белый куб как дефолтную модель предмета."""
+        from panda3d.core import Vec4
 
         # Создаём простой куб
         node = render_node.attachNewNode(f"entity_{self.unique_id}")
@@ -255,24 +254,24 @@ class Entity(ABC):
         try:
             cube = loader.loadModel("models/box")
             cube.reparentTo(node)
-            cube.setScale(0.3)
-            cube.setColor(Vec4(1.0, 0.9, 0.2, 1.0))  # Жёлтый
+            cube.setScale(0.2)  # Маленький куб
+            cube.setColor(Vec4(0.95, 0.95, 0.95, 1.0))  # Белый
         except Exception:
-            # Если нет box, создадим примитив
+            # Если нет box, создадим примитив из карточек
             from panda3d.core import CardMaker
             cm = CardMaker("cube_face")
-            cm.setFrame(-0.15, 0.15, -0.15, 0.15)
+            cm.setFrame(-0.1, 0.1, -0.1, 0.1)
             for i, (h, p) in enumerate([(0, 0), (90, 0), (180, 0), (270, 0), (0, 90), (0, -90)]):
                 face = node.attachNewNode(cm.generate())
                 face.setH(h)
                 face.setP(p)
                 if p == 90:
-                    face.setZ(0.15)
+                    face.setZ(0.1)
                 elif p == -90:
-                    face.setZ(-0.15)
+                    face.setZ(-0.1)
                 else:
-                    face.setY(0.15)
-            node.setColor(Vec4(1.0, 0.9, 0.2, 1.0))
+                    face.setY(0.1)
+            node.setColor(Vec4(0.95, 0.95, 0.95, 1.0))  # Белый
 
         return node
 
