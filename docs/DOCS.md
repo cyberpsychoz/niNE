@@ -98,3 +98,87 @@
 
 -   **`config.json`:** Содержит настройки на стороне клиента, такие как никнейм, разрешение и чувствительность камеры. Его читают только клиенты.
 -   **`server_config.json`:** Содержит настройки на стороне сервера, такие как хост, порт, частота тиков и флаг `allow_dev_client`. **Этот файл никогда не должен читаться клиентом.** Это разделение было ключевой частью недавнего архитектурного рефакторинга.
+
+---
+
+## Физическая система
+
+### Bullet Physics
+
+Проект использует **Bullet Physics** через интеграцию Panda3D (`panda3d.bullet`) для симуляции физики на сервере.
+
+**Файлы:**
+- `nine/core/character_controller.py` — контроллер персонажа
+- `nine/core/world.py` — игровой мир и коллизия карты
+- `nine/server/game_server.py` — физический мир и игровой цикл
+
+### Физика персонажа
+
+Персонажи используют `BulletCharacterControllerNode` — специализированный контроллер для игровых персонажей:
+
+```python
+# Создание капсулы коллизии
+shape = BulletCapsuleShape(radius=0.4, height=1.8 - 0.8, up=ZUp)
+character_node = BulletCharacterControllerNode(shape, step_height=0.4, name='Player')
+
+# Настройка гравитации и прыжка
+character_node.setGravity(50.0)
+character_node.setFallSpeed(100.0)
+character_node.setMaxJumpHeight(2.0)
+character_node.setJumpSpeed(12.0)
+```
+
+**Важные особенности:**
+- `BulletCharacterControllerNode` имеет **собственную гравитацию**, независимую от `BulletWorld.setGravity()`
+- Маска коллизии должна быть установлена: `character_np.setCollideMask(BitMask32.allOn())`
+- Движение задаётся через `setLinearMovement(velocity, is_local=False)` — параметр `is_local` должен быть `False` для мировых координат
+
+### Коллизия карты
+
+Геометрия карты автоматически преобразуется в коллизионный меш:
+
+```python
+mesh = BulletTriangleMesh()
+for geom_node_path in map_model.findAllMatches("**/+GeomNode"):
+    geom_node = geom_node_path.node()
+    for i in range(geom_node.getNumGeoms()):
+        geom = geom_node.getGeom(i)
+        mesh.addGeom(geom, True, transform)
+
+shape = BulletTriangleMeshShape(mesh, dynamic=False)
+map_body = BulletRigidBodyNode('MapCollision')
+map_body.addShape(shape)
+map_np.setCollideMask(BitMask32.allOn())
+```
+
+### Игровой цикл и delta time
+
+**Критически важно для headless-режима сервера:**
+
+В headless-режиме (без окна) `globalClock.getDt()` может возвращать некорректные значения (~0) после первого кадра. Решение:
+
+```python
+from panda3d.core import ClockObject
+globalClock = ClockObject.getGlobalClock()
+
+def game_loop(self, task):
+    dt = globalClock.getDt()
+
+    # Исправление для headless-режима
+    if dt < 0.001:
+        dt = 1.0 / self.tick_rate
+
+    # Ограничение максимального dt (защита от "взрывов" физики)
+    if dt > 0.1:
+        dt = 0.1
+
+    # Симуляция физики с substeps
+    self.physics_world.doPhysics(dt, maxSubSteps=10, fixedTimeStep=1.0/60.0)
+```
+
+### Порядок обновления
+
+1. Обработка сетевых сообщений
+2. Обновление состояния игроков (`world.update(dt)`)
+3. Симуляция физики (`physics_world.doPhysics(dt)`)
+4. Рассылка состояния мира клиентам

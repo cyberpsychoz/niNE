@@ -8,10 +8,15 @@ Features:
 - Smooth rotation towards movement direction
 """
 
+import logging
+import time
 from math import atan2, degrees
 
-from panda3d.bullet import BulletCharacterControllerNode, BulletCapsuleShape
-from panda3d.core import LVector3, NodePath
+from panda3d.bullet import BulletCharacterControllerNode, BulletCapsuleShape, BulletRigidBodyNode, ZUp
+from panda3d.core import LVector3, NodePath, BitMask32
+
+# Use the server's logger
+logger = logging.getLogger("nine.server.game_server")
 
 
 class CharacterController:
@@ -25,10 +30,10 @@ class CharacterController:
         self.actor = actor_nodepath
         self.physics_world = physics_world
 
-        # === Movement parameters (Source-like) ===
-        # Speeds (units per second, 1 unit ≈ 1 meter)
-        self.walk_speed = 1.25     # Normal walking speed
-        self.run_speed = 2.5       # Running speed (with shift)
+        # === Movement parameters ===
+        # Speeds (units per second)
+        self.walk_speed = 5.0      # Normal walking speed
+        self.run_speed = 10.0      # Running speed (with shift)
 
         # Acceleration
         self.ground_accel = 8.0    # How fast we accelerate on ground
@@ -48,25 +53,54 @@ class CharacterController:
         self.move_direction = LVector3(0, 1, 0)
         self.current_heading = 0.0
 
+        # Logging state
+        self._last_log_time = 0
+        self._spawn_time = time.time()
+        self._last_pos = None
+
         self.reference_node = self.actor.getParent()
 
-        # Physics capsule
+        # TEST: Use RigidBody instead of CharacterController to test gravity
         height = 1.8
         radius = 0.4
-        shape = BulletCapsuleShape(radius, height - 2 * radius, 2)
-        self.character_node = BulletCharacterControllerNode(
-            shape, 0.4, f'Player_{self.actor.getName()}'
-        )
-        self.character_np = self.reference_node.attachNewNode(self.character_node)
-        self.physics_world.attachCharacter(self.character_node)
+        shape = BulletCapsuleShape(radius, height - 2 * radius, ZUp)
+
+        # Use CharacterController (more stable for characters)
+        self.use_rigid_body = False
+
+        if self.use_rigid_body:
+            self.character_node = BulletRigidBodyNode(f'Player_{self.actor.getName()}')
+            self.character_node.addShape(shape)
+            self.character_node.setMass(80.0)  # 80 kg
+            self.character_node.setAngularFactor(LVector3(0, 0, 0))  # Prevent tilting
+            self.character_node.setDeactivationEnabled(False)  # Never sleep!
+            self.character_np = self.reference_node.attachNewNode(self.character_node)
+            self.character_np.setCollideMask(BitMask32.allOn())
+            self.physics_world.attachRigidBody(self.character_node)
+        else:
+            self.character_node = BulletCharacterControllerNode(
+                shape, 0.4, f'Player_{self.actor.getName()}'
+            )
+            self.character_np = self.reference_node.attachNewNode(self.character_node)
+            self.character_np.setCollideMask(BitMask32.allOn())
+            self.physics_world.attachCharacter(self.character_node)
+            self.character_node.setGravity(50.0)
+            self.character_node.setFallSpeed(100.0)
+            self.character_node.setMaxJumpHeight(2.0)
+            self.character_node.setJumpSpeed(12.0)
 
         # Reparent actor to physics node
         self.actor.reparentTo(self.character_np)
         self.actor.setPos(0, 0, -height/2)
 
     def jump(self):
-        if self.character_node.isOnGround():
-            self.character_node.doJump()
+        if self.use_rigid_body:
+            # For rigid body, apply impulse
+            # TODO: Need ground check
+            self.character_node.applyCentralImpulse(LVector3(0, 0, 500))
+        else:
+            if self.character_node.isOnGround():
+                self.character_node.doJump()
 
     def get_anim_state(self):
         """Returns animation name based on movement state."""
@@ -142,48 +176,58 @@ class CharacterController:
             self.jump()
 
         self.is_running = is_running
-        on_ground = self.character_node.isOnGround()
 
+
+        # Movement
         has_input = move_vector.length_squared() > 0.01
 
-        # Store movement direction for rotation
         if has_input:
             self.move_direction = LVector3(move_vector)
             self.move_direction.normalize()
-
-        # Calculate target speed
-        wish_speed = self.run_speed if is_running else self.walk_speed
-
-        if on_ground:
-            # Apply friction first (only on ground)
-            if not has_input:
-                self._apply_friction(dt)
-            else:
-                # Reduced friction when moving (allows smoother direction changes)
-                self._apply_friction(dt * 0.3)
-
-            # Then accelerate towards input direction
-            if has_input:
-                self._accelerate(self.move_direction, wish_speed, self.ground_accel, dt)
+            wish_speed = self.run_speed if is_running else self.walk_speed
+            speed = LVector3(self.move_direction * wish_speed)
         else:
-            # Air control - much less acceleration
+            speed = LVector3(0, 0, 0)
+
+        self.is_moving = has_input
+
+        if self.use_rigid_body:
+            # For rigid body: set horizontal velocity, preserve vertical (gravity)
+            current_vel = self.character_node.getLinearVelocity()
+            target_vel = LVector3(speed.x, speed.y, current_vel.z)
+            self.character_node.setLinearVelocity(target_vel)
+        else:
+            # CharacterController uses setLinearMovement
+            # Second parameter is is_local - False for world space movement
             if has_input:
-                self._accelerate(self.move_direction, wish_speed, self.air_accel, dt)
+                self.character_node.setLinearMovement(speed, False)
+            else:
+                self.character_node.setLinearMovement(LVector3(0, 0, 0), False)
 
-        # Check if we're actually moving
-        speed = self.velocity.length()
-        self.is_moving = speed > 0.1
+        # Log position - more frequently in first 5 seconds
+        now = time.time()
+        pos = self.character_np.getPos()
 
-        # Apply velocity to character
-        self.character_node.setLinearMovement(self.velocity, True)
+        # Detect sudden position changes (explosion detection)
+        if self._last_pos is not None:
+            delta = (pos - self._last_pos).length()
+            if delta > 10.0:  # More than 10 units in one frame = something wrong
+                logger.warning(f"[Player] EXPLOSION! Delta={delta:.2f} from ({self._last_pos.x:.2f}, {self._last_pos.y:.2f}, {self._last_pos.z:.2f}) to ({pos.x:.2f}, {pos.y:.2f}, {pos.z:.2f})")
+        self._last_pos = LVector3(pos)
 
-        # Smooth rotation towards velocity direction (if moving)
-        if self.is_moving and speed > 0.5:
-            # Rotate towards velocity direction, not input direction
-            # This gives more natural-feeling rotation
-            vel_dir = LVector3(self.velocity)
-            vel_dir.normalize()
-            target_heading = degrees(atan2(-vel_dir.x, vel_dir.y)) + 180
+        log_interval = 0.1 if (now - self._spawn_time) < 5.0 else 1.0
+        if now - self._last_log_time >= log_interval:
+            if self.use_rigid_body:
+                vel = self.character_node.getLinearVelocity()
+                logger.info(f"[Player] pos=({pos.x:.2f}, {pos.y:.2f}, {pos.z:.2f}) vel=({vel.x:.2f}, {vel.y:.2f}, {vel.z:.2f}) moving={self.is_moving}")
+            else:
+                on_ground = self.character_node.isOnGround()
+                logger.info(f"[Player] pos=({pos.x:.2f}, {pos.y:.2f}, {pos.z:.2f}) onGround={on_ground} moving={self.is_moving}")
+            self._last_log_time = now
+
+        # Smooth rotation towards movement direction (if moving)
+        if self.is_moving and speed.length() > 0.1:
+            target_heading = degrees(atan2(-self.move_direction.x, self.move_direction.y)) + 180
             self.current_heading = self._lerp_angle(
                 self.current_heading, target_heading, self.rotation_speed * dt
             )
