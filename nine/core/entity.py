@@ -351,20 +351,45 @@ class EntityManager:
     Управляет созданием, обновлением и удалением entity.
     """
 
-    def __init__(self, world, event_manager):
+    def __init__(self, world, event_manager, physics_world=None, render_node=None):
         self.world = world
         self.event_manager = event_manager
+        self.physics_world = physics_world
+        self.render_node = render_node
         self.entities: Dict[str, Entity] = {}  # unique_id -> Entity
         self.world_entities: List[str] = []  # Entity в мире (spawned)
 
     def spawn(self, entity: Entity, position=None) -> Entity:
-        """Спавнит entity в мире."""
+        """Спавнит entity в мире с физикой."""
         self.entities[entity.unique_id] = entity
         self.world_entities.append(entity.unique_id)
+
+        # Создаём визуальную модель если есть render node (server-side)
+        if self.render_node and not entity._node:
+            entity.create_model(self.render_node)
+
+        # Добавляем физику если есть physics_world
+        if self.physics_world and entity._node:
+            from nine.core.components import PhysicsComponent
+
+            # Создаём компонент физики
+            physics = PhysicsComponent(
+                self.physics_world,
+                mass=1.0,
+                shape_type="box",
+                shape_size=(0.3, 0.3, 0.3)
+            )
+            entity.add_component("physics", physics)
+
         entity.on_spawn(self.world, position)
 
         if position and entity._node:
-            entity._node.setPos(*position)
+            # Если есть физика, устанавливаем позицию через неё
+            physics = entity.get_component("physics")
+            if physics:
+                physics.set_position(position)
+            else:
+                entity._node.setPos(*position)
 
         self.event_manager.post("entity_spawned", {
             "entity": entity,

@@ -20,10 +20,17 @@ class InventoryServerModule(PluginModule):
         # Максимальный размер инвентаря
         self.max_slots = 20
 
-        # Entity manager для предметов в мире
+        # Entity manager для предметов в мире (с физикой)
         self.entity_manager: Optional[EntityManager] = None
         if hasattr(self.app, 'world'):
-            self.entity_manager = EntityManager(self.app.world, self.event_manager)
+            physics_world = getattr(self.app, 'physics_world', None)
+            render_node = getattr(self.app, 'render', None)
+            self.entity_manager = EntityManager(
+                self.app.world,
+                self.event_manager,
+                physics_world=physics_world,
+                render_node=render_node
+            )
 
         # Загружаем entity из папки entities
         from nine.plugins.inventory.entities import load_entities
