@@ -8,8 +8,11 @@ from collections import deque
 from itertools import cycle
 
 from direct.showbase.ShowBase import ShowBase
-from panda3d.core import loadPrcFileData, Vec3
+from panda3d.core import loadPrcFileData, Vec3, ClockObject
 from panda3d.bullet import BulletWorld
+
+# Global clock for delta time
+globalClock = ClockObject.getGlobalClock()
 
 from nine.core.world import GameWorld
 from nine.core.events import EventManager
@@ -53,7 +56,7 @@ class GameServer(ShowBase):
 
         # Setup Physics and World
         self.physics_world = BulletWorld()
-        self.physics_world.setGravity(Vec3(0, 0, -9.81))
+        self.physics_world.setGravity(Vec3(0, 0, -30.0))  # Stronger gravity for game feel
         self.world = GameWorld(self.physics_world, self.render)
 
         # Event system and plugins
@@ -87,16 +90,28 @@ class GameServer(ShowBase):
         return task.cont
 
     def game_loop(self, task):
-        dt = globalClock.getDt()
-        
+        raw_dt = globalClock.getDt()
+        dt = raw_dt
+
+        # Fix for headless mode: globalClock returns near-zero dt after first frame
+        if dt < 0.001:
+            dt = 1.0 / self.tick_rate
+        # Also cap max dt to prevent physics explosions
+        if dt > 0.1:
+            self.logger.warning(f"[Physics] Large dt detected: {raw_dt:.4f}, capping to 0.1")
+            dt = 0.1
+
         # 1. Process network messages
         while self.message_queue:
             client_id, data = self.message_queue.popleft()
             self.process_message(client_id, data)
 
         # 2. Update game world
-        self.physics_world.doPhysics(dt)
+        # First update players (set their desired movement)
         self.world.update(dt)
+        # Then run physics simulation (applies movement + gravity)
+        # Use substeps to ensure physics runs smoothly even at low tick rates
+        self.physics_world.doPhysics(dt, 10, 1.0 / 60.0)
 
         # 3. Broadcast new state
         world_state = self.world.get_world_state()

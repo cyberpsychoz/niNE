@@ -2,12 +2,21 @@
 Server-side game world management.
 """
 
+import json
+import logging
 import time
 from itertools import cycle
 from math import sin, cos, radians
 
-from panda3d.bullet import BulletRigidBodyNode, BulletPlaneShape
-from panda3d.core import Vec3, LVector3
+logger = logging.getLogger("nine.server.game_server")
+
+from panda3d.bullet import (
+    BulletRigidBodyNode,
+    BulletPlaneShape,
+    BulletTriangleMesh,
+    BulletTriangleMeshShape,
+)
+from panda3d.core import Vec3, LVector3, Geom, GeomNode
 
 from nine.core.database import DatabaseManager
 from nine.core.character_controller import CharacterController
@@ -95,29 +104,113 @@ class Player:
 class GameWorld:
     """Manages the server-side game state, including all players and physics."""
 
-    def __init__(self, physics_world, render_node):
+    def __init__(self, physics_world, render_node, world_config: dict = None):
         self.physics_world = physics_world
         self.render = render_node
         self.players = {}
         self.db = DatabaseManager()
+        self.world_config = world_config or self._load_world_config()
 
-        # Spawn points - Z=0 means actor feet are at ground level
-        # Physics capsule will be positioned higher automatically
+        # Spawn points - above map geometry (map floor is around Z=3-5)
         self.spawn_points = cycle([
-            [0, 0, 0], [5, 5, 0], [-5, 5, 0], [5, -5, 0], [-5, -5, 0]
+            [0, 0, 10], [5, 5, 10], [-5, 5, 10], [5, -5, 10], [-5, -5, 10]
         ])
 
         self._setup_scene()
 
+    def _load_world_config(self) -> dict:
+        """Загружает конфигурацию мира из server_config.json."""
+        try:
+            with open("server_config.json") as f:
+                config = json.load(f)
+            return config.get("world", {})
+        except Exception:
+            return {}
+
     def _setup_scene(self):
-        """Sets up the static physical world."""
-        # BulletPlaneShape(normal, offset) creates an infinite plane at z=offset
-        # We want the ground at z=0 to match the visual ground on the client
-        ground_shape = BulletPlaneShape(Vec3(0, 0, 1), 0)
-        ground_body_node = BulletRigidBodyNode('Ground')
-        ground_body_node.addShape(ground_shape)
-        ground_np = self.render.attachNewNode(ground_body_node)
-        self.physics_world.attachRigidBody(ground_body_node)
+        """Sets up the static physical world with map collision."""
+        self.ground_body = None
+        self.ground_np = None
+
+        # DEBUG: Use simple test floor to verify physics works
+        use_test_floor = False
+
+        if use_test_floor:
+            from panda3d.bullet import BulletBoxShape
+            from panda3d.core import BitMask32
+            ground_shape = BulletBoxShape(Vec3(50, 50, 0.5))
+            self.ground_body = BulletRigidBodyNode('TestFloor')
+            self.ground_body.addShape(ground_shape)
+            self.ground_body.setMass(0)
+            self.ground_np = self.render.attachNewNode(self.ground_body)
+            self.ground_np.setPos(0, 0, -0.5)
+            self.ground_np.setCollideMask(BitMask32.allOn())
+            self.physics_world.attachRigidBody(self.ground_body)
+            logger.info("[World] Using TEST FLOOR at z=0 with collision mask")
+            return
+
+        # Try to load map with collision first
+        map_config = self.world_config.get("map", {})
+        map_model_path = map_config.get("model")
+        map_loaded = False
+
+        if map_model_path:
+            map_loaded = self._load_map_collision(map_model_path)
+
+        # Fallback ground plane only if map loading failed
+        if not map_loaded:
+            from panda3d.core import BitMask32
+            logger.info("[World] Using fallback ground plane at z=-100")
+            ground_shape = BulletPlaneShape(Vec3(0, 0, 1), -100)
+            self.ground_body = BulletRigidBodyNode('Ground')
+            self.ground_body.addShape(ground_shape)
+            self.ground_np = self.render.attachNewNode(self.ground_body)
+            self.ground_np.setCollideMask(BitMask32.allOn())
+            self.physics_world.attachRigidBody(self.ground_body)
+
+    def _load_map_collision(self, model_path: str) -> bool:
+        """Loads map model and creates collision mesh from its geometry."""
+        try:
+            # Load model (server-side, no rendering)
+            map_model = loader.loadModel(model_path)
+            if not map_model:
+                logger.error(f"[World] Failed to load map model: {model_path}")
+                return False
+
+            # Create triangle mesh from all geometry in the model
+            mesh = BulletTriangleMesh()
+            geom_count = 0
+
+            for geom_node_path in map_model.findAllMatches("**/+GeomNode"):
+                geom_node = geom_node_path.node()
+                transform = geom_node_path.getTransform(map_model)
+
+                for i in range(geom_node.getNumGeoms()):
+                    geom = geom_node.getGeom(i)
+                    mesh.addGeom(geom, True, transform)
+                    geom_count += 1
+
+            if geom_count == 0:
+                logger.error(f"[World] No geometry found in map: {model_path}")
+                return False
+
+            # Create collision shape and rigid body
+            from panda3d.core import BitMask32
+            shape = BulletTriangleMeshShape(mesh, dynamic=False)
+            map_body = BulletRigidBodyNode('MapCollision')
+            map_body.addShape(shape)
+            map_body.setMass(0)  # Static object
+
+            map_np = self.render.attachNewNode(map_body)
+            map_np.setCollideMask(BitMask32.allOn())  # Enable collision detection
+            self.physics_world.attachRigidBody(map_body)
+
+            logger.info(f"[World] Map collision loaded: {model_path} ({geom_count} geoms)")
+            return True
+
+        except Exception as e:
+            logger.error(f"[World] Error loading map collision: {e}")
+            return False
 
     def get_world_state(self):
         """Gathers the state of all players for broadcasting."""
@@ -162,7 +255,7 @@ class GameWorld:
             player.character_controller.cleanup()
             player.actor.removeNode()
             self.db.shutdown()
-            print(f"Removed player {client_id}")
+            logger.info(f"[World] Removed player (client_id={client_id})")
             return player.client_id
         return None
 
@@ -172,11 +265,15 @@ class GameWorld:
 
         player = Player(client_id, name, actor, self.physics_world)
 
-        # Set spawn position (for actor, not physics node)
+        # Set spawn position
         spawn_pos = next(self.spawn_points)
+        logger.info(f"[World] Spawning player '{name}' at {spawn_pos}")
         player.character_controller.set_position(spawn_pos)
+        # Verify position was set
+        actual_pos = player.character_controller.character_np.getPos()
+        logger.info(f"[World] Actual position after spawn: ({actual_pos.x:.2f}, {actual_pos.y:.2f}, {actual_pos.z:.2f})")
 
         self.players[client_id] = player
 
-        print(f"Added player {name} ({client_id}) to the world.")
+        logger.info(f"[World] Added player '{name}' (client_id={client_id})")
         return player
