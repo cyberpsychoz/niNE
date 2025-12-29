@@ -180,10 +180,9 @@ class GameClient(ShowBase):
         if self.camera_controller:
             self.camera_controller.start()
         if not self.input_task:
-            if self.dev_mode:
-                self.input_task = self.taskMgr.add(self.update_movement_task, "update-movement-task")
-            else:
-                self.input_task = self.taskMgr.add(self.send_input_task, "send-input-task")
+            # Always use server-authoritative movement (send input state to server)
+            # Dev mode only affects connection behavior, not movement model
+            self.input_task = self.taskMgr.add(self.send_input_task, "send-input-task")
         # Start interpolation task for other players
         if not self.taskMgr.hasTaskNamed("interpolate-players"):
             self.taskMgr.add(self.interpolate_other_players_task, "interpolate-players")
@@ -518,13 +517,14 @@ class GameClient(ShowBase):
                         'vel': LVector3(*vel),
                         'last_update': time.time(),
                     }
-                elif not self.dev_mode:
+                else:
                     # Server-authoritative mode: directly set own position
+                    # (applies to both normal and dev clients now)
                     wrapper.setPos(*pos)
                     wrapper.setHpr(*rot)
 
-                # Update animations (dev mode handles own player's animations locally)
-                if (not self.dev_mode or is_other_player) and actor_model:
+                # Update animations from server state
+                if actor_model:
                     anim_state = p_info.get("anim_state", "idle")
                     speed_ratio = p_info.get("speed_ratio", 0.0)
 
