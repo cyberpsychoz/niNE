@@ -9,7 +9,6 @@ from itertools import cycle
 
 from direct.showbase.ShowBase import ShowBase
 from panda3d.core import loadPrcFileData, Vec3, ClockObject
-from panda3d.bullet import BulletWorld
 
 # Global clock for delta time
 globalClock = ClockObject.getGlobalClock()
@@ -54,10 +53,8 @@ class GameServer(ShowBase):
         self.client_id_counter = 0
         self.message_queue = deque()
 
-        # Setup Physics and World
-        self.physics_world = BulletWorld()
-        self.physics_world.setGravity(Vec3(0, 0, -30.0))  # Stronger gravity for game feel
-        self.world = GameWorld(self.physics_world, self.render)
+        # Setup World (uses Panda3D collision system, no Bullet)
+        self.world = GameWorld(self.render)
 
         # Event system and plugins
         self.is_server = True  # Plugins check this flag
@@ -106,12 +103,8 @@ class GameServer(ShowBase):
             client_id, data = self.message_queue.popleft()
             self.process_message(client_id, data)
 
-        # 2. Update game world
-        # First update players (set their desired movement)
+        # 2. Update game world (includes collision traversal)
         self.world.update(dt)
-        # Then run physics simulation (applies movement + gravity)
-        # Use substeps to ensure physics runs smoothly even at low tick rates
-        self.physics_world.doPhysics(dt, 10, 1.0 / 60.0)
 
         # 3. Broadcast new state
         world_state = self.world.get_world_state()

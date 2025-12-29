@@ -1,22 +1,25 @@
 """
 Server-side game world management.
+
+Uses Panda3D collision system (no Bullet physics).
+Supports loading maps from config or generating test map.
 """
 
 import json
 import logging
+import os
 import time
 from itertools import cycle
 from math import sin, cos, radians
 
-logger = logging.getLogger("nine.server.game_server")
-
-from panda3d.bullet import (
-    BulletRigidBodyNode,
-    BulletPlaneShape,
-    BulletTriangleMesh,
-    BulletTriangleMeshShape,
+from panda3d.core import (
+    Vec3, LVector3, Geom, GeomNode, GeomTriangles, GeomVertexData,
+    GeomVertexFormat, GeomVertexReader, BitMask32,
+    CollisionNode, CollisionPlane, CollisionBox, CollisionPolygon,
+    CollisionTraverser, Plane, Point3
 )
-from panda3d.core import Vec3, LVector3, Geom, GeomNode
+
+logger = logging.getLogger("nine.server.game_server")
 
 from nine.core.database import DatabaseManager
 from nine.core.character_controller import CharacterController
@@ -25,18 +28,19 @@ from nine.core.character_controller import CharacterController
 class Player:
     """Represents a player on the server side."""
 
-    def __init__(self, client_id, name, actor, physics_world):
+    def __init__(self, client_id, name, actor, render, cTrav):
         self.client_id = client_id
         self.name = name
         self.actor = actor
         self.last_move_time = 0
         self.is_dev_client = False
+        self.cTrav = cTrav
 
         # Input state from client
         self.keys = {"w": False, "a": False, "s": False, "d": False, "space": False, "shift": False}
         self.camera_yaw = 0.0  # Camera direction for calculating movement
 
-        self.character_controller = CharacterController(self.actor, physics_world)
+        self.character_controller = CharacterController(self.actor, render, cTrav)
 
     def update(self, dt):
         """Updates the player's character controller."""
@@ -51,6 +55,10 @@ class Player:
         result = self.character_controller.update(dt, move_vector, is_running, do_jump)
         if result:
             self.last_move_time = time.time()
+
+        # Clear jump after processing (one-shot)
+        self.keys["space"] = False
+
         return result
 
     def _calculate_move_vector(self):
@@ -66,8 +74,6 @@ class Player:
             return LVector3(0, 0, 0)
 
         # Calculate forward and right vectors from camera yaw
-        # Forward = direction from camera to player = (-sin(yaw), cos(yaw))
-        # Right = 90° clockwise from forward = (cos(yaw), sin(yaw))
         yaw_rad = radians(self.camera_yaw)
         forward = LVector3(-sin(yaw_rad), cos(yaw_rad), 0)
         right = LVector3(cos(yaw_rad), sin(yaw_rad), 0)
@@ -78,18 +84,16 @@ class Player:
 
     def get_state(self):
         """Gets the player's state for broadcasting."""
-        # Get actor position in world coordinates (not physics node position)
-        # This ensures client receives the visual position, not physics capsule center
-        pos = self.actor.getPos(self.character_controller.reference_node)
+        pos = self.actor.getPos()
         rot = self.actor.getHpr()
         vel = self.character_controller.get_velocity()
 
         anim_state = self.character_controller.get_anim_state()
         speed_ratio = 0.0
-        speed = vel.length()
-        if speed > 0.1:
+        horiz_speed = LVector3(vel.x, vel.y, 0).length()
+        if horiz_speed > 0.1:
             max_speed = self.character_controller.run_speed
-            speed_ratio = min(speed / max_speed, 1.0)
+            speed_ratio = min(horiz_speed / max_speed, 1.0)
 
         return {
             "pos": [pos.x, pos.y, pos.z],
@@ -102,24 +106,30 @@ class Player:
 
 
 class GameWorld:
-    """Manages the server-side game state, including all players and physics."""
+    """Manages the server-side game state using Panda3D collision system."""
 
-    def __init__(self, physics_world, render_node, world_config: dict = None):
-        self.physics_world = physics_world
+    def __init__(self, render_node, world_config: dict = None):
         self.render = render_node
         self.players = {}
         self.db = DatabaseManager()
         self.world_config = world_config or self._load_world_config()
 
-        # Spawn points - above map geometry (map floor is around Z=3-5)
+        # Create collision traverser for Panda3D collision system
+        self.cTrav = CollisionTraverser('world_traverser')
+        # Enable previous transform mode for fast-moving objects (prevents tunneling)
+        self.cTrav.setRespectPrevTransform(True)
+        # Enable verbose debugging (optional)
+        # self.cTrav.showCollisions(self.render)
+
+        # Spawn points - high above floor for testing fall physics (floor at z=0)
         self.spawn_points = cycle([
-            [0, 0, 10], [5, 5, 10], [-5, 5, 10], [5, -5, 10], [-5, -5, 10]
+            [8, -3, 10], [10, 5, 10], [5, 0, 10], [15, -5, 10], [3, 3, 10]
         ])
 
         self._setup_scene()
 
     def _load_world_config(self) -> dict:
-        """Загружает конфигурацию мира из server_config.json."""
+        """Loads world config from server_config.json."""
         try:
             with open("server_config.json") as f:
                 config = json.load(f)
@@ -128,89 +138,247 @@ class GameWorld:
             return {}
 
     def _setup_scene(self):
-        """Sets up the static physical world with map collision."""
-        self.ground_body = None
-        self.ground_np = None
+        """Sets up the physical world with Panda3D collision system."""
+        logger.info("[World] Setting up Panda3D collision system")
 
-        # DEBUG: Use simple test floor to verify physics works
-        use_test_floor = False
+        # Get map path from config
+        map_path = self.world_config.get("map", {}).get("model", "test")
 
-        if use_test_floor:
-            from panda3d.bullet import BulletBoxShape
-            from panda3d.core import BitMask32
-            ground_shape = BulletBoxShape(Vec3(50, 50, 0.5))
-            self.ground_body = BulletRigidBodyNode('TestFloor')
-            self.ground_body.addShape(ground_shape)
-            self.ground_body.setMass(0)
-            self.ground_np = self.render.attachNewNode(self.ground_body)
-            self.ground_np.setPos(0, 0, -0.5)
-            self.ground_np.setCollideMask(BitMask32.allOn())
-            self.physics_world.attachRigidBody(self.ground_body)
-            logger.info("[World] Using TEST FLOOR at z=0 with collision mask")
-            return
+        # Check if should use test map
+        if map_path == "test" or not os.path.exists(map_path):
+            if map_path != "test":
+                logger.warning(f"[World] Map not found: {map_path}, using test map")
+            self._create_test_map()
+        else:
+            self._load_map_collision(map_path)
 
-        # Try to load map with collision first
-        map_config = self.world_config.get("map", {})
-        map_model_path = map_config.get("model")
-        map_loaded = False
+    def _load_map_collision(self, model_path: str):
+        """
+        Loads map and creates wall collision boxes.
+        Floor is a single infinite plane at z=0.
+        """
+        from panda3d.core import CollisionBox
 
-        if map_model_path:
-            map_loaded = self._load_map_collision(map_model_path)
-
-        # Fallback ground plane only if map loading failed
-        if not map_loaded:
-            from panda3d.core import BitMask32
-            logger.info("[World] Using fallback ground plane at z=-100")
-            ground_shape = BulletPlaneShape(Vec3(0, 0, 1), -100)
-            self.ground_body = BulletRigidBodyNode('Ground')
-            self.ground_body.addShape(ground_shape)
-            self.ground_np = self.render.attachNewNode(self.ground_body)
-            self.ground_np.setCollideMask(BitMask32.allOn())
-            self.physics_world.attachRigidBody(self.ground_body)
-
-    def _load_map_collision(self, model_path: str) -> bool:
-        """Loads map model and creates collision mesh from its geometry."""
         try:
-            # Load model (server-side, no rendering)
+            # Load model for collision extraction
             map_model = loader.loadModel(model_path)
             if not map_model:
                 logger.error(f"[World] Failed to load map model: {model_path}")
-                return False
+                self._create_fallback_ground()
+                return
 
-            # Create triangle mesh from all geometry in the model
-            mesh = BulletTriangleMesh()
-            geom_count = 0
+            logger.info(f"[World] Loaded map: {model_path}")
 
-            for geom_node_path in map_model.findAllMatches("**/+GeomNode"):
-                geom_node = geom_node_path.node()
-                transform = geom_node_path.getTransform(map_model)
+            wall_count = 0
 
-                for i in range(geom_node.getNumGeoms()):
-                    geom = geom_node.getGeom(i)
-                    mesh.addGeom(geom, True, transform)
-                    geom_count += 1
+            # Process each PandaNode (parent of GeomNode) for transforms
+            for panda_node in map_model.getChildren():
+                node_name = panda_node.getName()
 
-            if geom_count == 0:
-                logger.error(f"[World] No geometry found in map: {model_path}")
-                return False
+                # Only process Cube.* objects as walls
+                if not node_name.startswith("Cube"):
+                    continue
 
-            # Create collision shape and rigid body
-            from panda3d.core import BitMask32
-            shape = BulletTriangleMeshShape(mesh, dynamic=False)
-            map_body = BulletRigidBodyNode('MapCollision')
-            map_body.addShape(shape)
-            map_body.setMass(0)  # Static object
+                # Skip distant objects (skybox decorations)
+                pos = panda_node.getPos()
+                if abs(pos.x) > 80 or abs(pos.y) > 80:
+                    continue
 
-            map_np = self.render.attachNewNode(map_body)
-            map_np.setCollideMask(BitMask32.allOn())  # Enable collision detection
-            self.physics_world.attachRigidBody(map_body)
+                scale = panda_node.getScale()
+                world_pos = panda_node.getPos()
 
-            logger.info(f"[World] Map collision loaded: {model_path} ({geom_count} geoms)")
-            return True
+                # Create wall as collision box
+                half_x = abs(scale.x) * 0.5
+                half_y = abs(scale.y) * 0.5
+                half_z = abs(scale.z)
+
+                # Minimum size
+                if half_x < 0.1: half_x = 0.5
+                if half_y < 0.1: half_y = 0.5
+                if half_z < 0.1: half_z = 1.0
+
+                box = CollisionBox(
+                    Point3(-half_x, -half_y, 0),
+                    Point3(half_x, half_y, half_z * 2)
+                )
+                wall_node = CollisionNode(f'wall_{wall_count}')
+                wall_node.addSolid(box)
+                wall_node.setIntoCollideMask(CharacterController.WALL_MASK)
+                wall_node.setFromCollideMask(BitMask32.allOff())
+
+                wall_np = self.render.attachNewNode(wall_node)
+                wall_np.setPos(world_pos)
+                wall_np.setHpr(panda_node.getHpr())
+                wall_count += 1
+
+            logger.info(f"[World] Created {wall_count} wall collision boxes")
+
+            # Clean up the model
+            map_model.removeNode()
+
+            # Create single ground plane at z=0
+            self._create_fallback_ground()
 
         except Exception as e:
             logger.error(f"[World] Error loading map collision: {e}")
-            return False
+            import traceback
+            traceback.print_exc()
+            self._create_fallback_ground()
+
+    def _create_collision_from_geom(self, geom_node_path, mask, name):
+        """
+        Creates collision geometry from a GeomNode.
+        Uses CollisionPolygon for accurate collision.
+        """
+        try:
+            geom_node = geom_node_path.node()
+            transform = geom_node_path.getNetTransform()
+
+            collision_node = CollisionNode(name)
+            collision_node.setIntoCollideMask(mask)
+            collision_node.setFromCollideMask(BitMask32.allOff())
+
+            poly_count = 0
+
+            for i in range(geom_node.getNumGeoms()):
+                geom = geom_node.getGeom(i)
+                vdata = geom.getVertexData()
+                vertex_reader = GeomVertexReader(vdata, 'vertex')
+
+                # Read all vertices
+                vertices = []
+                while not vertex_reader.isAtEnd():
+                    v = vertex_reader.getData3f()
+                    # Transform vertex to world space
+                    world_v = transform.getMat().xformPoint(Point3(v))
+                    vertices.append(world_v)
+
+                if len(vertices) < 3:
+                    continue
+
+                # Process primitives
+                for j in range(geom.getNumPrimitives()):
+                    prim = geom.getPrimitive(j)
+                    prim = prim.decompose()  # Convert to triangles
+
+                    for k in range(prim.getNumPrimitives()):
+                        start = prim.getPrimitiveStart(k)
+                        end = prim.getPrimitiveEnd(k)
+
+                        if end - start >= 3:
+                            # Get triangle vertices
+                            idx0 = prim.getVertex(start)
+                            idx1 = prim.getVertex(start + 1)
+                            idx2 = prim.getVertex(start + 2)
+
+                            if idx0 < len(vertices) and idx1 < len(vertices) and idx2 < len(vertices):
+                                v0 = vertices[idx0]
+                                v1 = vertices[idx1]
+                                v2 = vertices[idx2]
+
+                                # Create collision polygon (triangle)
+                                try:
+                                    poly = CollisionPolygon(
+                                        Point3(v0),
+                                        Point3(v1),
+                                        Point3(v2)
+                                    )
+                                    collision_node.addSolid(poly)
+                                    poly_count += 1
+                                except Exception:
+                                    # Skip degenerate triangles
+                                    pass
+
+            if poly_count > 0:
+                collision_np = self.render.attachNewNode(collision_node)
+                logger.debug(f"[World] Created {name} with {poly_count} collision polygons")
+
+        except Exception as e:
+            logger.warning(f"[World] Failed to create collision for {name}: {e}")
+
+    def _create_fallback_ground(self):
+        """Creates main ground plane at z=0."""
+        ground_plane = CollisionPlane(Plane(Vec3(0, 0, 1), Point3(0, 0, 0)))
+        ground_node = CollisionNode('ground_plane')
+        ground_node.addSolid(ground_plane)
+        ground_node.setIntoCollideMask(CharacterController.FLOOR_MASK)
+        ground_node.setFromCollideMask(BitMask32.allOff())
+
+        self.ground_np = self.render.attachNewNode(ground_node)
+        logger.info("[World] Created ground plane at z=0")
+
+    def _create_test_map(self):
+        """
+        Creates a simple test map for physics testing.
+        - White platform (floor) at z=0
+        - Several colored blocks as obstacles
+        """
+        logger.info("[World] === CREATING TEST MAP ===")
+
+        # 1. Create ground plane at z=0
+        self._create_fallback_ground()
+
+        # 2. Create test blocks with wall collision
+        # Format: (name, position, size)
+        test_blocks = [
+            # Central area blocks
+            ("block_red", (5, 0, 0), (2, 2, 2)),      # Red block
+            ("block_green", (-5, 3, 0), (1.5, 1.5, 3)),  # Green tall block
+            ("block_blue", (0, 8, 0), (3, 1, 1.5)),   # Blue wide block
+
+            # Perimeter walls
+            ("wall_north", (0, 15, 0), (20, 0.5, 3)),  # North wall
+            ("wall_south", (0, -15, 0), (20, 0.5, 3)), # South wall
+            ("wall_east", (15, 0, 0), (0.5, 15, 3)),   # East wall
+            ("wall_west", (-15, 0, 0), (0.5, 15, 3)),  # West wall
+
+            # Ramp/step test
+            ("step_1", (8, -5, 0), (2, 2, 0.3)),      # Low step
+            ("step_2", (8, -8, 0), (2, 2, 0.6)),      # Medium step
+            ("step_3", (8, -11, 0), (2, 2, 1.0)),     # High step
+        ]
+
+        for name, pos, size in test_blocks:
+            self._create_collision_box(name, pos, size)
+
+        # Update spawn points for test map (center, above ground)
+        self.spawn_points = cycle([
+            [0, 0, 5],      # Center, high for fall test
+            [3, 3, 2],      # Near center
+            [-3, -3, 2],    # Opposite corner
+        ])
+
+        logger.info(f"[World] Test map created with {len(test_blocks)} collision objects")
+        logger.info("[World] === TEST MAP READY ===")
+
+    def _create_collision_box(self, name: str, pos: tuple, size: tuple):
+        """
+        Creates a collision box at the specified position.
+
+        Args:
+            name: Unique name for the collision node
+            pos: (x, y, z) position of box center bottom
+            size: (width, depth, height) of the box
+        """
+        half_x = size[0] / 2
+        half_y = size[1] / 2
+        height = size[2]
+
+        # CollisionBox takes two corners: min and max
+        box = CollisionBox(
+            Point3(-half_x, -half_y, 0),
+            Point3(half_x, half_y, height)
+        )
+
+        col_node = CollisionNode(name)
+        col_node.addSolid(box)
+        col_node.setIntoCollideMask(CharacterController.WALL_MASK)
+        col_node.setFromCollideMask(BitMask32.allOff())
+
+        col_np = self.render.attachNewNode(col_node)
+        col_np.setPos(pos[0], pos[1], pos[2])
+
+        logger.debug(f"[World] Created collision box '{name}' at {pos} size {size}")
 
     def get_world_state(self):
         """Gathers the state of all players for broadcasting."""
@@ -221,8 +389,12 @@ class GameWorld:
 
     def update(self, dt):
         """The main update tick for the world."""
+        # Update all players
         for player in self.players.values():
             player.update(dt)
+
+        # Run collision detection
+        self.cTrav.traverse(self.render)
 
     def handle_input(self, client_id, input_data):
         """Handle input from regular clients (server-authoritative movement)."""
@@ -263,14 +435,15 @@ class GameWorld:
         """Creates a player entity in the world."""
         actor = self.render.attachNewNode(name)
 
-        player = Player(client_id, name, actor, self.physics_world)
+        player = Player(client_id, name, actor, self.render, self.cTrav)
 
         # Set spawn position
         spawn_pos = next(self.spawn_points)
         logger.info(f"[World] Spawning player '{name}' at {spawn_pos}")
         player.character_controller.set_position(spawn_pos)
+
         # Verify position was set
-        actual_pos = player.character_controller.character_np.getPos()
+        actual_pos = player.actor.getPos()
         logger.info(f"[World] Actual position after spawn: ({actual_pos.x:.2f}, {actual_pos.y:.2f}, {actual_pos.z:.2f})")
 
         self.players[client_id] = player
