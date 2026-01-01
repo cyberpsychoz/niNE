@@ -1,81 +1,96 @@
-from direct.gui.DirectGui import DirectFrame, DirectButton, DGG
-from panda3d.core import LVector4, NodePath, LColor
+# nine/ui/in_game_menu.py
+"""
+Игровое меню паузы.
+Компактное меню в центре экрана.
+"""
 
-from nine.ui.base_component import BaseUIComponent
+from direct.gui.DirectGui import DirectFrame, DirectButton, DirectLabel, DGG
+from panda3d.core import TransparencyAttrib, TextNode
+
+from .base_component import BaseUIComponent
+from .theme import NineTheme
 
 
 class InGameMenu(BaseUIComponent):
-    """
-    In-game menu component accessible during gameplay.
-    Allows continuing the game or disconnecting from the server.
-    """
+    """Меню паузы."""
 
     def __init__(self, ui_manager, client):
         super().__init__(ui_manager)
-        self.client = client  # Reference to the GameClient for disconnect functionality
-
-        # Consistent button styling
-        self.button_color = (LColor(0.1, 0.1, 0.1, 0.8), LColor(0.2, 0.2, 0.2, 0.8), LColor(0.3, 0.3, 0.3, 0.8), LColor(0.1, 0.1, 0.1, 0.5))
-
+        self.client = client
         self._setup()
 
     def _setup(self):
-        # Background frame - similar to LoginMenu's root frame
-        self._add_element(
-            'root',
-            DirectFrame(
-                frameSize=(-0.7, 0.7, -0.5, 0.5), # Adjusted size for central appearance
-                frameColor=(0, 0, 0, 0.7),      # Dark transparent background
-                parent=self.base.aspect2d,      # Parent to aspect2d for central positioning
-                sortOrder=10  # Ensure it's on top
-            )
-        )
+        """Создает элементы меню."""
+        # Полупрозрачный оверлей
+        overlay = self._add_element('overlay', DirectFrame(
+            parent=self.base.render2d,
+            frameSize=(-2, 2, -2, 2),
+            frameColor=NineTheme.BG_OVERLAY,
+        ))
+        overlay.setTransparency(TransparencyAttrib.M_alpha)
 
-        # Buttons anchor - for central vertical stacking
-        buttons_anchor = self._add_element('buttons_anchor', NodePath("in-game-menu-buttons-anchor"))
-        buttons_anchor.reparentTo(self._elements['root'])
-        # The anchor is already centered within its parent (the root frame)
+        # Компактная панель (увеличена для длинных кнопок)
+        panel_width = 0.6
+        panel_height = 0.6
+        panel = self._add_element('panel', DirectFrame(
+            parent=self.base.aspect2d,
+            frameSize=(-panel_width/2, panel_width/2, -panel_height/2, panel_height/2),
+            frameColor=NineTheme.BG_MEDIUM,
+            pos=(0, 0, 0),
+            sortOrder=10
+        ))
+        panel.setTransparency(TransparencyAttrib.M_alpha)
 
-        # Continue Button
-        self._add_element(
-            'continue_button',
-            DirectButton(
-                text="Continue Game",
-                scale=0.07,  # Consistent scale
-                command=self._on_continue_click,
-                frameColor=self.button_color, # Consistent color
-                text_fg=(1,1,1,1), # White text
-                pressEffect=True, # Consistent effect
-                relief=DGG.FLAT, # Consistent relief
-                pos=(0, 0, 0.1), # Adjusted position within the frame
-                parent=buttons_anchor # Parent to the anchor
-            )
-        )
+        # Заголовок (центрирован)
+        self._add_element('title', DirectLabel(
+            parent=panel,
+            text="ПАУЗА",
+            scale=NineTheme.TITLE_SCALE,
+            pos=(0, 0, panel_height/2 - 0.10),
+            text_fg=NineTheme.TEXT_PRIMARY,
+            text_align=TextNode.ACenter,
+            frameColor=(0, 0, 0, 0),
+        ))
 
-        # Disconnect Button
-        self._add_element(
-            'disconnect_button',
-            DirectButton(
-                text="Disconnect",
-                scale=0.07, # Consistent scale
-                command=self._on_disconnect_click,
-                frameColor=self.button_color, # Consistent color
-                text_fg=(1,1,1,1), # White text
-                pressEffect=True, # Consistent effect
-                relief=DGG.FLAT, # Consistent relief
-                pos=(0, 0, -0.1), # Adjusted position within the frame
-                parent=buttons_anchor # Parent to the anchor
-            )
-        )
+        # Кнопки
+        buttons_data = [
+            ("Продолжить", self._on_continue_click),
+            ("Настройки", self._on_settings_click),
+            ("Отключиться", self._on_disconnect_click),
+        ]
 
-        self.hide() # Initially hidden
+        button_start_y = 0.12
+        button_spacing = 0.14
+
+        for i, (text, command) in enumerate(buttons_data):
+            y_pos = button_start_y - i * button_spacing
+
+            btn = self._add_element(f'button_{i}', DirectButton(
+                parent=panel,
+                text=text,
+                scale=NineTheme.BUTTON_SCALE,
+                pos=(0, 0, y_pos),
+                command=command,
+                frameColor=NineTheme.button_colors(),
+                text_fg=NineTheme.TEXT_PRIMARY,
+                text_align=TextNode.ACenter,
+                pressEffect=True,
+                relief=DGG.FLAT,
+                frameSize=(-3.8, 3.8, -0.8, 1.1),
+            ))
+
+        self.hide()
 
     def _on_continue_click(self):
-        """Hides the menu and resumes gameplay."""
-        print("Continue button clicked!")
+        """Продолжить игру."""
         self.ui_manager.hide_in_game_menu()
+        self.client.in_game_menu_active = False
+        self.client.enable_game_input()
+
+    def _on_settings_click(self):
+        """Открыть настройки (в будущем)."""
+        pass
 
     def _on_disconnect_click(self):
-        """Initiates disconnection from the server."""
-        print("Disconnect button clicked!")
+        """Отключиться от сервера."""
         self.client.disconnect_from_server()

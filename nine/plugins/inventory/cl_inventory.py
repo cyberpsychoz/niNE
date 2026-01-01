@@ -11,6 +11,7 @@ from direct.showbase.DirectObject import DirectObject
 from panda3d.core import TextNode
 
 from nine.core.plugins import PluginModule
+from nine.core.game_state import GameState
 
 
 class InventoryClientModule(PluginModule, DirectObject):
@@ -48,23 +49,36 @@ class InventoryClientModule(PluginModule, DirectObject):
 
         # Подписки на события
         self.event_manager.subscribe("inventory_update", self.on_inventory_update)
+        self.event_manager.subscribe("game_state_changed", self._on_game_state_changed)
 
         # Обработка клавиш
         self.accept("i", self.toggle_inventory)
         self.accept("escape", self.on_escape)
 
-        # Создаём прицел
+        # Создаём прицел (скрытый по умолчанию - мы в меню)
         self._create_crosshair()
+        if self.crosshair:
+            self.crosshair.hide()
 
         self.logger.info("Клиентский модуль инвентаря загружен")
 
     def on_unload(self):
         self.event_manager.unsubscribe("inventory_update", self.on_inventory_update)
+        self.event_manager.unsubscribe("game_state_changed", self._on_game_state_changed)
         self.ignoreAll()
         self._destroy_ui()
         if self.crosshair:
             self.crosshair.destroy()
         self.logger.info("Клиентский модуль инвентаря выгружен")
+
+    def _on_game_state_changed(self, data: dict):
+        """Показывает/скрывает прицел в зависимости от состояния игры."""
+        new_state = data.get("new_state")
+        if self.crosshair:
+            if new_state == GameState.IN_GAME:
+                self.crosshair.show()
+            else:
+                self.crosshair.hide()
 
     def _create_crosshair(self):
         """Создаёт прицел в центре экрана."""
