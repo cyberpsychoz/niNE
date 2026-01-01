@@ -16,6 +16,7 @@ from panda3d.core import (
     Vec2,
 )
 
+from nine.core.game_state import GameState
 from nine.core.plugins import PluginModule
 
 # Путь к текстурам
@@ -131,15 +132,8 @@ class TexturedStatsBar:
         self.current_value = max(0, min(value, self.max_value))
         ratio = self.current_value / self.max_value if self.max_value > 0 else 0
 
-        # Обрезаем заполненную часть с помощью scissor
-        # Scissor работает в нормализованных координатах экрана [0,1]
-        # Мы обрезаем справа, показывая только ratio часть
-        # НИ В КОЕМ БЛЯТЬ СЛУЧАЕ НЕ ПРОБОВАТЬ РАСШИРЯТЬ ИЛИ СУЖАТЬ АХТУНГ!!!!!
         if ratio > 0.001:
             self.fill_node.show()
-            # ScissorAttrib обрезает по экранным координатам
-            # Но для 2D GUI проще перегенерировать карточку с нужной шириной
-            # Иначе случится АХТУНГ х2
             self._update_fill_width(ratio)
         else:
             self.fill_node.hide()
@@ -187,12 +181,12 @@ class StatsUIModule(PluginModule):
         self._visible = False
 
         # Подписки
-        # stats_update - сетевое сообщение от сервера
         self.event_manager.subscribe("stats_update", self.on_stats_updated)
         self.event_manager.subscribe("game_started", self.show_stats)
         self.event_manager.subscribe("game_ended", self.hide_stats)
         self.event_manager.subscribe("client_connected", self.on_connected)
         self.event_manager.subscribe("client_disconnected", self.on_disconnected)
+        self.event_manager.subscribe("game_state_changed", self.on_game_state_changed)
 
         self.logger.info("UI характеристик загружен")
 
@@ -202,9 +196,22 @@ class StatsUIModule(PluginModule):
         self.event_manager.unsubscribe("game_ended", self.hide_stats)
         self.event_manager.unsubscribe("client_connected", self.on_connected)
         self.event_manager.unsubscribe("client_disconnected", self.on_disconnected)
+        self.event_manager.unsubscribe("game_state_changed", self.on_game_state_changed)
 
         self.destroy_ui()
         self.logger.info("UI характеристик выгружен")
+
+    def on_game_state_changed(self, data: dict):
+        """Обработка смены состояния игры."""
+        new_state = data.get("new_state")
+
+        if new_state == GameState.MENU:
+            # Скрываем и уничтожаем UI в меню
+            self.hide_stats()
+            self.destroy_ui()
+        elif new_state == GameState.IN_GAME:
+            # UI создастся при получении stats_update от сервера
+            pass
 
     def on_connected(self, data=None):
         """Клиент подключился - создаём UI."""
@@ -212,8 +219,9 @@ class StatsUIModule(PluginModule):
         self.show_stats()
 
     def on_disconnected(self, data=None):
-        """Клиент отключился - скрываем UI."""
+        """Клиент отключился - уничтожаем UI."""
         self.hide_stats()
+        self.destroy_ui()
 
     def create_ui(self):
         """Создаёт UI элементы."""
@@ -273,6 +281,8 @@ class StatsUIModule(PluginModule):
             self.stats_frame.destroy()
             self.stats_frame = None
 
+        self._visible = False
+
     def show_stats(self, data=None):
         """Показать полоски."""
         if not self.stats_frame:
@@ -288,6 +298,10 @@ class StatsUIModule(PluginModule):
 
     def on_stats_updated(self, data: dict):
         """Обновление характеристик от сервера."""
+        # Не показываем если мы в меню
+        if self.app.ui.game_state == GameState.MENU:
+            return
+
         if not self._visible:
             self.show_stats()
 

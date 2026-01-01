@@ -5,7 +5,7 @@
 ![Лицензия](https://img.shields.io/badge/license-MIT-green.svg)
 ![Panda3D](https://img.shields.io/badge/engine-Panda3D-orange.svg)
 
-![logos](nine/assets/materials/main_menu.png)
+![logos](nine/assets/materials/preview_1.png)
 
 ## Особенности
 
@@ -16,6 +16,8 @@
 - **Чат**: Внутриигровое текстовое общение
 
 ![logos](nine/assets/materials/ingame.png)
+![logos](nine/assets/materials/preview_2.png)
+![logos](nine/assets/materials/preview_3.png)
 
 Для получения подробной технической информации, сведений об архитектуре и API для разработчиков, пожалуйста, обратитесь к нашей [**Технической документации (DOCS.md)**](docs/DOCS.md).
 

@@ -8,6 +8,7 @@ import importlib.util
 from pathlib import Path
 
 from direct.showbase.DirectObject import DirectObject
+from nine.core.game_state import GameState
 from nine.core.plugins import PluginModule
 from nine.ui.chat_window import ChatWindow
 
@@ -60,6 +61,7 @@ class ChatUIModule(PluginModule, DirectObject):
         # Подписываемся на события
         self.event_manager.subscribe("chat_broadcast", self.on_chat_broadcast)
         self.event_manager.subscribe("client_disconnected", self.on_disconnect)
+        self.event_manager.subscribe("game_state_changed", self.on_game_state_changed)
 
         # Keybindings
         self.accept('t', self.on_chat_key)
@@ -69,6 +71,10 @@ class ChatUIModule(PluginModule, DirectObject):
         self.app.is_chat_active = self.is_active
         self.app.chat_window = self.ui_window
 
+        # Скрываем чат при старте если мы в меню
+        if self.app.ui.game_state == GameState.MENU:
+            self._hide_chat_ui()
+
     def on_unload(self):
         # Отписываемся от клавиш
         self.ignoreAll()
@@ -77,6 +83,7 @@ class ChatUIModule(PluginModule, DirectObject):
         if self.event_manager:
             self.event_manager.unsubscribe("chat_broadcast", self.on_chat_broadcast)
             self.event_manager.unsubscribe("client_disconnected", self.on_disconnect)
+            self.event_manager.unsubscribe("game_state_changed", self.on_game_state_changed)
 
         # Уничтожаем UI
         if self.ui_window:
@@ -91,8 +98,38 @@ class ChatUIModule(PluginModule, DirectObject):
 
         self.logger.info("Клиентский модуль UI чата выгружен")
 
+    def on_game_state_changed(self, data: dict):
+        """Обработка смены состояния игры."""
+        new_state = data.get("new_state")
+
+        if new_state == GameState.MENU:
+            # Скрываем чат в меню
+            self._hide_chat_ui()
+        elif new_state == GameState.IN_GAME:
+            # Показываем чат в игре
+            self._show_chat_ui()
+
+    def _hide_chat_ui(self):
+        """Скрывает UI чата."""
+        if self.ui_window and hasattr(self.ui_window, 'root'):
+            self.ui_window.root.hide()
+            # Закрываем чат если он открыт
+            if self.ui_window.is_open():
+                self.ui_window.close()
+            self.logger.debug("UI чата скрыт")
+
+    def _show_chat_ui(self):
+        """Показывает UI чата."""
+        if self.ui_window and hasattr(self.ui_window, 'root'):
+            self.ui_window.root.show()
+            self.logger.debug("UI чата показан")
+
     def on_chat_key(self):
         """Нажатие T - открыть чат."""
+        # Не открываем чат если мы в меню
+        if self.app.ui.game_state != GameState.IN_GAME:
+            return
+
         if not self.ui_window.is_open():
             self.ui_window.open()
 
