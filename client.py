@@ -445,7 +445,8 @@ class GameClient(ShowBase):
         msg_type = data.get("type")
 
         if msg_type == "welcome":
-            if not self.dev_mode: self.ui.hide_main_menu()
+            # Переходим в игровое состояние (скрывает меню и уведомляет плагины)
+            self.ui.enter_game()
             self.player_id = data["id"]
             self.load_actor(self.player_id, LColor(0.5, 0.8, 0.5, 1), is_local_player=True)
             self.player_actor.setPos(*data["pos"])
@@ -572,6 +573,10 @@ class GameClient(ShowBase):
 
         self.player_id = -1
         self.is_connected = False
+
+        # Уведомляем плагины об отключении ПЕРЕД уничтожением UI
+        self.event_manager.post("client_disconnected", {})
+
         self.ui.destroy_all()
         if not self.dev_mode:
             self.ui.show_main_menu()

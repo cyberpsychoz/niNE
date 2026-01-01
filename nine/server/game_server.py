@@ -1,8 +1,10 @@
 import asyncio
 import json
 import logging
+import os
 import ssl
 import struct
+import subprocess
 import time
 from collections import deque
 from itertools import cycle
@@ -36,9 +38,12 @@ class GameServer(ShowBase):
         self.logger.setLevel(logging.INFO)
         self.logger.addHandler(file_handler)
 
-        # Load config
-        with open("server_config.json") as f:
-            config = json.load(f)
+        # Load config (create default if not exists)
+        config = self._load_or_create_config()
+
+        # Ensure SSL certificates exist
+        if not self._ensure_certificates():
+            raise SystemExit("SSL certificates required to start server.")
 
         self.host = config.get("host", "localhost")
         self.port = config.get("port", 9009)
@@ -80,6 +85,122 @@ class GameServer(ShowBase):
         self.taskMgr.add(self.poll_asyncio, "asyncio-poll")
 
         self.logger.info("Game Server initialized.")
+
+    def _load_or_create_config(self) -> dict:
+        """Load server config from file, or create default if not exists."""
+        config_path = "server_config.json"
+
+        if os.path.exists(config_path):
+            try:
+                with open(config_path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except (json.JSONDecodeError, ValueError) as e:
+                self.logger.warning(f"Invalid config file, recreating: {e}")
+
+        # Create default config
+        default_config = {
+            "host": "localhost",
+            "port": 9009,
+            "tick_rate": 30,
+            "allow_dev_client": False,
+            "world": {
+                "map": {"model": "nine/assets/models/maps/map.bam"},
+                "lighting": {
+                    "ambient": {"color": [0.15, 0.1, 0.2, 1.0], "enabled": True},
+                    "sun": {"color": [1.2, 0.7, 0.6, 1.0], "direction": [45, -30, 0], "enabled": True},
+                    "fill": {"color": [0.2, 0.25, 0.4, 1.0], "direction": [150, -30, 0], "enabled": True},
+                    "rim": {"color": [0.4, 0.2, 0.1, 1.0], "direction": [-120, -10, 0], "enabled": False}
+                },
+                "skybox": {
+                    "texture": "nine/assets/materials/textures/sky.png",
+                    "radius": 1000,
+                    "segments": 64,
+                    "rings": 32,
+                    "uv_scale": {"v_offset": 0.15, "v_scale": 0.9}
+                },
+                "fog": {"enabled": False}
+            }
+        }
+
+        with open(config_path, "w", encoding="utf-8") as f:
+            json.dump(default_config, f, indent=4, ensure_ascii=False)
+
+        self.logger.info(f"Created default config: {config_path}")
+        return default_config
+
+    def _ensure_certificates(self) -> bool:
+        """Check for SSL certificates, offer to generate if missing. Returns True if certs exist."""
+        cert_path = "certs/cert.pem"
+        key_path = "certs/key.pem"
+
+        if os.path.exists(cert_path) and os.path.exists(key_path):
+            return True
+
+        print("\n" + "=" * 50)
+        print("SSL сертификаты не найдены!")
+        print("=" * 50)
+        print(f"Ожидаемые пути:")
+        print(f"  - {cert_path}")
+        print(f"  - {key_path}")
+        print()
+
+        while True:
+            response = input("Сгенерировать самоподписанные сертификаты для разработки? [Y/n]: ").strip().lower()
+            if response in ("", "y", "yes", "д", "да"):
+                return self._generate_certificates()
+            elif response in ("n", "no", "н", "нет"):
+                print("Сервер не может запуститься без SSL сертификатов.")
+                return False
+            else:
+                print("Пожалуйста, введите 'y' или 'n'")
+
+    def _generate_certificates(self) -> bool:
+        """Generate self-signed SSL certificates for development."""
+        certs_dir = "certs"
+        cert_path = os.path.join(certs_dir, "cert.pem")
+        key_path = os.path.join(certs_dir, "key.pem")
+
+        # Create certs directory
+        os.makedirs(certs_dir, exist_ok=True)
+
+        print("Генерация SSL сертификатов...")
+
+        try:
+            # Generate self-signed certificate using openssl
+            cmd = [
+                "openssl", "req", "-x509",
+                "-newkey", "rsa:4096",
+                "-keyout", key_path,
+                "-out", cert_path,
+                "-days", "365",
+                "-nodes",
+                "-subj", "/CN=localhost"
+            ]
+
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True
+            )
+
+            if result.returncode != 0:
+                print(f"Ошибка генерации сертификатов: {result.stderr}")
+                self.logger.error(f"Certificate generation failed: {result.stderr}")
+                return False
+
+            print(f"Сертификаты успешно созданы в папке '{certs_dir}/'")
+            self.logger.info("Self-signed certificates generated successfully.")
+            return True
+
+        except FileNotFoundError:
+            print("Ошибка: OpenSSL не найден в системе!")
+            print("Установите OpenSSL и добавьте его в PATH.")
+            self.logger.error("OpenSSL not found in system PATH.")
+            return False
+        except Exception as e:
+            print(f"Ошибка при генерации сертификатов: {e}")
+            self.logger.error(f"Certificate generation error: {e}")
+            return False
 
     def poll_asyncio(self, task):
         self.asyncio_loop.call_soon(self.asyncio_loop.stop)
