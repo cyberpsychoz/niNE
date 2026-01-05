@@ -43,13 +43,13 @@ class UIManager:
         self.active_components = {}
 
     def _load_font(self):
-        """Загружает пиксельный шрифт."""
+        """Загружает шрифт UI (Orbitron - футуристический стиль с кириллицей)."""
         try:
             font = self.loader.loadFont(NineTheme.FONT_PATH)
             font.setPixelsPerUnit(NineTheme.FONT_PIXELS_PER_UNIT)
-            # Отключаем сглаживание для пиксельного вида
-            font.setMinfilter(0)  # FT_nearest
-            font.setMagfilter(0)  # FT_nearest
+            # Линейная фильтрация для гладкого шрифта
+            font.setMinfilter(1)  # FT_linear
+            font.setMagfilter(1)  # FT_linear
             return font
         except Exception:
             # Fallback на старый шрифт

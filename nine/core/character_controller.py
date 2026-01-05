@@ -43,8 +43,8 @@ class CharacterController:
 
         # === Movement parameters ===
         # ПОЛЬЗОВАТЕЛЬСКИЕ ЗНАЧЕНИЯ - НЕ МЕНЯТЬ!
-        self.walk_speed = 0.025    # Walking speed (units/sec)
-        self.run_speed = 0.05      # Running speed (2x walk)
+        self.walk_speed = 1.5    # Walking speed (units/sec)
+        self.run_speed = 3.0      # Running speed (2x walk)
         self.rotation_speed = 10.0 # Rotation multiplier
 
         # Physics parameters
@@ -182,30 +182,29 @@ class CharacterController:
 
     def _check_ground(self):
         """Check if character is on ground using ray cast results."""
-        # DEBUG: Log entry state
-        import traceback
-        if self.is_jumping or abs(self.velocity.z) > 5:
-            logger.info(f"[_check_ground CALLED] jumping={self.is_jumping} vel.z={self.velocity.z:.2f}")
-            for line in traceback.format_stack()[-4:-1]:
-                logger.info(f"  {line.strip()}")
-
-        entry_jumping = self.is_jumping
-        entry_vel_z = self.velocity.z
-
         # Clear jumping flag when starting to fall
         if self.is_jumping and self.velocity.z <= 0:
             self.is_jumping = False
-            logger.info(f"[_check_ground] Clearing jumping flag (vel.z={self.velocity.z:.2f} <= 0)")
+            logger.debug(f"[_check_ground] Clearing jumping flag (vel.z={self.velocity.z:.2f} <= 0)")
 
         # Don't check ground while actively jumping upward
         if self.is_jumping:
             self.is_on_ground = False
-            logger.debug(f"[_check_ground] Early return - still jumping (vel.z={self.velocity.z:.2f})")
             return
 
-        if self.ground_queue.getNumEntries() == 0:
+        num_entries = self.ground_queue.getNumEntries()
+
+        # DEBUG: Log ground detection status periodically
+        if not hasattr(self, '_ground_log_counter'):
+            self._ground_log_counter = 0
+        self._ground_log_counter += 1
+
+        if num_entries == 0:
+            if self._ground_log_counter % 20 == 0:  # Log every 20 ticks
+                logger.warning(f"[Ground] ⚠️ NO RAY HITS! is_on_ground will be False. "
+                              f"pos.z={self.actor.getZ():.2f}")
             if self.is_on_ground:
-                logger.debug(f"[Player] Left ground (no ray hits)")
+                logger.info(f"[Player] Left ground (no ray hits)")
             self.is_on_ground = False
             return
 
@@ -218,6 +217,12 @@ class CharacterController:
 
         # Distance from actor origin to ground
         ground_distance = current_z - surface_point.z
+
+        # DEBUG: Log ground hit info periodically
+        if self._ground_log_counter % 20 == 0:
+            into_node = entry.getIntoNodePath().getName()
+            logger.info(f"[Ground] ✓ Ray hit '{into_node}' at z={surface_point.z:.2f}, "
+                       f"player.z={current_z:.2f}, distance={ground_distance:.2f}")
 
         # Ground check threshold
         step_height = 0.5

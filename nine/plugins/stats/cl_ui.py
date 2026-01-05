@@ -180,6 +180,9 @@ class StatsUIModule(PluginModule):
         self.hunger_bar = None
         self._visible = False
 
+        # Кешированные значения (stats_update может прийти до welcome)
+        self._cached_stats = None
+
         # Подписки
         self.event_manager.subscribe("stats_update", self.on_stats_updated)
         self.event_manager.subscribe("game_started", self.show_stats)
@@ -209,9 +212,12 @@ class StatsUIModule(PluginModule):
             # Скрываем и уничтожаем UI в меню
             self.hide_stats()
             self.destroy_ui()
+            self._cached_stats = None
         elif new_state == GameState.IN_GAME:
-            # UI создастся при получении stats_update от сервера
-            pass
+            # Применяем кешированные статы (stats_update приходит ДО welcome)
+            if self._cached_stats:
+                self.logger.info("Применяем кешированные статы при входе в игру")
+                self._apply_stats(self._cached_stats)
 
     def on_connected(self, data=None):
         """Клиент подключился - создаём UI."""
@@ -298,10 +304,19 @@ class StatsUIModule(PluginModule):
 
     def on_stats_updated(self, data: dict):
         """Обновление характеристик от сервера."""
-        # Не показываем если мы в меню
+        # Кешируем данные (могут прийти до welcome)
+        self._cached_stats = data
+
+        # Если мы в меню - только кешируем, не показываем
         if self.app.ui.game_state == GameState.MENU:
+            self.logger.debug("Stats получены, но мы в меню - кешируем")
             return
 
+        # Применяем статы
+        self._apply_stats(data)
+
+    def _apply_stats(self, data: dict):
+        """Применяет данные статов к UI."""
         if not self._visible:
             self.show_stats()
 
