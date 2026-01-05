@@ -193,11 +193,11 @@ class GameWorld:
 
                 logger.info(f"[World] Processing GeomNode: {node_name}")
 
-                # Use existing helper function to create collision from geometry
+                # Create collision from geometry (auto-separates floors and walls by normal)
                 self._create_collision_from_geom(
                     geom_node_path,
-                    CharacterController.WALL_MASK,
-                    f"wall_{node_name}"
+                    None,  # Mask is now determined automatically by normal direction
+                    f"map_{node_name}"
                 )
 
             # Clean up the model
@@ -214,21 +214,36 @@ class GameWorld:
             traceback.print_exc()
             self._create_fallback_ground()
 
-    def _create_collision_from_geom(self, geom_node_path, mask, name):
+    def _create_collision_from_geom(self, geom_node_path, _mask, name):
+        # Note: _mask parameter is unused, kept for API compatibility
         """
         Creates collision geometry from a GeomNode.
         Uses CollisionPolygon for accurate per-triangle collision.
+
+        IMPORTANT: Separates polygons by normal direction:
+        - Horizontal polygons (floors) get FLOOR_MASK for ground detection
+        - Vertical polygons (walls) get WALL_MASK for wall collision
         """
         try:
             geom_node = geom_node_path.node()
             transform = geom_node_path.getNetTransform()
 
-            collision_node = CollisionNode(name)
-            collision_node.setIntoCollideMask(mask)
-            collision_node.setFromCollideMask(BitMask32.allOff())
+            # Two separate collision nodes: one for walls, one for floors
+            wall_node = CollisionNode(f"{name}_walls")
+            wall_node.setIntoCollideMask(CharacterController.WALL_MASK)
+            wall_node.setFromCollideMask(BitMask32.allOff())
 
-            poly_count = 0
+            floor_node = CollisionNode(f"{name}_floors")
+            floor_node.setIntoCollideMask(CharacterController.FLOOR_MASK)
+            floor_node.setFromCollideMask(BitMask32.allOff())
+
+            wall_count = 0
+            floor_up_count = 0    # Floors facing UP (walkable)
+            floor_down_count = 0  # Floors facing DOWN (ceilings - need to flip)
             total_triangles = 0
+
+            # Threshold for floor detection: abs(normal.z) > 0.5 means mostly horizontal
+            FLOOR_NORMAL_THRESHOLD = 0.5
 
             for i in range(geom_node.getNumGeoms()):
                 geom = geom_node.getGeom(i)
@@ -270,24 +285,68 @@ class GameWorld:
                                 v1 = vertices[idx1]
                                 v2 = vertices[idx2]
 
-                                # Create collision polygon (triangle)
+                                # Calculate triangle normal
+                                edge1 = LVector3(v1.x - v0.x, v1.y - v0.y, v1.z - v0.z)
+                                edge2 = LVector3(v2.x - v0.x, v2.y - v0.y, v2.z - v0.z)
+                                normal = edge1.cross(edge2)
+
+                                if normal.length() < 0.0001:
+                                    # Degenerate triangle (zero area)
+                                    continue
+
+                                normal.normalize()
+
+                                # Determine if floor or wall based on normal direction
+                                # CollisionPolygon is ONE-SIDED! Front face determined by vertex winding.
+                                # A downward ray only detects polygons whose front faces UP.
+
                                 try:
-                                    poly = CollisionPolygon(
-                                        Point3(v0),
-                                        Point3(v1),
-                                        Point3(v2)
-                                    )
-                                    collision_node.addSolid(poly)
-                                    poly_count += 1
+                                    if normal.z > FLOOR_NORMAL_THRESHOLD:
+                                        # Floor facing UP - ray from above will hit front face ✓
+                                        poly = CollisionPolygon(
+                                            Point3(v0), Point3(v1), Point3(v2)
+                                        )
+                                        floor_node.addSolid(poly)
+                                        floor_up_count += 1
+
+                                    elif normal.z < -FLOOR_NORMAL_THRESHOLD:
+                                        # Floor facing DOWN (ceiling) - flip vertex order!
+                                        # This makes the CollisionPolygon face UP so ray can detect it
+                                        poly = CollisionPolygon(
+                                            Point3(v0), Point3(v2), Point3(v1)  # Reversed v1/v2
+                                        )
+                                        floor_node.addSolid(poly)
+                                        floor_down_count += 1
+
+                                    else:
+                                        # Wall polygon (mostly vertical)
+                                        poly = CollisionPolygon(
+                                            Point3(v0), Point3(v1), Point3(v2)
+                                        )
+                                        wall_node.addSolid(poly)
+                                        wall_count += 1
+
                                 except Exception as e:
-                                    # Skip degenerate triangles (zero area, etc.)
+                                    # Skip degenerate triangles
                                     logger.debug(f"[World] Skipped degenerate triangle: {e}")
 
-            if poly_count > 0:
-                collision_np = self.render.attachNewNode(collision_node)
-                logger.info(f"[World] ✓ {name}: {poly_count}/{total_triangles} collision polygons created")
-            else:
+            # Attach nodes to scene if they have polygons
+            floor_total = floor_up_count + floor_down_count
+
+            if wall_count > 0:
+                wall_np = self.render.attachNewNode(wall_node)
+                logger.info(f"[World] ✓ {name}_walls: {wall_count} wall polygons (WALL_MASK)")
+
+            if floor_total > 0:
+                floor_np = self.render.attachNewNode(floor_node)
+                logger.info(f"[World] ✓ {name}_floors: {floor_total} floor polygons (FLOOR_MASK)")
+                logger.info(f"[World]   - {floor_up_count} facing UP (original)")
+                logger.info(f"[World]   - {floor_down_count} facing DOWN (flipped to face UP)")
+
+            if wall_count == 0 and floor_total == 0:
                 logger.warning(f"[World] ✗ {name}: No valid collision polygons created!")
+            else:
+                logger.info(f"[World] Total: {wall_count + floor_total}/{total_triangles} polygons")
 
         except Exception as e:
             logger.error(f"[World] Failed to create collision for {name}: {e}")
