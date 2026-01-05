@@ -198,7 +198,7 @@ class MainMenu(BaseUIComponent, DirectObject):
     """Главное меню игры в стиле Source Engine."""
 
     # Папка с фоновыми изображениями
-    BACKGROUNDS_PATH = "nine/assets/materials/backgrounds"
+    BACKGROUNDS_PATH = "nine/assets/materials/textures/backgrounds"
     FALLBACK_BG = "nine/assets/materials/main_menu.png"
 
     # Поддерживаемые форматы
@@ -224,7 +224,8 @@ class MainMenu(BaseUIComponent, DirectObject):
         if os.path.exists(self.BACKGROUNDS_PATH):
             for file in os.listdir(self.BACKGROUNDS_PATH):
                 if file.lower().endswith(all_formats):
-                    self._bg_files.append(os.path.join(self.BACKGROUNDS_PATH, file))
+                    # Используем / для Panda3D (работает на всех ОС)
+                    self._bg_files.append(f"{self.BACKGROUNDS_PATH}/{file}")
 
         # Fallback
         if not self._bg_files:
