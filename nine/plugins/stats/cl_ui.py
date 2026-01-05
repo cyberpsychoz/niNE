@@ -19,8 +19,8 @@ from panda3d.core import (
 from nine.core.game_state import GameState
 from nine.core.plugins import PluginModule
 
-# Путь к текстурам
-TEXTURES_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "assets", "materials", "textures")
+# Путь к текстурам (Panda3D требует Unix-style пути с /)
+TEXTURES_PATH = "nine/assets/materials/textures"
 
 
 class TexturedStatsBar:
@@ -228,10 +228,10 @@ class StatsUIModule(PluginModule):
         if self.stats_frame:
             return
 
-        # Пути к текстурам
-        health_tex = os.path.join(TEXTURES_PATH, "health_bar.png")
-        food_tex = os.path.join(TEXTURES_PATH, "food_bar.png")
-        empty_tex = os.path.join(TEXTURES_PATH, "empty_bar.png")
+        # Пути к текстурам (используем / для всех ОС, Panda3D это понимает)
+        health_tex = f"{TEXTURES_PATH}/health_bar.png"
+        food_tex = f"{TEXTURES_PATH}/food_bar.png"
+        empty_tex = f"{TEXTURES_PATH}/empty_bar.png"
 
         # Контейнер справа сверху
         self.stats_frame = DirectFrame(
