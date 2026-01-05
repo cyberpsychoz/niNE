@@ -52,6 +52,10 @@ class Player:
         is_running = self.keys.get("shift", False)
         do_jump = self.keys.get("space", False)
 
+        # Debug: Log jump attempts
+        if do_jump:
+            logger.info(f"[Player '{self.name}'] 🎮 Jump button pressed! keys={self.keys}")
+
         result = self.character_controller.update(dt, move_vector, is_running, do_jump)
         if result:
             self.last_move_time = time.time()
@@ -118,12 +122,15 @@ class GameWorld:
         self.cTrav = CollisionTraverser('world_traverser')
         # Enable previous transform mode for fast-moving objects (prevents tunneling)
         self.cTrav.setRespectPrevTransform(True)
-        # Enable verbose debugging (optional)
+
+        # DEBUG: Визуализация коллизий (раскомментируйте для отладки на КЛИЕНТЕ)
+        # Показывает collision geometry красными линиями
+        # ВАЖНО: НЕ используйте на сервере без графики!
         # self.cTrav.showCollisions(self.render)
 
         # Spawn points - high above floor for testing fall physics (floor at z=0)
         self.spawn_points = cycle([
-            [8, -3, 10], [10, 5, 10], [5, 0, 10], [15, -5, 10], [3, 3, 10]
+            [8, -3, 15], [10, 5, 15], [5, 0, 15], [15, -5, 15], [3, 3, 15]
         ])
 
         self._setup_scene()
@@ -154,11 +161,10 @@ class GameWorld:
 
     def _load_map_collision(self, model_path: str):
         """
-        Loads map and creates wall collision boxes.
+        Loads map and creates collision geometry from all GeomNodes.
+        Automatically creates precise collision polygons from mesh geometry.
         Floor is a single infinite plane at z=0.
         """
-        from panda3d.core import CollisionBox
-
         try:
             # Load model for collision extraction
             map_model = loader.loadModel(model_path)
@@ -168,56 +174,39 @@ class GameWorld:
                 return
 
             logger.info(f"[World] Loaded map: {model_path}")
+            logger.info(f"[World] Creating collision from geometry...")
 
-            wall_count = 0
+            # Find all GeomNodes in the model (recursive search)
+            geom_nodes = map_model.findAllMatches("**/+GeomNode")
 
-            # Process each PandaNode (parent of GeomNode) for transforms
-            for panda_node in map_model.getChildren():
-                node_name = panda_node.getName()
+            if geom_nodes.isEmpty():
+                logger.warning(f"[World] No GeomNodes found in {model_path}! Using fallback.")
+                self._create_fallback_ground()
+                return
 
-                # Only process Cube.* objects as walls
-                if not node_name.startswith("Cube"):
-                    continue
+            logger.info(f"[World] Found {geom_nodes.getNumPaths()} GeomNode(s)")
 
-                # Skip distant objects (skybox decorations)
-                pos = panda_node.getPos()
-                if abs(pos.x) > 80 or abs(pos.y) > 80:
-                    continue
+            # Create collision geometry from each GeomNode
+            for i in range(geom_nodes.getNumPaths()):
+                geom_node_path = geom_nodes.getPath(i)
+                node_name = geom_node_path.getName()
 
-                scale = panda_node.getScale()
-                world_pos = panda_node.getPos()
+                logger.info(f"[World] Processing GeomNode: {node_name}")
 
-                # Create wall as collision box
-                half_x = abs(scale.x) * 0.5
-                half_y = abs(scale.y) * 0.5
-                half_z = abs(scale.z)
-
-                # Minimum size
-                if half_x < 0.1: half_x = 0.5
-                if half_y < 0.1: half_y = 0.5
-                if half_z < 0.1: half_z = 1.0
-
-                box = CollisionBox(
-                    Point3(-half_x, -half_y, 0),
-                    Point3(half_x, half_y, half_z * 2)
+                # Use existing helper function to create collision from geometry
+                self._create_collision_from_geom(
+                    geom_node_path,
+                    CharacterController.WALL_MASK,
+                    f"wall_{node_name}"
                 )
-                wall_node = CollisionNode(f'wall_{wall_count}')
-                wall_node.addSolid(box)
-                wall_node.setIntoCollideMask(CharacterController.WALL_MASK)
-                wall_node.setFromCollideMask(BitMask32.allOff())
-
-                wall_np = self.render.attachNewNode(wall_node)
-                wall_np.setPos(world_pos)
-                wall_np.setHpr(panda_node.getHpr())
-                wall_count += 1
-
-            logger.info(f"[World] Created {wall_count} wall collision boxes")
 
             # Clean up the model
             map_model.removeNode()
 
             # Create single ground plane at z=0
             self._create_fallback_ground()
+
+            logger.info(f"[World] Map collision loaded successfully")
 
         except Exception as e:
             logger.error(f"[World] Error loading map collision: {e}")
@@ -228,7 +217,7 @@ class GameWorld:
     def _create_collision_from_geom(self, geom_node_path, mask, name):
         """
         Creates collision geometry from a GeomNode.
-        Uses CollisionPolygon for accurate collision.
+        Uses CollisionPolygon for accurate per-triangle collision.
         """
         try:
             geom_node = geom_node_path.node()
@@ -239,6 +228,7 @@ class GameWorld:
             collision_node.setFromCollideMask(BitMask32.allOff())
 
             poly_count = 0
+            total_triangles = 0
 
             for i in range(geom_node.getNumGeoms()):
                 geom = geom_node.getGeom(i)
@@ -254,9 +244,12 @@ class GameWorld:
                     vertices.append(world_v)
 
                 if len(vertices) < 3:
+                    logger.warning(f"[World] Geom {i} has < 3 vertices, skipping")
                     continue
 
-                # Process primitives
+                logger.debug(f"[World] Geom {i}: {len(vertices)} vertices")
+
+                # Process primitives (triangles)
                 for j in range(geom.getNumPrimitives()):
                     prim = geom.getPrimitive(j)
                     prim = prim.decompose()  # Convert to triangles
@@ -264,6 +257,7 @@ class GameWorld:
                     for k in range(prim.getNumPrimitives()):
                         start = prim.getPrimitiveStart(k)
                         end = prim.getPrimitiveEnd(k)
+                        total_triangles += 1
 
                         if end - start >= 3:
                             # Get triangle vertices
@@ -285,16 +279,20 @@ class GameWorld:
                                     )
                                     collision_node.addSolid(poly)
                                     poly_count += 1
-                                except Exception:
-                                    # Skip degenerate triangles
-                                    pass
+                                except Exception as e:
+                                    # Skip degenerate triangles (zero area, etc.)
+                                    logger.debug(f"[World] Skipped degenerate triangle: {e}")
 
             if poly_count > 0:
                 collision_np = self.render.attachNewNode(collision_node)
-                logger.debug(f"[World] Created {name} with {poly_count} collision polygons")
+                logger.info(f"[World] ✓ {name}: {poly_count}/{total_triangles} collision polygons created")
+            else:
+                logger.warning(f"[World] ✗ {name}: No valid collision polygons created!")
 
         except Exception as e:
-            logger.warning(f"[World] Failed to create collision for {name}: {e}")
+            logger.error(f"[World] Failed to create collision for {name}: {e}")
+            import traceback
+            traceback.print_exc()
 
     def _create_fallback_ground(self):
         """Creates main ground plane at z=0."""
@@ -389,6 +387,14 @@ class GameWorld:
 
     def update(self, dt):
         """The main update tick for the world."""
+        # DEBUG: Store tick ID for debugging
+        if not hasattr(self, '_tick_id'):
+            self._tick_id = 0
+        self._tick_id += 1
+
+        if self._tick_id % 10 == 0 or self._tick_id < 20:  # Log first 20 ticks and every 10th
+            logger.info(f"[World TICK #{self._tick_id}] Updating {len(self.players)} players")
+
         # Update all players
         for player in self.players.values():
             player.update(dt)
@@ -401,6 +407,11 @@ class GameWorld:
         if client_id in self.players:
             player = self.players[client_id]
             player.camera_yaw = input_data.pop("camera_yaw", player.camera_yaw)
+
+            # Debug: Log when space is pressed
+            if input_data.get("space", False):
+                logger.info(f"[World] 🎮 Received SPACE input for '{player.name}': {input_data}")
+
             player.keys = input_data
 
     def handle_move(self, client_id, move_data):
