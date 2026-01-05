@@ -208,16 +208,26 @@ class GameServer(ShowBase):
         return task.cont
 
     def game_loop(self, task):
-        raw_dt = globalClock.getDt()
-        dt = raw_dt
+        # CRITICAL FIX: Limit tick rate to prevent multiple ticks per millisecond
+        if not hasattr(self, '_last_tick_time'):
+            self._last_tick_time = globalClock.getRealTime()
+            self._tick_id = 0
 
-        # Fix for headless mode: globalClock returns near-zero dt after first frame
-        if dt < 0.001:
-            dt = 1.0 / self.tick_rate
-        # Also cap max dt to prevent physics explosions
-        if dt > 0.1:
-            self.logger.warning(f"[Physics] Large dt detected: {raw_dt:.4f}, capping to 0.1")
-            dt = 0.1
+        # Calculate time since last tick
+        current_time = globalClock.getRealTime()
+        time_since_last_tick = current_time - self._last_tick_time
+        target_tick_interval = 1.0 / self.tick_rate
+
+        # Skip this frame if not enough time has passed
+        if time_since_last_tick < target_tick_interval:
+            return task.cont
+
+        # Update last tick time
+        self._last_tick_time = current_time
+        self._tick_id += 1
+
+        # Use fixed dt based on tick_rate for consistent physics
+        dt = target_tick_interval
 
         # 1. Process network messages
         while self.message_queue:
@@ -225,6 +235,8 @@ class GameServer(ShowBase):
             self.process_message(client_id, data)
 
         # 2. Update game world (includes collision traversal)
+        if self._tick_id % 10 == 0 or self._tick_id < 20:  # Log first 20 and every 10th
+            self.logger.info(f"[GameServer TICK #{self._tick_id}] world.update(dt={dt:.4f})")
         self.world.update(dt)
 
         # 3. Broadcast new state
@@ -233,7 +245,7 @@ class GameServer(ShowBase):
             asyncio.run_coroutine_threadsafe(
                 self.broadcast(world_state), self.asyncio_loop
             )
-        
+
         return task.cont
         
     def process_message(self, client_id, data):
