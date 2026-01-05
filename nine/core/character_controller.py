@@ -129,7 +129,9 @@ class CharacterController:
             self.velocity.z = self.jump_speed
             self.is_on_ground = False
             self.is_jumping = True  # Prevent ground detection while ascending
-            logger.info(f"[Player] Jump! velocity.z={self.velocity.z}")
+            logger.info(f"[Player] 🚀 JUMP! velocity.z={self.velocity.z}, pos.z={self.actor.getZ():.2f}")
+        else:
+            logger.debug(f"[Player] ✗ Can't jump - not on ground (is_on_ground={self.is_on_ground})")
 
     def get_anim_state(self):
         """Returns animation name based on movement state."""
@@ -180,16 +182,30 @@ class CharacterController:
 
     def _check_ground(self):
         """Check if character is on ground using ray cast results."""
+        # DEBUG: Log entry state
+        import traceback
+        if self.is_jumping or abs(self.velocity.z) > 5:
+            logger.info(f"[_check_ground CALLED] jumping={self.is_jumping} vel.z={self.velocity.z:.2f}")
+            for line in traceback.format_stack()[-4:-1]:
+                logger.info(f"  {line.strip()}")
+
+        entry_jumping = self.is_jumping
+        entry_vel_z = self.velocity.z
+
         # Clear jumping flag when starting to fall
         if self.is_jumping and self.velocity.z <= 0:
             self.is_jumping = False
+            logger.info(f"[_check_ground] Clearing jumping flag (vel.z={self.velocity.z:.2f} <= 0)")
 
         # Don't check ground while actively jumping upward
         if self.is_jumping:
             self.is_on_ground = False
+            logger.debug(f"[_check_ground] Early return - still jumping (vel.z={self.velocity.z:.2f})")
             return
 
         if self.ground_queue.getNumEntries() == 0:
+            if self.is_on_ground:
+                logger.debug(f"[Player] Left ground (no ray hits)")
             self.is_on_ground = False
             return
 
@@ -207,21 +223,26 @@ class CharacterController:
         step_height = 0.5
         snap_threshold = 0.05  # Only snap if difference > this (prevents trembling)
 
+        was_on_ground = self.is_on_ground
+
         if ground_distance <= step_height and ground_distance >= -0.1:
             # On or slightly above ground
-            if self.velocity.z <= 0:
-                # Landing or standing
+            if self.velocity.z <= 0 and not self.is_jumping:
+                # Landing or standing (not jumping)
                 self.is_on_ground = True
                 # Only snap if difference is significant (prevents trembling)
                 if abs(ground_distance) > snap_threshold:
                     self.actor.setZ(surface_point.z)
+                    if not was_on_ground:
+                        logger.info(f"[Player] 💥 Landed! (from z={current_z:.2f} to z={surface_point.z:.2f})")
                 self.velocity.z = 0
             else:
-                # Moving up - don't snap
+                # Moving up OR actively jumping - don't snap
                 self.is_on_ground = False
         elif ground_distance < -0.1:
             # Below ground surface - push up
             self.is_on_ground = True
+            logger.warning(f"[Player] ⚠️ Below ground! Pushing up from z={current_z:.2f} to z={surface_point.z:.2f}")
             self.actor.setZ(surface_point.z)
             self.velocity.z = 0
         else:
@@ -242,12 +263,19 @@ class CharacterController:
         Returns:
             Tuple of (position, rotation)
         """
+        # DEBUG: Log state before
+        if do_jump:
+            logger.info(f"[CharController.update START] do_jump={do_jump} onGround={self.is_on_ground} jumping={self.is_jumping} "
+                       f"z={self.actor.getZ():.2f} vel.z={self.velocity.z:.2f}")
+
         # Check ground first (uses results from previous frame's traversal)
         self._check_ground()
 
         # Jump
         if do_jump and self.is_on_ground:
             self.jump()
+        elif do_jump:
+            logger.debug(f"[Update] Can't jump - not on ground (onGround={self.is_on_ground})")
 
         self.is_running = is_running
 
@@ -282,11 +310,18 @@ class CharacterController:
 
         # Apply velocity to position using setFluidPos for proper collision detection
         # setFluidPos() slides the object testing collisions, setPos() teleports!
-        new_pos = self.actor.getPos()
+        old_pos = self.actor.getPos()
+        new_pos = LVector3(old_pos)
         new_pos.x += self.velocity.x * dt
         new_pos.y += self.velocity.y * dt
         new_pos.z += self.velocity.z * dt
         self.actor.setFluidPos(new_pos)
+
+        # DEBUG: Log position change
+        final_pos = self.actor.getPos()
+        if abs(final_pos.z - old_pos.z) > 0.01 or self.is_jumping:
+            logger.debug(f"[Update END] z: {old_pos.z:.2f} → {final_pos.z:.2f} (delta={final_pos.z-old_pos.z:.2f}) "
+                        f"jumping={self.is_jumping} vel.z={self.velocity.z:.2f}")
 
         # Rotation towards movement direction
         horiz_speed = LVector3(self.velocity.x, self.velocity.y, 0).length()
@@ -303,7 +338,7 @@ class CharacterController:
 
         if now - self._last_log_time >= 1.0:
             logger.info(f"[Player] pos=({pos.x:.2f}, {pos.y:.2f}, {pos.z:.2f}) "
-                       f"onGround={self.is_on_ground} vel=({horiz_speed:.2f}, {self.velocity.z:.2f})")
+                       f"onGround={self.is_on_ground} jumping={self.is_jumping} vel=({horiz_speed:.2f}, {self.velocity.z:.2f})")
             self._last_log_time = now
 
         # Detect physics explosions
