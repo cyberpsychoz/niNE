@@ -244,9 +244,8 @@ class Entity(ABC):
         return self._node
 
     def _create_default_cube(self, render_node: 'NodePath') -> 'NodePath':
-        """Создаёт жёлтый куб как дефолтную модель."""
-        from panda3d.core import GeomNode, Geom, GeomVertexFormat, GeomVertexData
-        from panda3d.core import GeomVertexWriter, GeomTriangles, Vec4
+        """Создаёт белый куб как дефолтную модель предмета."""
+        from panda3d.core import Vec4
 
         # Создаём простой куб
         node = render_node.attachNewNode(f"entity_{self.unique_id}")
@@ -255,24 +254,24 @@ class Entity(ABC):
         try:
             cube = loader.loadModel("models/box")
             cube.reparentTo(node)
-            cube.setScale(0.3)
-            cube.setColor(Vec4(1.0, 0.9, 0.2, 1.0))  # Жёлтый
+            cube.setScale(0.2)  # Маленький куб
+            cube.setColor(Vec4(0.95, 0.95, 0.95, 1.0))  # Белый
         except Exception:
-            # Если нет box, создадим примитив
+            # Если нет box, создадим примитив из карточек
             from panda3d.core import CardMaker
             cm = CardMaker("cube_face")
-            cm.setFrame(-0.15, 0.15, -0.15, 0.15)
+            cm.setFrame(-0.1, 0.1, -0.1, 0.1)
             for i, (h, p) in enumerate([(0, 0), (90, 0), (180, 0), (270, 0), (0, 90), (0, -90)]):
                 face = node.attachNewNode(cm.generate())
                 face.setH(h)
                 face.setP(p)
                 if p == 90:
-                    face.setZ(0.15)
+                    face.setZ(0.1)
                 elif p == -90:
-                    face.setZ(-0.15)
+                    face.setZ(-0.1)
                 else:
-                    face.setY(0.15)
-            node.setColor(Vec4(1.0, 0.9, 0.2, 1.0))
+                    face.setY(0.1)
+            node.setColor(Vec4(0.95, 0.95, 0.95, 1.0))  # Белый
 
         return node
 
@@ -352,20 +351,45 @@ class EntityManager:
     Управляет созданием, обновлением и удалением entity.
     """
 
-    def __init__(self, world, event_manager):
+    def __init__(self, world, event_manager, physics_world=None, render_node=None):
         self.world = world
         self.event_manager = event_manager
+        self.physics_world = physics_world
+        self.render_node = render_node
         self.entities: Dict[str, Entity] = {}  # unique_id -> Entity
         self.world_entities: List[str] = []  # Entity в мире (spawned)
 
     def spawn(self, entity: Entity, position=None) -> Entity:
-        """Спавнит entity в мире."""
+        """Спавнит entity в мире с физикой."""
         self.entities[entity.unique_id] = entity
         self.world_entities.append(entity.unique_id)
+
+        # Создаём визуальную модель если есть render node (server-side)
+        if self.render_node and not entity._node:
+            entity.create_model(self.render_node)
+
+        # Добавляем физику если есть physics_world
+        if self.physics_world and entity._node:
+            from nine.core.components import PhysicsComponent
+
+            # Создаём компонент физики
+            physics = PhysicsComponent(
+                self.physics_world,
+                mass=1.0,
+                shape_type="box",
+                shape_size=(0.3, 0.3, 0.3)
+            )
+            entity.add_component("physics", physics)
+
         entity.on_spawn(self.world, position)
 
         if position and entity._node:
-            entity._node.setPos(*position)
+            # Если есть физика, устанавливаем позицию через неё
+            physics = entity.get_component("physics")
+            if physics:
+                physics.set_position(position)
+            else:
+                entity._node.setPos(*position)
 
         self.event_manager.post("entity_spawned", {
             "entity": entity,

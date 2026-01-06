@@ -1,15 +1,19 @@
 import asyncio
 import json
 import logging
+import os
 import ssl
 import struct
+import subprocess
 import time
 from collections import deque
 from itertools import cycle
 
 from direct.showbase.ShowBase import ShowBase
-from panda3d.core import loadPrcFileData, Vec3
-from panda3d.bullet import BulletWorld
+from panda3d.core import loadPrcFileData, Vec3, ClockObject
+
+# Global clock for delta time
+globalClock = ClockObject.getGlobalClock()
 
 from nine.core.world import GameWorld
 from nine.core.events import EventManager
@@ -34,9 +38,12 @@ class GameServer(ShowBase):
         self.logger.setLevel(logging.INFO)
         self.logger.addHandler(file_handler)
 
-        # Load config
-        with open("server_config.json") as f:
-            config = json.load(f)
+        # Load config (create default if not exists)
+        config = self._load_or_create_config()
+
+        # Ensure SSL certificates exist
+        if not self._ensure_certificates():
+            raise SystemExit("SSL certificates required to start server.")
 
         self.host = config.get("host", "localhost")
         self.port = config.get("port", 9009)
@@ -51,10 +58,8 @@ class GameServer(ShowBase):
         self.client_id_counter = 0
         self.message_queue = deque()
 
-        # Setup Physics and World
-        self.physics_world = BulletWorld()
-        self.physics_world.setGravity(Vec3(0, 0, -9.81))
-        self.world = GameWorld(self.physics_world, self.render)
+        # Setup World (uses Panda3D collision system, no Bullet)
+        self.world = GameWorld(self.render)
 
         # Event system and plugins
         self.is_server = True  # Plugins check this flag
@@ -63,6 +68,14 @@ class GameServer(ShowBase):
 
         # Subscribe to chat events from plugins
         self.event_manager.subscribe("chat_send_to_clients", self.handle_chat_send)
+        # Subscribe to stats events from plugins
+        self.event_manager.subscribe("stats_send_to_client", self.handle_stats_send)
+        # Subscribe to world config events from plugins
+        self.event_manager.subscribe("world_config_send_to_client", self.handle_world_config_send)
+        # Subscribe to inventory events from plugins
+        self.event_manager.subscribe("inventory_send_to_client", self.handle_inventory_send)
+        # Subscribe to system messages
+        self.event_manager.subscribe("system_message_to_client", self.handle_system_message)
 
         # Load plugins
         self.plugin_manager.load_plugins()
@@ -73,21 +86,157 @@ class GameServer(ShowBase):
 
         self.logger.info("Game Server initialized.")
 
+    def _load_or_create_config(self) -> dict:
+        """Load server config from file, or create default if not exists."""
+        config_path = "server_config.json"
+
+        if os.path.exists(config_path):
+            try:
+                with open(config_path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except (json.JSONDecodeError, ValueError) as e:
+                self.logger.warning(f"Invalid config file, recreating: {e}")
+
+        # Create default config
+        default_config = {
+            "host": "localhost",
+            "port": 9009,
+            "tick_rate": 30,
+            "allow_dev_client": False,
+            "world": {
+                "map": {"model": "nine/assets/models/maps/map.bam"},
+                "lighting": {
+                    "ambient": {"color": [0.15, 0.1, 0.2, 1.0], "enabled": True},
+                    "sun": {"color": [1.2, 0.7, 0.6, 1.0], "direction": [45, -30, 0], "enabled": True},
+                    "fill": {"color": [0.2, 0.25, 0.4, 1.0], "direction": [150, -30, 0], "enabled": True},
+                    "rim": {"color": [0.4, 0.2, 0.1, 1.0], "direction": [-120, -10, 0], "enabled": False}
+                },
+                "skybox": {
+                    "texture": "nine/assets/materials/textures/sky.png",
+                    "radius": 1000,
+                    "segments": 64,
+                    "rings": 32,
+                    "uv_scale": {"v_offset": 0.15, "v_scale": 0.9}
+                },
+                "fog": {"enabled": False}
+            }
+        }
+
+        with open(config_path, "w", encoding="utf-8") as f:
+            json.dump(default_config, f, indent=4, ensure_ascii=False)
+
+        self.logger.info(f"Created default config: {config_path}")
+        return default_config
+
+    def _ensure_certificates(self) -> bool:
+        """Check for SSL certificates, offer to generate if missing. Returns True if certs exist."""
+        cert_path = "certs/cert.pem"
+        key_path = "certs/key.pem"
+
+        if os.path.exists(cert_path) and os.path.exists(key_path):
+            return True
+
+        print("\n" + "=" * 50)
+        print("SSL сертификаты не найдены!")
+        print("=" * 50)
+        print(f"Ожидаемые пути:")
+        print(f"  - {cert_path}")
+        print(f"  - {key_path}")
+        print()
+
+        while True:
+            response = input("Сгенерировать самоподписанные сертификаты для разработки? [Y/n]: ").strip().lower()
+            if response in ("", "y", "yes", "д", "да"):
+                return self._generate_certificates()
+            elif response in ("n", "no", "н", "нет"):
+                print("Сервер не может запуститься без SSL сертификатов.")
+                return False
+            else:
+                print("Пожалуйста, введите 'y' или 'n'")
+
+    def _generate_certificates(self) -> bool:
+        """Generate self-signed SSL certificates for development."""
+        certs_dir = "certs"
+        cert_path = os.path.join(certs_dir, "cert.pem")
+        key_path = os.path.join(certs_dir, "key.pem")
+
+        # Create certs directory
+        os.makedirs(certs_dir, exist_ok=True)
+
+        print("Генерация SSL сертификатов...")
+
+        try:
+            # Generate self-signed certificate using openssl
+            cmd = [
+                "openssl", "req", "-x509",
+                "-newkey", "rsa:4096",
+                "-keyout", key_path,
+                "-out", cert_path,
+                "-days", "365",
+                "-nodes",
+                "-subj", "/CN=localhost"
+            ]
+
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True
+            )
+
+            if result.returncode != 0:
+                print(f"Ошибка генерации сертификатов: {result.stderr}")
+                self.logger.error(f"Certificate generation failed: {result.stderr}")
+                return False
+
+            print(f"Сертификаты успешно созданы в папке '{certs_dir}/'")
+            self.logger.info("Self-signed certificates generated successfully.")
+            return True
+
+        except FileNotFoundError:
+            print("Ошибка: OpenSSL не найден в системе!")
+            print("Установите OpenSSL и добавьте его в PATH.")
+            self.logger.error("OpenSSL not found in system PATH.")
+            return False
+        except Exception as e:
+            print(f"Ошибка при генерации сертификатов: {e}")
+            self.logger.error(f"Certificate generation error: {e}")
+            return False
+
     def poll_asyncio(self, task):
         self.asyncio_loop.call_soon(self.asyncio_loop.stop)
         self.asyncio_loop.run_forever()
         return task.cont
 
     def game_loop(self, task):
-        dt = globalClock.getDt()
-        
+        # CRITICAL FIX: Limit tick rate to prevent multiple ticks per millisecond
+        if not hasattr(self, '_last_tick_time'):
+            self._last_tick_time = globalClock.getRealTime()
+            self._tick_id = 0
+
+        # Calculate time since last tick
+        current_time = globalClock.getRealTime()
+        time_since_last_tick = current_time - self._last_tick_time
+        target_tick_interval = 1.0 / self.tick_rate
+
+        # Skip this frame if not enough time has passed
+        if time_since_last_tick < target_tick_interval:
+            return task.cont
+
+        # Update last tick time
+        self._last_tick_time = current_time
+        self._tick_id += 1
+
+        # Use fixed dt based on tick_rate for consistent physics
+        dt = target_tick_interval
+
         # 1. Process network messages
         while self.message_queue:
             client_id, data = self.message_queue.popleft()
             self.process_message(client_id, data)
 
-        # 2. Update game world
-        self.physics_world.doPhysics(dt)
+        # 2. Update game world (includes collision traversal)
+        if self._tick_id % 10 == 0 or self._tick_id < 20:  # Log first 20 and every 10th
+            self.logger.info(f"[GameServer TICK #{self._tick_id}] world.update(dt={dt:.4f})")
         self.world.update(dt)
 
         # 3. Broadcast new state
@@ -96,7 +245,7 @@ class GameServer(ShowBase):
             asyncio.run_coroutine_threadsafe(
                 self.broadcast(world_state), self.asyncio_loop
             )
-        
+
         return task.cont
         
     def process_message(self, client_id, data):
@@ -122,6 +271,27 @@ class GameServer(ShowBase):
                     "message": data.get("message", ""),
                     "player_pos": player_pos
                 })
+        elif msg_type == "item_use":
+            # Отправляем событие плагину инвентаря
+            self.event_manager.post("item_use", {
+                "uuid": client_id,
+                "slot": data.get("slot", 0),
+            })
+        elif msg_type == "item_drop":
+            # Получаем позицию игрока для спавна предмета
+            player = self.world.players.get(client_id)
+            position = None
+            if player:
+                pos = player.get_state()["pos"]
+                # Спавним перед игроком
+                position = (pos[0], pos[1] + 1, pos[2])
+
+            self.event_manager.post("item_drop", {
+                "uuid": client_id,
+                "slot": data.get("slot", 0),
+                "count": data.get("count", 1),
+                "position": position,
+            })
         elif data.get("type") == "internal_disconnect":
             self.handle_disconnect(client_id)
 
@@ -143,6 +313,9 @@ class GameServer(ShowBase):
 
         player = self.world.add_player(client_id, player_name)
         self.logger.info(f"Dev player '{player_name}' (Client #{client_id}) authenticated.")
+
+        # Notify plugins about player join
+        self.event_manager.post("player_joined", {"uuid": client_id, "name": player_name})
 
         other_players_state = {pid: p.get_state() for pid, p in self.world.players.items() if pid != client_id}
         welcome_data = {
@@ -176,6 +349,9 @@ class GameServer(ShowBase):
 
         player = self.world.add_player(client_id, player_name)
         self.logger.info(f"Player '{player_name}' (Client #{client_id}) authenticated.")
+
+        # Notify plugins about player join
+        self.event_manager.post("player_joined", {"uuid": client_id, "name": player_name})
 
         # Prepare welcome message
         other_players_state = {pid: p.get_state() for pid, p in self.world.players.items() if pid != client_id}
@@ -213,6 +389,76 @@ class GameServer(ShowBase):
                 self.send_to_clients(broadcast_data, recipients), self.asyncio_loop
             )
 
+    def handle_stats_send(self, event_data: dict):
+        """
+        Handles stats_send_to_client event from stats plugin.
+        event_data = {
+            "client_id": client_id,
+            "data": stats_data
+        }
+        """
+        client_id = event_data.get("client_id")
+        stats_data = event_data.get("data", {})
+
+        if client_id is not None:
+            asyncio.run_coroutine_threadsafe(
+                self.send_to_client(client_id, stats_data), self.asyncio_loop
+            )
+
+    def handle_world_config_send(self, event_data: dict):
+        """
+        Handles world_config_send_to_client event from world_config plugin.
+        event_data = {
+            "client_id": client_id,
+            "data": world_config_data
+        }
+        """
+        client_id = event_data.get("client_id")
+        config_data = event_data.get("data", {})
+
+        if client_id is not None:
+            asyncio.run_coroutine_threadsafe(
+                self.send_to_client(client_id, config_data), self.asyncio_loop
+            )
+
+    def handle_inventory_send(self, event_data: dict):
+        """
+        Handles inventory_send_to_client event from inventory plugin.
+        event_data = {
+            "client_id": client_id,
+            "data": inventory_data
+        }
+        """
+        client_id = event_data.get("client_id")
+        inventory_data = event_data.get("data", {})
+
+        if client_id is not None:
+            asyncio.run_coroutine_threadsafe(
+                self.send_to_client(client_id, inventory_data), self.asyncio_loop
+            )
+
+    def handle_system_message(self, event_data: dict):
+        """
+        Отправляет системное сообщение клиенту через чат.
+        event_data = {
+            "client_id": client_id,
+            "message": str
+        }
+        """
+        client_id = event_data.get("client_id")
+        message = event_data.get("message", "")
+
+        if client_id is not None and message:
+            chat_data = {
+                "type": "chat_broadcast",
+                "chat_type": "system",
+                "from_name": "Система",
+                "message": message,
+            }
+            asyncio.run_coroutine_threadsafe(
+                self.send_to_client(client_id, chat_data), self.asyncio_loop
+            )
+
     async def send_to_clients(self, data, client_ids):
         """Sends a message to specific clients."""
         payload = json.dumps(data).encode("utf-8")
@@ -231,6 +477,9 @@ class GameServer(ShowBase):
         self.logger.info(f"Client #{client_id} processing disconnection.")
         if client_id in self.clients:
             del self.clients[client_id]
+
+        # Notify plugins about player leave before removing
+        self.event_manager.post("player_left", {"uuid": client_id})
 
         player_id = self.world.remove_player(client_id)
         if player_id is not None:

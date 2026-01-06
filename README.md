@@ -5,7 +5,7 @@
 ![Лицензия](https://img.shields.io/badge/license-MIT-green.svg)
 ![Panda3D](https://img.shields.io/badge/engine-Panda3D-orange.svg)
 
-![logos](nine/assets/materials/main_menu.png)
+![logos](nine/assets/materials/preview_1.png)
 
 ## Особенности
 
@@ -16,10 +16,31 @@
 - **Чат**: Внутриигровое текстовое общение
 
 ![logos](nine/assets/materials/ingame.png)
+![logos](nine/assets/materials/preview_2.png)
+![logos](nine/assets/materials/preview_3.png)
 
 Для получения подробной технической информации, сведений об архитектуре и API для разработчиков, пожалуйста, обратитесь к нашей [**Технической документации (DOCS.md)**](docs/DOCS.md).
 
 Информация для контрибуторов - [**смотреть тут.**](docs/DEVELOPMENT.md).
+
+## Документация по плагинам
+
+niNE имеет мощную модульную систему плагинов, вдохновленную Garry's Mod:
+
+- 📚 [**Полная документация по плагинам**](docs/PLUGINS.md) - архитектура, API, примеры
+- 🎓 [**Туториал для начинающих**](docs/PLUGIN_TUTORIAL.md) - создайте свой первый плагин за 20 минут
+- 📋 [**Справочник Event API**](docs/EVENT_API.md) - полный список событий и их использование
+- 🚀 [**Шаблон плагина**](plugin_template/) - готовый шаблон для быстрого старта
+
+### Быстрый старт с плагинами
+
+```bash
+# Скопируйте шаблон
+cp -r plugin_template plugins/my_plugin
+
+# Отредактируйте sh_plugin.py с вашими настройками
+# Запустите сервер - плагин загрузится автоматически!
+```
 
 ## Установка
 

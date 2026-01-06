@@ -19,6 +19,11 @@ PLUGIN_INFO = PluginInfo(
 
 def on_plugin_load(context):
     """Вызывается после загрузки всех модулей плагина."""
+    # Загружаем все entity из папки entities
+    from nine.plugins.inventory.entities import load_entities
+    loaded = load_entities()
+    if loaded:
+        context.logger.info(f"Загружено предметов: {', '.join(loaded)}")
     context.logger.info("Система инвентаря инициализирована")
 
 

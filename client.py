@@ -68,7 +68,8 @@ class GameClient(ShowBase):
 
         self.player_actor = None
         self.player_actor_model = None  # Actual Actor for animations
-        self.other_players = {}
+        self.other_players = {}  # {id: wrapper_node}
+        self.other_players_state = {}  # {id: {target_pos, target_rot, vel, last_update}}
 
         self.writer = None
         self.in_game_menu_active = False
@@ -82,10 +83,12 @@ class GameClient(ShowBase):
         }
         self.ui = UIManager(self, callbacks)
         self.event_manager.subscribe("client_send_chat_message", self.send_chat_packet)
+        self.event_manager.subscribe("client_item_use", self.send_item_use_packet)
+        self.event_manager.subscribe("client_item_drop", self.send_item_drop_packet)
 
         # --- Final Initializations ---
         self.plugin_manager.load_plugins()
-        self.setup_visual_scene()
+        self.map_model = None
         self.logger.info("Client initialized.")
 
         # --- Input Handling ---
@@ -136,115 +139,28 @@ class GameClient(ShowBase):
         uuid_file.write_text(client_uuid)
         return client_uuid
 
-    def setup_visual_scene(self):
-        """Set up the visual environment with ground and reference objects."""
-        from panda3d.core import AmbientLight, DirectionalLight, CardMaker
-
-        # Lighting
-        ambient = AmbientLight("ambient")
-        ambient.setColor((0.4, 0.4, 0.45, 1))
-        self.render.setLight(self.render.attachNewNode(ambient))
-
-        sun = DirectionalLight("sun")
-        sun.setColor((0.9, 0.85, 0.8, 1))
-        sun_np = self.render.attachNewNode(sun)
-        sun_np.setHpr(45, -45, 0)
-        self.render.setLight(sun_np)
-
-        # Ground plane - green grass-like color
-        cm = CardMaker("ground")
-        cm.setFrame(-100, 100, -100, 100)
-        ground = self.render.attachNewNode(cm.generate())
-        ground.setP(-90)
-        ground.setPos(0, 0, 0)
-        ground.setColor(0.3, 0.5, 0.25, 1)  # Grass green
-
-        # Grid lines on ground for orientation
-        from panda3d.core import LineSegs
-        lines = LineSegs()
-        lines.setThickness(1.5)
-        lines.setColor(0.25, 0.4, 0.2, 1)  # Darker green
-        for i in range(-10, 11):
-            pos = i * 5
-            lines.moveTo(pos, -50, 0.01)
-            lines.drawTo(pos, 50, 0.01)
-            lines.moveTo(-50, pos, 0.01)
-            lines.drawTo(50, pos, 0.01)
-        self.render.attachNewNode(lines.create())
-
-        # Reference cubes at cardinal directions
-        self._create_reference_cube(0, 10, "North", (0.2, 0.4, 0.8, 1))   # Blue - North (+Y)
-        self._create_reference_cube(0, -10, "South", (0.8, 0.3, 0.2, 1))  # Red - South (-Y)
-        self._create_reference_cube(10, 0, "East", (0.2, 0.7, 0.3, 1))    # Green - East (+X)
-        self._create_reference_cube(-10, 0, "West", (0.7, 0.6, 0.2, 1))   # Yellow - West (-X)
-
-        # Some obstacles for reference
-        self._create_box(5, 5, 1.0, (0.6, 0.6, 0.6, 1))
-        self._create_box(-5, 8, 0.5, (0.5, 0.5, 0.55, 1))
-        self._create_box(8, -3, 1.5, (0.55, 0.5, 0.5, 1))
-        self._create_box(-7, -6, 0.8, (0.5, 0.55, 0.5, 1))
-
-    def _create_reference_cube(self, x, y, label, color):
-        """Create a colored cube with label for orientation."""
-        from panda3d.core import CardMaker
-        from direct.gui.OnscreenText import OnscreenText
-
-        # Simple cube using 6 cards
-        size = 1.0
-        cube = self.render.attachNewNode(f"cube_{label}")
-        cube.setPos(x, y, size / 2)
-
-        cm = CardMaker("face")
-        cm.setFrame(-size/2, size/2, -size/2, size/2)
-
-        # Create 6 faces
-        faces = [
-            ((0, 0, size/2), (0, 0, 0)),      # Top
-            ((0, 0, -size/2), (180, 0, 0)),   # Bottom
-            ((0, size/2, 0), (-90, 0, 0)),    # Front
-            ((0, -size/2, 0), (90, 0, 0)),    # Back
-            ((size/2, 0, 0), (0, 90, 0)),     # Right
-            ((-size/2, 0, 0), (0, -90, 0)),   # Left
-        ]
-
-        for pos, hpr in faces:
-            face = cube.attachNewNode(cm.generate())
-            face.setPos(*pos)
-            face.setHpr(*hpr)
-            face.setColor(*color)
-
-    def _create_box(self, x, y, height, color):
-        """Create a simple box obstacle."""
+    def _load_map(self, model_path: str):
+        """Загружает модель карты."""
         from panda3d.core import CardMaker
 
-        size = 1.5
-        box = self.render.attachNewNode(f"box_{x}_{y}")
-        box.setPos(x, y, height / 2)
+        # Удаляем старую карту если есть
+        if self.map_model:
+            self.map_model.removeNode()
+            self.map_model = None
 
-        cm = CardMaker("face")
-        cm.setFrame(-size/2, size/2, -height/2, height/2)
-
-        # Front and back
-        for z_mult in [1, -1]:
-            face = box.attachNewNode(cm.generate())
-            face.setPos(0, size/2 * z_mult, 0)
-            face.setHpr(0 if z_mult == 1 else 180, 0, 0)
-            face.setColor(*color)
-
-        # Left and right
-        for x_mult in [1, -1]:
-            face = box.attachNewNode(cm.generate())
-            face.setPos(size/2 * x_mult, 0, 0)
-            face.setHpr(90 * x_mult, 0, 0)
-            face.setColor(*color)
-
-        # Top
-        cm2 = CardMaker("top")
-        cm2.setFrame(-size/2, size/2, -size/2, size/2)
-        top = box.attachNewNode(cm2.generate())
-        top.setPos(0, 0, height/2)
-        top.setP(-90)
-        top.setColor(*[c * 1.1 for c in color[:3]] + [1])
+        try:
+            self.map_model = self.loader.loadModel(model_path)
+            self.map_model.reparentTo(self.render)
+            self.map_model.setPos(0, 0, 0)
+            self.logger.info(f"Map loaded: {model_path}")
+        except Exception as e:
+            self.logger.error(f"Failed to load map {model_path}: {e}")
+            # Fallback: simple ground plane
+            cm = CardMaker("ground")
+            cm.setFrame(-100, 100, -100, 100)
+            self.map_model = self.render.attachNewNode(cm.generate())
+            self.map_model.setP(-90)
+            self.map_model.setColor(0.2, 0.25, 0.2, 1)
 
     def update_key_map(self, key, state):
         # Блокируем ввод движения когда чат открыт
@@ -264,10 +180,12 @@ class GameClient(ShowBase):
         if self.camera_controller:
             self.camera_controller.start()
         if not self.input_task:
-            if self.dev_mode:
-                self.input_task = self.taskMgr.add(self.update_movement_task, "update-movement-task")
-            else:
-                self.input_task = self.taskMgr.add(self.send_input_task, "send-input-task")
+            # Always use server-authoritative movement (send input state to server)
+            # Dev mode only affects connection behavior, not movement model
+            self.input_task = self.taskMgr.add(self.send_input_task, "send-input-task")
+        # Start interpolation task for other players
+        if not self.taskMgr.hasTaskNamed("interpolate-players"):
+            self.taskMgr.add(self.interpolate_other_players_task, "interpolate-players")
 
     def send_input_task(self, task):
         """Periodically sends the current input state to the server (server-authoritative)."""
@@ -285,7 +203,7 @@ class GameClient(ShowBase):
         return current + diff * factor
 
     def update_movement_task(self, task):
-        """Client-side prediction movement task for dev mode."""
+        """Client-side prediction movement task for dev mode with Source-like physics."""
         if not self.is_connected or not self.player_actor or self.in_game_menu_active:
             return Task.cont
 
@@ -296,21 +214,22 @@ class GameClient(ShowBase):
 
         dt = globalClock.getDt()
 
-        # Initialize dev mode state
+        # Initialize dev mode state with velocity-based physics
         if not hasattr(self, '_dev_state'):
             self._dev_state = {
-                'current_speed': 0.0,
-                'move_direction': LVector3(0, 1, 0),
+                'velocity': LVector3(0, 0, 0),
                 'current_heading': 0.0,
                 'current_anim_rate': 1.0,
+                'send_timer': 0.0,  # Rate limit network sends
             }
 
-        # Movement parameters
-        walk_speed = 5.0
-        run_speed = 10.0
-        acceleration = 30.0
-        deceleration = 40.0
-        rotation_speed = 10.0  # How fast character turns
+        # === Movement parameters (same as server) ===
+        walk_speed = 1.25
+        run_speed = 2.5
+        ground_accel = 8.0
+        friction = 6.0
+        stop_speed = 0.5
+        rotation_speed = 12.0
 
         # Build input from WASD
         input_x = 0
@@ -323,47 +242,62 @@ class GameClient(ShowBase):
         is_running = self.keyMap.get("shift", False)
         has_input = input_x != 0 or input_y != 0
 
-        # Calculate world-space movement vector from camera
+        velocity = self._dev_state['velocity']
+        wish_speed = run_speed if is_running else walk_speed
+
+        # Apply friction
+        speed = velocity.length()
+        if speed > 0.01:
+            if not has_input:
+                # Full friction when not moving
+                control = max(speed, stop_speed)
+                drop = control * friction * dt
+                new_speed = max(speed - drop, 0)
+                velocity *= (new_speed / speed) if speed > 0 else 0
+            else:
+                # Reduced friction when moving
+                control = max(speed, stop_speed)
+                drop = control * friction * dt * 0.3
+                new_speed = max(speed - drop, 0)
+                velocity *= (new_speed / speed) if speed > 0 else 0
+
+        # Accelerate towards input direction
         if has_input:
-            move_vector = self.camera_controller.get_movement_vector(input_x, input_y)
-            self._dev_state['move_direction'] = move_vector
+            move_dir = self.camera_controller.get_movement_vector(input_x, input_y)
+            move_dir.normalize()
 
-        # Calculate speed
-        if has_input:
-            target_speed = run_speed if is_running else walk_speed
-            self._dev_state['current_speed'] = min(
-                self._dev_state['current_speed'] + acceleration * dt,
-                target_speed
-            )
-        else:
-            self._dev_state['current_speed'] = max(
-                self._dev_state['current_speed'] - deceleration * dt,
-                0.0
-            )
+            # Source-like acceleration
+            current_speed = velocity.dot(move_dir)
+            add_speed = wish_speed - current_speed
+            if add_speed > 0:
+                accel_speed = min(ground_accel * wish_speed * dt, add_speed)
+                velocity += move_dir * accel_speed
 
-        is_moving = self._dev_state['current_speed'] > 0.1
+        self._dev_state['velocity'] = velocity
 
+        # Check if moving
+        speed = velocity.length()
+        is_moving = speed > 0.1
+
+        # Update animation
         if is_moving:
-            # Select animation (use actor model, not wrapper)
             target_anim = "run_forward" if is_running else "walk_forward"
             if self.player_actor_model.getCurrentAnim() != target_anim:
                 self.player_actor_model.loop(target_anim)
 
-            # Sync animation speed (only update if changed significantly to avoid jitter)
-            speed_ratio = self._dev_state['current_speed'] / run_speed
+            speed_ratio = min(speed / run_speed, 1.0)
             target_anim_rate = 0.5 + (speed_ratio * 0.5)
             if abs(target_anim_rate - self._dev_state['current_anim_rate']) > 0.05:
                 self._dev_state['current_anim_rate'] = target_anim_rate
                 self.player_actor_model.setPlayRate(target_anim_rate, target_anim)
 
             # Move player
-            move_dir = self._dev_state['move_direction']
-            velocity = move_dir * self._dev_state['current_speed'] * dt
-            self.player_actor.setPos(self.player_actor.getPos() + velocity)
+            self.player_actor.setPos(self.player_actor.getPos() + velocity * dt)
 
-            # Smooth rotation towards movement direction
-            # Add 180 because model faces -Y by default
-            target_heading = degrees(atan2(-move_dir.x, move_dir.y)) + 180
+            # Smooth rotation towards velocity direction
+            vel_dir = LVector3(velocity)
+            vel_dir.normalize()
+            target_heading = degrees(atan2(-vel_dir.x, vel_dir.y)) + 180
             current_heading = self._dev_state['current_heading']
             new_heading = self._lerp_angle(current_heading, target_heading, rotation_speed * dt)
             self._dev_state['current_heading'] = new_heading
@@ -373,18 +307,67 @@ class GameClient(ShowBase):
                 self.player_actor_model.loop("idle")
                 self._dev_state['current_anim_rate'] = 1.0
 
-        # Send movement data to server
-        pos = self.player_actor.getPos()
-        rot = self.player_actor.getHpr()
+        # Rate limit network sends (20 times per second max)
+        self._dev_state['send_timer'] += dt
+        if self._dev_state['send_timer'] >= 0.05:
+            self._dev_state['send_timer'] = 0.0
 
-        move_data = {
-            "type": "move",
-            "pos": [pos.x, pos.y, pos.z],
-            "rot": [rot.x, rot.y, rot.z],
-            "is_moving": is_moving,
-            "is_running": is_running
-        }
-        self.asyncio_loop.create_task(send_message(self.writer, move_data))
+            pos = self.player_actor.getPos()
+            rot = self.player_actor.getHpr()
+
+            move_data = {
+                "type": "move",
+                "pos": [pos.x, pos.y, pos.z],
+                "rot": [rot.x, rot.y, rot.z],
+                "vel": [velocity.x, velocity.y, velocity.z],
+                "is_moving": is_moving,
+                "is_running": is_running
+            }
+            self.asyncio_loop.create_task(send_message(self.writer, move_data))
+
+        return Task.cont
+
+    def interpolate_other_players_task(self, task):
+        """Smoothly interpolate other players' positions for smooth movement."""
+        import time
+        dt = globalClock.getDt()
+
+        for p_id, state in list(self.other_players_state.items()):
+            wrapper = self.other_players.get(p_id)
+            if not wrapper:
+                continue
+
+            current_pos = wrapper.getPos()
+            target_pos = state.get('target_pos', current_pos)
+            vel = state.get('vel', LVector3(0, 0, 0))
+
+            # Interpolation with velocity prediction
+            # Move towards target + predicted position based on velocity
+            time_since_update = time.time() - state.get('last_update', time.time())
+            predicted_pos = LVector3(target_pos) + vel * min(time_since_update, 0.1)
+
+            # Smooth interpolation (lerp factor based on distance)
+            diff = predicted_pos - current_pos
+            dist = diff.length()
+
+            if dist < 0.01:
+                # Close enough, snap
+                new_pos = predicted_pos
+            elif dist > 5.0:
+                # Too far, teleport (probably spawned/respawned)
+                new_pos = predicted_pos
+            else:
+                # Smooth interpolation - faster when further away
+                lerp_speed = min(15.0, 5.0 + dist * 3.0)
+                new_pos = current_pos + diff * min(lerp_speed * dt, 1.0)
+
+            wrapper.setPos(new_pos)
+
+            # Smooth rotation
+            current_rot = wrapper.getH()
+            target_rot = state.get('target_rot', [current_rot, 0, 0])[0]
+            new_rot = self._lerp_angle(current_rot, target_rot, 10.0 * dt)
+            wrapper.setH(new_rot)
 
         return Task.cont
 
@@ -425,23 +408,45 @@ class GameClient(ShowBase):
         wrapper = self.render.attachNewNode(f"player_{player_id}")
         actor.reparentTo(wrapper)
 
+        # Fix root motion: lock actor position relative to wrapper
+        # Animation may move the actor, we reset it every frame
+        actor.setPos(0, 0, 0)
+
         # Start with idle animation
         actor.loop("idle")
 
         if is_local_player:
             self.player_actor = wrapper
             self.player_actor_model = actor  # Keep reference to actual actor for animations
+            # Start task to fix root motion jitter for local player
+            if not self.taskMgr.hasTaskNamed("fix-root-motion"):
+                self.taskMgr.add(self._fix_root_motion_task, "fix-root-motion", sort=-10)
         else:
             self.other_players[player_id] = wrapper
             # Store actor reference on wrapper for animation access
             wrapper.setPythonTag("actor", actor)
         return wrapper
 
+    def _fix_root_motion_task(self, task):
+        """Fix root motion jitter by resetting actor position every frame."""
+        if self.player_actor_model:
+            # Keep actor at origin relative to wrapper - animations shouldn't move it
+            self.player_actor_model.setPos(0, 0, 0)
+
+        # Also fix other players
+        for wrapper in self.other_players.values():
+            actor = wrapper.getPythonTag("actor")
+            if actor:
+                actor.setPos(0, 0, 0)
+
+        return Task.cont
+
     def handle_network_data(self, data: dict):
         msg_type = data.get("type")
 
         if msg_type == "welcome":
-            if not self.dev_mode: self.ui.hide_main_menu()
+            # Переходим в игровое состояние (скрывает меню и уведомляет плагины)
+            self.ui.enter_game()
             self.player_id = data["id"]
             self.load_actor(self.player_id, LColor(0.5, 0.8, 0.5, 1), is_local_player=True)
             self.player_actor.setPos(*data["pos"])
@@ -467,10 +472,30 @@ class GameClient(ShowBase):
                 if actor:
                     actor.cleanup()
                 wrapper.removeNode()
+            # Clean up interpolation state
+            if p_id in self.other_players_state:
+                del self.other_players_state[p_id]
+
+        elif msg_type == "world_config":
+            # Загружаем карту
+            map_config = data.get("map", {})
+            map_model = map_config.get("model", "nine/assets/models/maps/map.bam")
+            self._load_map(map_model)
+
+            # Передаём плагинам для обработки освещения и скайбокса
+            self.event_manager.post("world_config", data)
+            self.logger.info("World config received and applied")
+
+        elif msg_type == "inventory_update":
+            # Передаём плагину инвентаря
+            self.event_manager.post("inventory_update", data)
 
         elif msg_type == "world_state":
+            import time
             for p_id_str, p_info in data.get("players", {}).items():
                 p_id = int(p_id_str)
+                is_other_player = p_id != self.player_id
+
                 wrapper = self.player_actor if p_id == self.player_id else self.other_players.get(p_id)
                 if not wrapper:
                     wrapper = self.load_actor(p_id, LColor(0.8, 0.8, 0.8, 1))
@@ -481,14 +506,26 @@ class GameClient(ShowBase):
                 else:
                     actor_model = wrapper.getPythonTag("actor")
 
-                # Server-authoritative clients get position/rotation from server.
-                # Dev mode clients only update other players, not themselves.
-                is_other_player = p_id != self.player_id
-                if not self.dev_mode or is_other_player:
-                    wrapper.setPos(*p_info["pos"])
-                    wrapper.setHpr(*p_info["rot"])
-                # Update animations (dev mode handles own player's animations locally)
-                if (not self.dev_mode or is_other_player) and actor_model:
+                pos = p_info["pos"]
+                rot = p_info["rot"]
+                vel = p_info.get("vel", [0, 0, 0])
+
+                if is_other_player:
+                    # Store target state for interpolation (other players)
+                    self.other_players_state[p_id] = {
+                        'target_pos': LVector3(*pos),
+                        'target_rot': rot,
+                        'vel': LVector3(*vel),
+                        'last_update': time.time(),
+                    }
+                else:
+                    # Server-authoritative mode: directly set own position
+                    # (applies to both normal and dev clients now)
+                    wrapper.setPos(*pos)
+                    wrapper.setHpr(*rot)
+
+                # Update animations from server state
+                if actor_model:
                     anim_state = p_info.get("anim_state", "idle")
                     speed_ratio = p_info.get("speed_ratio", 0.0)
 
@@ -509,6 +546,13 @@ class GameClient(ShowBase):
         self.logger.info("Connection closed. Cleaning up game state.")
         self.disable_game_input()
 
+        # Stop interpolation task
+        if self.taskMgr.hasTaskNamed("interpolate-players"):
+            self.taskMgr.remove("interpolate-players")
+        # Stop root motion fix task
+        if self.taskMgr.hasTaskNamed("fix-root-motion"):
+            self.taskMgr.remove("fix-root-motion")
+
         if self.player_actor:
             if self.player_actor_model:
                 self.player_actor_model.cleanup()
@@ -521,6 +565,7 @@ class GameClient(ShowBase):
                 actor.cleanup()
             wrapper.removeNode()
         self.other_players.clear()
+        self.other_players_state.clear()
 
         if self.camera_controller:
             self.camera_controller.destroy()
@@ -528,6 +573,10 @@ class GameClient(ShowBase):
 
         self.player_id = -1
         self.is_connected = False
+
+        # Уведомляем плагины об отключении ПЕРЕД уничтожением UI
+        self.event_manager.post("client_disconnected", {})
+
         self.ui.destroy_all()
         if not self.dev_mode:
             self.ui.show_main_menu()
@@ -597,6 +646,25 @@ class GameClient(ShowBase):
     def send_chat_packet(self, message: str):
         if message.strip():
             self.asyncio_loop.create_task(send_message(self.writer, {"type": "chat_message", "message": message}))
+
+    def send_item_use_packet(self, data: dict):
+        """Отправляет запрос на использование предмета."""
+        if self.is_connected and self.player_id >= 0:
+            packet = {
+                "type": "item_use",
+                "slot": data.get("slot", 0),
+            }
+            self.asyncio_loop.create_task(send_message(self.writer, packet))
+
+    def send_item_drop_packet(self, data: dict):
+        """Отправляет запрос на выбрасывание предмета."""
+        if self.is_connected and self.player_id >= 0:
+            packet = {
+                "type": "item_drop",
+                "slot": data.get("slot", 0),
+                "count": data.get("count", 1),
+            }
+            self.asyncio_loop.create_task(send_message(self.writer, packet))
 
     def open_login_menu(self): self.ui.show_login_menu(default_ip="localhost:9009", default_name=self.character_name)
     def close_login_menu(self): self.ui.hide_login_menu(); self.ui.show_main_menu()

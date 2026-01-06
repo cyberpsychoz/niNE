@@ -20,10 +20,17 @@ class InventoryServerModule(PluginModule):
         # Максимальный размер инвентаря
         self.max_slots = 20
 
-        # Entity manager для предметов в мире
+        # Entity manager для предметов в мире (с физикой)
         self.entity_manager: Optional[EntityManager] = None
         if hasattr(self.app, 'world'):
-            self.entity_manager = EntityManager(self.app.world, self.event_manager)
+            physics_world = getattr(self.app, 'physics_world', None)
+            render_node = getattr(self.app, 'render', None)
+            self.entity_manager = EntityManager(
+                self.app.world,
+                self.event_manager,
+                physics_world=physics_world,
+                render_node=render_node
+            )
 
         # Загружаем entity из папки entities
         from nine.plugins.inventory.entities import load_entities
@@ -65,6 +72,9 @@ class InventoryServerModule(PluginModule):
 
         self.logger.debug(f"Инвентарь игрока {player_uuid} инициализирован")
 
+        # Отправляем текущий инвентарь клиенту
+        self._send_inventory_update(player_uuid)
+
     def on_player_leave(self, data: dict):
         """Игрок вышел - сохраняем и очищаем данные."""
         player_uuid = data.get("uuid")
@@ -91,6 +101,12 @@ class InventoryServerModule(PluginModule):
         success = self.give_item(player_uuid, class_id, count, extra_data)
         if success:
             self.logger.debug(f"Выдан {count}x {class_id} игроку {player_uuid}")
+        else:
+            # Отправляем сообщение об ошибке
+            self.event_manager.post("system_message_to_client", {
+                "client_id": player_uuid,
+                "message": f"Предмет '{class_id}' не существует. Используйте /items для списка.",
+            })
 
     def on_item_pickup(self, data: dict):
         """Игрок подобрал предмет из мира."""
@@ -248,8 +264,14 @@ class InventoryServerModule(PluginModule):
 
         # Пытаемся добавить в существующий стек
         for existing in inventory:
-            if existing.can_stack_with(entity):
+            can_stack = existing.can_stack_with(entity)
+            self.logger.debug(
+                f"Stack check: {existing.CLASS_ID}(count={existing.count}) + "
+                f"{entity.CLASS_ID}(count={entity.count}) = {can_stack}"
+            )
+            if can_stack:
                 existing.count += entity.count
+                self.logger.debug(f"Stacked! New count: {existing.count}")
                 return
 
         # Проверяем свободные слоты
@@ -259,6 +281,7 @@ class InventoryServerModule(PluginModule):
 
         # Добавляем как новый предмет
         inventory.append(entity)
+        self.logger.debug(f"Added new slot: {entity.CLASS_ID} (count={entity.count})")
 
     def _send_inventory_update(self, player_uuid: str):
         """Отправляет обновление инвентаря клиенту."""
@@ -278,10 +301,14 @@ class InventoryServerModule(PluginModule):
             }
             items.append(item_data)
 
-        self.event_manager.post("inventory_updated", {
-            "uuid": player_uuid,
-            "inventory": items,
-            "max_slots": self.max_slots,
+        # Отправляем клиенту через событие
+        self.event_manager.post("inventory_send_to_client", {
+            "client_id": player_uuid,
+            "data": {
+                "type": "inventory_update",
+                "inventory": items,
+                "max_slots": self.max_slots,
+            }
         })
 
     # -------------------------------------------------------------------------
