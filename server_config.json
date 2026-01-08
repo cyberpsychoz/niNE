@@ -1,0 +1,77 @@
+{
+    "host": "localhost",
+    "port": 9009,
+    "tick_rate": 30,
+    "allow_dev_client": false,
+    "world": {
+        "map": {
+            "model": "nine/assets/models/maps/map.bam"
+        },
+        "lighting": {
+            "ambient": {
+                "color": [
+                    0.15,
+                    0.1,
+                    0.2,
+                    1.0
+                ],
+                "enabled": true
+            },
+            "sun": {
+                "color": [
+                    1.2,
+                    0.7,
+                    0.6,
+                    1.0
+                ],
+                "direction": [
+                    45,
+                    -30,
+                    0
+                ],
+                "enabled": true
+            },
+            "fill": {
+                "color": [
+                    0.2,
+                    0.25,
+                    0.4,
+                    1.0
+                ],
+                "direction": [
+                    150,
+                    -30,
+                    0
+                ],
+                "enabled": true
+            },
+            "rim": {
+                "color": [
+                    0.4,
+                    0.2,
+                    0.1,
+                    1.0
+                ],
+                "direction": [
+                    -120,
+                    -10,
+                    0
+                ],
+                "enabled": false
+            }
+        },
+        "skybox": {
+            "texture": "nine/assets/materials/textures/sky.png",
+            "radius": 1000,
+            "segments": 64,
+            "rings": 32,
+            "uv_scale": {
+                "v_offset": 0.15,
+                "v_scale": 0.9
+            }
+        },
+        "fog": {
+            "enabled": false
+        }
+    }
+}

@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(openssl req:*)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "Bash(curl:*)",
+      "Bash(dir:*)",
+      "Bash(ls -la \"D:\\\\Projects\\\\niNE\\\\nine\\\\assets\\\\materials\"\" 2>/dev/null || dir \"D:ProjectsniNEnineassetsmaterials \")",
+      "Bash(python:*)",
+      "Bash(python -m py_compile:*)",
+      "Bash(ls:*)"
+    ]
+  }
+}

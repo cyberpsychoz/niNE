@@ -1,0 +1,20 @@
+[
+  {
+    "id": 1,
+    "description": "Создай новую ветку от ветки dev и назови её test-unstable, а потом переключись на неё",
+    "status": "completed",
+    "priority": 0,
+    "created": "2026-01-08T20:40:42.765948",
+    "completed": "2026-01-08T20:42:08.879437",
+    "summary": "Created and switched to a new branch named 'test-unstable' from the 'dev' branch."
+  },
+  {
+    "id": 2,
+    "description": "Ознакомься с docs/DEVELOPMENT.md и составь дальнейший план разработки записав его в docs/DEVELOPMENT.md",
+    "status": "completed",
+    "priority": 0,
+    "created": "2026-01-08T20:40:57.993451",
+    "completed": "2026-01-08T20:44:00.649320",
+    "summary": "Updated DEVELOPMENT.md with detailed information about the project's current state, recent changes, and future plans."
+  }
+]

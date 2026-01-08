@@ -1,0 +1,7 @@
+2026-01-01 22:11:02,527 - nine.server.game_server - INFO - [World] Setting up Panda3D collision system
+2026-01-01 22:11:02,862 - nine.server.game_server - INFO - [World] Loaded map: nine/assets/models/maps/map.bam
+2026-01-01 22:11:02,863 - nine.server.game_server - INFO - [World] Created 25 wall collision boxes
+2026-01-01 22:11:02,864 - nine.server.game_server - INFO - [World] Created ground plane at z=0
+2026-01-01 22:11:02,886 - nine.server.game_server - INFO - Game Server initialized.
+2026-01-01 22:11:02,889 - nine.server.game_server - INFO - SSL context loaded.
+2026-01-01 22:11:02,908 - nine.server.game_server - INFO - Serving on ('127.0.0.1', 9009), ('::1', 9009, 0, 0)
