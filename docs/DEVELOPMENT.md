@@ -1,241 +1,128 @@
-# План Разработки niNE
+# niNE Development Guide
 
-Этот документ описывает недавние архитектурные изменения и представляет дорожную карту по превращению проекта в полноценный "Конструктор ролевых игр".
+## Overview
+This document provides guidelines for developers working on the niNE game engine. It covers various aspects of development, from setting up your environment to contributing code and managing plugins.
 
-**Текущий этап:** Фаза 1A — Расширенное сохранение персонажей
+## Getting Started
+1. **Clone the Repository**
+   ```bash
+   git clone https://github.com/your-repo/nine.git
+   cd nine
+   ```
 
----
+2. **Install Dependencies**
+   Ensure you have Python 3.8+ installed, then install the required packages:
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-## 0. Физическая система (В работе)
+3. **Set Up Your Environment**
+   Configure your environment variables as needed for development.
 
-Серверная физика на базе **встроенной Panda3D Collision System** (не Bullet).
+## Contributing Code
+1. **Fork the Repository**
+   Fork the niNE repository on GitHub and clone your fork to your local machine.
 
-### Текущая реализация:
+2. **Create a New Branch**
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
 
--   **Контроллер персонажа (`nine/core/character_controller.py`):**
-    -   Source-like movement: acceleration, friction, air control
-    -   `CollisionSphere` для столкновений со стенами (2 сферы: body + head)
-    -   `CollisionRay` для определения земли (ground detection)
-    -   `CollisionHandlerPusher` для скольжения вдоль стен
-    -   Кастомная gravity через `velocity.z`
-    -   Флаг `is_jumping` для корректной обработки прыжков
+3. **Make Your Changes**
+   Implement your changes, ensuring you follow the coding standards outlined below.
 
--   **Параметры физики (ПОЛЬЗОВАТЕЛЬСКИЕ — НЕ МЕНЯТЬ!):**
-    ```python
-    walk_speed = 1.5        # Скорость ходьбы (units/sec)
-    run_speed = 3.0         # Скорость бега (2x walk)
-    rotation_speed = 10.0   # Скорость поворота
-    gravity = 25.0          # Гравитация
-    jump_speed = 10.0       # Скорость прыжка
-    stop_speed = 0.01       # Порог для friction
-    ```
+4. **Commit Your Changes**
+   ```bash
+   git add .
+   git commit -m "Add your descriptive message here"
+   ```
 
--   **Коллизия карты (`nine/core/world.py`):**
-    -   **ОБНОВЛЕНО**: Полигональная коллизия из .bam моделей
-    -   Рекурсивный поиск GeomNode: `findAllMatches("**/+GeomNode")`
-    -   `CollisionPolygon` для точной коллизии по треугольникам
-    -   **Автоматическое разделение по нормали** (исправлено 05.01.2026):
-        -   Горизонтальные полигоны → `FLOOR_MASK` (948 полигонов)
-        -   Вертикальные полигоны → `WALL_MASK` (632 полигона)
-    -   **КРИТИЧНО: Переворот нормалей вниз** (исправлено 05.01.2026):
-        -   `CollisionPolygon` — односторонний! Луч сверху видит только front face
-        -   Полигоны с `normal.z < -0.5` (смотрят вниз) переворачиваются
-        -   Результат: 474 up + 474 flipped = 948 детектируемых полигонов пола
-    -   `CollisionPlane` на z=0 как fallback для пустых областей
-    -   `setFluidPos()` вместо `setPos()` для корректной коллизии
-    -   `setRespectPrevTransform(True)` для предотвращения туннелинга
+5. **Push to Your Fork**
+   ```bash
+   git push origin feature/your-feature-name
+   ```
 
--   **Игровой цикл (`nine/server/game_server.py`):**
-    -   **КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ**: Ограничение tick rate
-    -   Проверка времени между тиками через `globalClock.getRealTime()`
-    -   Fixed timestep: `dt = 1.0 / tick_rate` (0.05 для 20 FPS)
-    -   Порядок: input → player.update() → cTrav.traverse() → broadcast
+6. **Create a Pull Request**
+   Go to the niNE repository on GitHub, and create a pull request from your fork's branch.
 
-### Тестовая карта
+## Coding Standards
+- Follow PEP 8 for Python code.
+- Use meaningful variable and function names.
+- Write clear and concise comments where necessary.
 
-Для чистого тестирования физики добавлена генерация тестовой карты:
+## Plugin Development
+1. **Plugin Structure**
+   Plugins should be placed in the `nine/plugins/` directory. Each plugin should have its own subdirectory with a clear structure:
+   ```
+   nine/plugins/my_plugin/
+       cl_module.py  # Client-side module
+       sv_module.py  # Server-side module
+       sh_config.py  # Shared configuration
+       README.md     # Plugin documentation
+   ```
 
--   **Конфигурация** (`server_config.json`):
-    ```json
-    "map": { "model": "test" }     // Тестовая карта
-    "map": { "model": "path.bam" } // Реальная карта
-    ```
+2. **Plugin Lifecycle**
+   - `on_load`: Called when the plugin is loaded.
+   - `on_unload`: Called when the plugin is unloaded.
 
--   **Структура тестовой карты:**
-    -   Плоскость земли на z=0
-    -   Блоки для тестирования коллизий (red, green, blue)
-    -   Периметр стен (north, south, east, west)
-    -   Ступеньки разной высоты (step_1, step_2, step_3)
-    -   Spawn в центре (0, 0, 5)
+3. **Event Management**
+   Use the `EventManager` to subscribe and post events between components.
 
-### Что работает ✓
+## Adding New Features
 
--   ✅ Ходьба и бег с корректными скоростями
--   ✅ Поворот персонажа в направлении движения
--   ✅ Падение с гравитацией
--   ✅ Приземление на землю
--   ✅ **Прыжки** — персонаж поднимается до z=1.75 (исправлено 05.01.2026)
--   ✅ **Коллизия со стенами** — точная полигональная коллизия (1580+ полигонов)
--   ✅ **Tick rate** — стабильные 20 FPS (исправлена проблема с тысячами тиков/сек)
+### Dоработка плагина администрирования сервера
+1. **Файлы для редактирования:**
+   - nine/plugins/admin_manager/cl_ui.py
+   - nine/plugins/admin_manager/sv_admin.py
 
-### Недавние критические исправления (05.01.2026)
+2. **Описание изменений:**
+   - Добавьте функциональность для управления администраторами.
+   - Обновите UI для отображения и изменения прав администраторов.
 
-#### 1. Коллизия с .bam моделями (COLLISION_FIX_SUMMARY.md)
+3. **Шаги реализации:**
+   - В `sv_admin.py` добавьте методы для добавления, удаления и проверки статуса администраторов.
+   - В `cl_ui.py` создайте интерфейс для взаимодействия с сервером по управлению администраторами.
 
-**Проблема:** Персонаж проходил сквозь карту map2.bam насквозь.
+4. **Пример изменений:**
+   ```python
+   # nine/plugins/admin_manager/sv_admin.py
+   def add_admin(self, player_id, admin_level=1):
+       self.cursor.execute("INSERT INTO admins (player_id, admin_level) VALUES (?, ?)", (player_id, admin_level))
+       self.conn.commit()
 
-**Причина:** Код искал "Cube.*" среди прямых детей, но в map2.bam структура была:
-```
-Scene → CyberpunkMap → Cube.001 (геометрия)
-```
+   def remove_admin(self, player_id):
+       self.cursor.execute("DELETE FROM admins WHERE player_id = ?", (player_id,))
+       self.conn.commit()
 
-**Решение:**
-- Рекурсивный поиск: `map_model.findAllMatches("**/+GeomNode")`
-- Создание CollisionPolygon для каждого треугольника меша
-- Результат: 1580 collision polygons, точная коллизия
+   def is_admin(self, player_id):
+       self.cursor.execute("SELECT * FROM admins WHERE player_id = ?", (player_id,))
+       return self.cursor.fetchone() is not None
+   ```
 
-**Файлы:** `nine/core/world.py` (строки 155-290)
+   ```python
+   # nine/plugins/admin_manager/cl_ui.py
+   def toggle_admin_status(self, player_id):
+       if self.is_admin(player_id):
+           self.remove_admin(player_id)
+       else:
+           self.add_admin(player_id)
 
-#### 2. Прыжки (JUMP_FIX_SUMMARY.md)
+   def update_admin_list(self):
+       admin_list = self.get_admin_list()
+       for admin in admin_list:
+           self.create_admin_entry(admin)
+   ```
 
-**Проблема:** Персонаж не мог прыгать — при нажатии Space не поднимался.
+5. **Тестирование:**
+   - Убедитесь, что добавление и удаление администраторов работают корректно.
+   - Проверьте обновление UI после изменений.
 
-**Причина:** `game_loop()` вызывался **тысячи раз в секунду** вместо 20 FPS!
-- При попытке прыжка velocity.z устанавливалась в 10.0
-- Но за 5 миллисекунд game_loop выполнялся 8 раз
-- Каждый раз применялась гравитация: `velocity.z -= 25.0 * 0.05`
-- Через 8 итераций velocity.z достигала 0
-- `_check_ground()` телепортировал персонажа обратно на z=0
+6. **Документация:**
+   - Обновите `README.md` в директории плагина с новыми функциями и инструкциями по использованию.
 
-**Решение:**
-- Добавлена проверка времени между тиками в `game_loop()`
-- Пропуск кадра если прошло недостаточно времени
-- Fixed timestep: `dt = 1.0 / tick_rate`
-- Дополнительно: проверка `is_jumping` в ground detection
+## Reporting Issues
+If you encounter any issues or have suggestions for improvements, please create an issue on the GitHub repository.
 
-**Файлы:**
-- `nine/server/game_server.py` (строки 210-249) — КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ
-- `nine/core/character_controller.py` (строка 219) — улучшен ground detection
+## Contact
+For further information or assistance, contact the niNE development team at [your-email@example.com].
 
-**Результат тестирования:**
-```
-Frame   2: z=0.44 vel.z=8.75  ← Прыжок начался!
-Frame   8: z=1.75 vel.z=1.25  ← Пик прыжка
-Frame  20: z=0.00 vel.z=0.00  ← Приземлился
-✅ JUMP SUCCESS! Max height: z=1.75
-```
-
-### Осталось:
-
--   [ ] Настроить step height для подъёма на ступеньки
--   [ ] Протестировать на сложных картах с рельефом
-
-### Почему отказались от Bullet:
-
--   Дёрганный прыжок
--   Персонаж не падал (не менялась высота)
--   Конфликт внутренней физики Bullet с кастомными параметрами
--   Сложная отладка
----
-
-## 1. Недавняя переработка архитектуры (Завершено ✓)
-
-Проект недавно претерпел значительный рефакторинг для улучшения стабильности, поддерживаемости и архитектурной чистоты.
-
--   **Унификация клиентов:**
-    -   Избыточные `dev_client.py` и `client.py` были объединены. Основной `client.py` теперь поддерживает флаг `--dev` для разработки, который включает предсказание движения на стороне клиента и аутентификацию для разработчиков.
-    -   Выделенный, автоматически подключающийся `dev_client.py` был воссоздан для быстрого тестирования, используя ту же базовую логику `GameClient`, но без главного меню.
-
--   **Разделение конфигураций:**
-    -   Клиенты больше не читают `server_config.json`. Это обеспечивает строгое разделение ответственности, при котором клиенты не знают о специфичных настройках сервера.
-    -   Детали подключения (хост, порт) теперь передаются через аргументы командной строки или через UI, с разумными значениями по умолчанию.
-
--   **Централизация сетевого кода:**
-    -   Вся низкоуровневая сетевая логика (отправка и получение JSON-сообщений с префиксом длины через SSL) была централизована в модуле `nine.core.network`.
-    -   Все клиенты (`client.py`, `dev_client.py`, `dev_cli_client.py`) теперь используют этот общий модуль, что устраняет дублирование кода.
-
--   **Улучшенная аутентификация на сервере:**
-    -   Сервер теперь имеет выделенный поток аутентификации `dev_auth`. Когда в `server_config.json` установлен флаг `allow_dev_client: true`, разработчики могут подключать несколько клиентов без блокировки.
-
----
-
-## 2. Планируемые доработки и улучшения:
-
-### Фаза 1A — Расширенное сохранение персонажей
--   **Имплементация:** Добавить систему сохранения и загрузки персонажей, включая их позицию, инвентарь и статусы.
--   **Тестирование:** Проверить корректность работы системы на различных сценариях.
-
-### Фаза 1B — Зоны/Миры
--   **Имплементация:** Разработать систему мультиплейерных зон и миров, позволяющую игрокам перемещаться между ними.
--   **Тестирование:** Проверить стабильность и производительность системы при множественном подключении пользователей.
-
-### Фаза 2A — Редактор мира
--   **Имплементация:** Создать графический редактор для создания и редактирования игровых карт и объектов.
--   **Тестирование:** Проверить функциональность инструментов редактора и совместимость с игровой логикой.
-
-### Фаза 2B — Квесты/Диалоги
--   **Имплементация:** Разработать систему квестов и диалогов, позволяющую игрокам взаимодействовать с NPC и выполнять задания.
--   **Тестирование:** Проверить логику выполнения квестов и корректность отображения диалогов.
-
-### Фаза 3 — Доработка и расширение
--   **Имплементация:** Реализовать дополнительные игровые механики, такие как навыки, способности и модульная система персонажей.
--   **Тестирование:** Провести комплексное тестирование всех новых функций для обеспечения стабильности и совместимости.
-
----
-
-## Текущий прогресс
-
-| Компонент | Статус | Примечания |
-|-----------|--------|------------|
-| Физика персонажа | ✓ Готово | Panda3D Collision System |
-| Тестовая карта | ✓ Готово | `"model": "test"` в конфиге |
-| Ходьба/бег/поворот | ✓ Готово | Source-like movement |
-| Прыжок | ✓ Готово | Исправлен tick rate (05.01.2026) |
-| Коллизия стен | ✓ Готово | Полигональная коллизия (05.01.2026) |
-| Система инвентаря | ✓ Готово | Entity-based, см. `sv_inventory.py` |
-| Система статов | ✓ Готово | Health, Hunger |
-| UI статов | ✓ Готово | HUD с полосками |
-| Чат | ✓ Готово | Локальный/глобальный |
-| Skybox | ✓ Готово | Динамический |
-| Освещение | ✓ Готово | Sun/Ambient/Fill lights |
-| **UI (NineTheme)** | ✓ Готово | Все меню переработаны |
-| **Система GameState** | ✓ Готово | MENU/CONNECTING/IN_GAME |
-| Сохранение персонажей | Планируется | Фаза 1A |
-| Зоны/Миры | Планируется | Фаза 1B |
-| Редактор мира | Планируется | Фаза 2A |
-| Квесты/Диалоги | Планируется | Фаза 2B |
-
----
-
-## Недавние изменения: UI (NineTheme)
-
-### Исправленные баги:
-
-1. **Чат в главном меню** — чат больше не виден и не открывается в главном меню
-2. **Stats UI после отключения** — полоски здоровья/еды корректно скрываются при выходе с сервера
-
-### Новые файлы:
-
-- `nine/core/game_state.py` — enum GameState (MENU, CONNECTING, IN_GAME)
-- `nine/ui/theme.py` — тема NineTheme с цветами и размерами
-
-### Переработанный UI:
-
-| Файл | Изменения |
-|------|-----------|
-| `nine/ui/manager.py` | Интеграция GameState, события `game_state_changed` |
-| `nine/ui/main_menu.py` | Тёмная центральная панель, минималистичные кнопки |
-| `nine/ui/login_menu.py` | Стилизованная форма с полями ввода |
-| `nine/ui/settings_menu.py` | Улучшенный layout с русскими подписями |
-| `nine/ui/in_game_menu.py` | Компактное меню паузы |
-| `nine/plugins/chat/cl_ui.py` | Скрытие в меню через GameState |
-| `nine/plugins/stats/cl_ui.py` | Скрытие в меню через GameState |
-| `client.py` | Интеграция с `ui.enter_game()` и событиями |
-
-### Стиль UI:
-
-- Тёмно-серые фоны (#2E2E2E, #3C3C3C)
-- Белый текст с серыми подписями
-- Голубые акценты при наведении на кнопки
-- Оранжевые акценты для важных кнопок (Войти, Сохранить)
-- Плоские кнопки (FLAT relief)
