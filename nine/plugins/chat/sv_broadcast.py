@@ -1,5 +1,6 @@
 # nine/plugins/chat/sv_broadcast.py
 from nine.plugins.admin_manager.sv_admin import AdminManager
+from nine.core.plugins import PluginModule
 
 class ChatBroadcastModule(PluginModule):
     def __init__(self, context):

@@ -1,5 +1,6 @@
 # nine/plugins/admin_manager/sv_admin.py
 import sqlite3
+from nine.core.plugins import PluginModule
 
 class AdminManager(PluginModule):
     def __init__(self, context):

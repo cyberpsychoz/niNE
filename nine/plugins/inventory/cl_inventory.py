@@ -1,5 +1,7 @@
 # nine/plugins/inventory/cl_inventory.py
 from nine.plugins.admin_manager.cl_ui import AdminUIModule
+from direct.showbase.DirectObject import DirectObject
+from nine.core.plugins import PluginModule
 
 class InventoryClientModule(PluginModule, DirectObject):
     def __init__(self, context):

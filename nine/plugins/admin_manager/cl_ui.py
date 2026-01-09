@@ -1,6 +1,7 @@
 # nine/plugins/admin_manager/cl_ui.py
 from direct.gui.DirectGui import DirectButton, DirectFrame, DirectLabel, DirectScrolledList
 from nine.core.events import EventManager
+from nine.core.plugins import PluginModule
 
 class AdminUIModule(PluginModule):
     def on_load(self):
