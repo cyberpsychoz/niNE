@@ -302,7 +302,7 @@ class GameWorld:
 
                                 try:
                                     if normal.z > FLOOR_NORMAL_THRESHOLD:
-                                        # Floor facing UP - ray from above will hit front face ✓
+                                        # Floor facing UP - ray from above will hit front face
                                         poly = CollisionPolygon(
                                             Point3(v0), Point3(v1), Point3(v2)
                                         )
@@ -335,16 +335,16 @@ class GameWorld:
 
             if wall_count > 0:
                 wall_np = self.render.attachNewNode(wall_node)
-                logger.info(f"[World] ✓ {name}_walls: {wall_count} wall polygons (WALL_MASK)")
+                logger.info(f"[World] {name}_walls: {wall_count} wall polygons (WALL_MASK)")
 
             if floor_total > 0:
                 floor_np = self.render.attachNewNode(floor_node)
-                logger.info(f"[World] ✓ {name}_floors: {floor_total} floor polygons (FLOOR_MASK)")
+                logger.info(f"[World] {name}_floors: {floor_total} floor polygons (FLOOR_MASK)")
                 logger.info(f"[World]   - {floor_up_count} facing UP (original)")
                 logger.info(f"[World]   - {floor_down_count} facing DOWN (flipped to face UP)")
 
             if wall_count == 0 and floor_total == 0:
-                logger.warning(f"[World] ✗ {name}: No valid collision polygons created!")
+                logger.warning(f"[World] {name}: No valid collision polygons created!")
             else:
                 logger.info(f"[World] Total: {wall_count + floor_total}/{total_triangles} polygons")
 

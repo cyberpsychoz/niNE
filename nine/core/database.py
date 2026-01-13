@@ -39,7 +39,7 @@ class DatabaseManager:
     # --- Управление схемой ---
 
     def _create_tables(self):
-        """Создает таблицу players, если она не существует, с уникальным полем name."""
+        """Создает таблицы players и game_characters, если они не существуют."""
         if not self.conn: return
         try:
             with self.conn:
@@ -55,6 +55,8 @@ class DatabaseManager:
                         attributes TEXT
                     )
                 """)
+            # Создаем таблицу D&D персонажей
+            self.create_characters_table()
         except sqlite3.Error as e:
             print(f"Ошибка при создании таблиц: {e}")
 
@@ -200,3 +202,317 @@ class DatabaseManager:
              print(f"Ошибка: Имя '{value}' уже занято.")
         except sqlite3.Error as e:
             print(f"Ошибка при установке атрибута '{attribute}' для '{player_uuid}': {e}")
+
+    # ==========================================================================
+    # D&D CHARACTER SYSTEM - Методы для работы с игровыми персонажами
+    # ==========================================================================
+
+    def create_characters_table(self):
+        """Создает таблицу game_characters для D&D персонажей."""
+        if not self.conn:
+            return
+        try:
+            with self.conn:
+                self.conn.execute("""
+                    CREATE TABLE IF NOT EXISTS game_characters (
+                        uuid TEXT PRIMARY KEY,
+                        account_uuid TEXT NOT NULL,
+                        character_name TEXT NOT NULL UNIQUE,
+
+                        -- Базовые характеристики
+                        race TEXT NOT NULL DEFAULT 'human',
+                        gender TEXT NOT NULL DEFAULT 'male',
+                        model TEXT NOT NULL DEFAULT 'human_male',
+                        class TEXT NOT NULL DEFAULT 'fighter',
+                        level INTEGER DEFAULT 1,
+                        experience INTEGER DEFAULT 0,
+
+                        -- D&D атрибуты (6 основных)
+                        strength INTEGER DEFAULT 10,
+                        dexterity INTEGER DEFAULT 10,
+                        constitution INTEGER DEFAULT 10,
+                        intelligence INTEGER DEFAULT 10,
+                        wisdom INTEGER DEFAULT 10,
+                        charisma INTEGER DEFAULT 10,
+
+                        -- Боевые характеристики
+                        hp_current INTEGER DEFAULT 10,
+                        hp_max INTEGER DEFAULT 10,
+                        armor_class INTEGER DEFAULT 10,
+                        proficiency_bonus INTEGER DEFAULT 2,
+
+                        -- JSON-поля для комплексных данных
+                        skills TEXT DEFAULT '{}',
+                        proficiencies TEXT DEFAULT '{}',
+                        class_features TEXT DEFAULT '[]',
+
+                        -- Предыстория и RP
+                        background TEXT DEFAULT '',
+                        personality TEXT DEFAULT '{}',
+                        biography TEXT DEFAULT '',
+
+                        -- Инвентарь и экипировка
+                        equipment TEXT DEFAULT '{}',
+                        gold INTEGER DEFAULT 0,
+
+                        -- Позиция в мире
+                        pos_x REAL DEFAULT 0,
+                        pos_y REAL DEFAULT 0,
+                        pos_z REAL DEFAULT 0,
+
+                        -- Мета
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        last_played TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+                        FOREIGN KEY (account_uuid) REFERENCES players(uuid)
+                    )
+                """)
+                self.conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_characters_account ON game_characters(account_uuid)"
+                )
+                print("Таблица game_characters создана/проверена.")
+        except sqlite3.Error as e:
+            print(f"Ошибка при создании таблицы game_characters: {e}")
+
+    def get_characters_by_account(self, account_uuid: str) -> List[Dict]:
+        """Получает список персонажей аккаунта."""
+        if not self.conn:
+            return []
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                """SELECT uuid, character_name, race, gender, model, class, level,
+                          hp_current, hp_max, last_played
+                   FROM game_characters
+                   WHERE account_uuid = ?
+                   ORDER BY last_played DESC""",
+                (account_uuid,)
+            )
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
+        except sqlite3.Error as e:
+            print(f"Ошибка при получении персонажей для аккаунта '{account_uuid}': {e}")
+            return []
+
+    def get_character_count(self, account_uuid: str) -> int:
+        """Получает количество персонажей аккаунта."""
+        if not self.conn:
+            return 0
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "SELECT COUNT(*) FROM game_characters WHERE account_uuid = ?",
+                (account_uuid,)
+            )
+            return cursor.fetchone()[0]
+        except sqlite3.Error as e:
+            print(f"Ошибка при подсчёте персонажей: {e}")
+            return 0
+
+    def get_character(self, char_uuid: str) -> Optional[Dict]:
+        """Получает полные данные персонажа по UUID."""
+        if not self.conn:
+            return None
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT * FROM game_characters WHERE uuid = ?", (char_uuid,))
+            row = cursor.fetchone()
+            if row:
+                result = dict(row)
+                # Парсим JSON поля
+                for json_field in ['skills', 'proficiencies', 'class_features', 'personality', 'equipment']:
+                    if result.get(json_field):
+                        try:
+                            result[json_field] = json.loads(result[json_field])
+                        except (json.JSONDecodeError, TypeError):
+                            result[json_field] = {} if json_field != 'class_features' else []
+                # Конвертируем datetime в строки для JSON сериализации
+                for date_field in ['created_at', 'last_played']:
+                    if result.get(date_field) and hasattr(result[date_field], 'isoformat'):
+                        result[date_field] = result[date_field].isoformat()
+                return result
+            return None
+        except sqlite3.Error as e:
+            print(f"Ошибка при получении персонажа '{char_uuid}': {e}")
+            return None
+
+    def get_character_by_name(self, character_name: str) -> Optional[Dict]:
+        """Получает персонажа по имени."""
+        if not self.conn:
+            return None
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT * FROM game_characters WHERE character_name = ?", (character_name,))
+            row = cursor.fetchone()
+            if row:
+                result = dict(row)
+                for json_field in ['skills', 'proficiencies', 'class_features', 'personality', 'equipment']:
+                    if result.get(json_field):
+                        try:
+                            result[json_field] = json.loads(result[json_field])
+                        except (json.JSONDecodeError, TypeError):
+                            result[json_field] = {} if json_field != 'class_features' else []
+                return result
+            return None
+        except sqlite3.Error as e:
+            print(f"Ошибка при получении персонажа по имени '{character_name}': {e}")
+            return None
+
+    def create_character(self, data: Dict) -> Optional[str]:
+        """
+        Создает нового персонажа. Возвращает UUID созданного персонажа или None.
+
+        Обязательные поля в data:
+        - account_uuid: UUID аккаунта
+        - character_name: имя персонажа
+        - race, gender, class: базовые параметры
+        """
+        if not self.conn:
+            return None
+
+        import uuid
+        char_uuid = str(uuid.uuid4())
+
+        # Формируем модель из расы и пола
+        model = f"{data.get('race', 'human')}_{data.get('gender', 'male')}"
+
+        try:
+            with self.conn:
+                self.conn.execute("""
+                    INSERT INTO game_characters (
+                        uuid, account_uuid, character_name,
+                        race, gender, model, class, level,
+                        strength, dexterity, constitution, intelligence, wisdom, charisma,
+                        hp_current, hp_max, armor_class, proficiency_bonus,
+                        skills, proficiencies, class_features,
+                        background, personality, biography,
+                        equipment, gold,
+                        pos_x, pos_y, pos_z
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    char_uuid,
+                    data.get('account_uuid'),
+                    data.get('character_name'),
+                    data.get('race', 'human'),
+                    data.get('gender', 'male'),
+                    model,
+                    data.get('class', 'fighter'),
+                    data.get('level', 1),
+                    data.get('strength', 10),
+                    data.get('dexterity', 10),
+                    data.get('constitution', 10),
+                    data.get('intelligence', 10),
+                    data.get('wisdom', 10),
+                    data.get('charisma', 10),
+                    data.get('hp_current', 10),
+                    data.get('hp_max', 10),
+                    data.get('armor_class', 10),
+                    data.get('proficiency_bonus', 2),
+                    json.dumps(data.get('skills', {})),
+                    json.dumps(data.get('proficiencies', {})),
+                    json.dumps(data.get('class_features', [])),
+                    data.get('background', ''),
+                    json.dumps(data.get('personality', {})),
+                    data.get('biography', ''),
+                    json.dumps(data.get('equipment', {})),
+                    data.get('gold', 0),
+                    data.get('pos_x', 0),
+                    data.get('pos_y', 0),
+                    data.get('pos_z', 0),
+                ))
+            return char_uuid
+        except sqlite3.IntegrityError as e:
+            print(f"Ошибка: Имя персонажа '{data.get('character_name')}' уже занято.")
+            return None
+        except sqlite3.Error as e:
+            print(f"Ошибка при создании персонажа: {e}")
+            return None
+
+    def update_character(self, char_uuid: str, data: Dict) -> bool:
+        """Обновляет данные персонажа."""
+        if not self.conn or not data:
+            return False
+
+        # Поля, которые нельзя обновлять напрямую
+        protected_fields = {'uuid', 'account_uuid', 'created_at'}
+
+        # JSON поля требуют сериализации
+        json_fields = {'skills', 'proficiencies', 'class_features', 'personality', 'equipment'}
+
+        # Формируем SQL запрос
+        set_clauses = []
+        values = []
+
+        for key, value in data.items():
+            if key in protected_fields:
+                continue
+            if key in json_fields:
+                value = json.dumps(value)
+            set_clauses.append(f"{key} = ?")
+            values.append(value)
+
+        if not set_clauses:
+            return False
+
+        # Обновляем last_played
+        set_clauses.append("last_played = CURRENT_TIMESTAMP")
+        values.append(char_uuid)
+
+        try:
+            with self.conn:
+                self.conn.execute(
+                    f"UPDATE game_characters SET {', '.join(set_clauses)} WHERE uuid = ?",
+                    values
+                )
+            return True
+        except sqlite3.Error as e:
+            print(f"Ошибка при обновлении персонажа '{char_uuid}': {e}")
+            return False
+
+    def delete_character(self, char_uuid: str, account_uuid: str) -> bool:
+        """
+        Удаляет персонажа. Требует account_uuid для проверки владельца.
+        """
+        if not self.conn:
+            return False
+        try:
+            with self.conn:
+                cursor = self.conn.cursor()
+                cursor.execute(
+                    "DELETE FROM game_characters WHERE uuid = ? AND account_uuid = ?",
+                    (char_uuid, account_uuid)
+                )
+                return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            print(f"Ошибка при удалении персонажа '{char_uuid}': {e}")
+            return False
+
+    def update_character_position(self, char_uuid: str, pos_x: float, pos_y: float, pos_z: float) -> bool:
+        """Обновляет позицию персонажа в мире."""
+        if not self.conn:
+            return False
+        try:
+            with self.conn:
+                self.conn.execute(
+                    "UPDATE game_characters SET pos_x = ?, pos_y = ?, pos_z = ?, last_played = CURRENT_TIMESTAMP WHERE uuid = ?",
+                    (pos_x, pos_y, pos_z, char_uuid)
+                )
+            return True
+        except sqlite3.Error as e:
+            print(f"Ошибка при обновлении позиции персонажа '{char_uuid}': {e}")
+            return False
+
+    def update_character_model(self, char_uuid: str, model: str) -> bool:
+        """Обновляет модель персонажа (для админ-команды /charsetmodel)."""
+        if not self.conn:
+            return False
+        try:
+            with self.conn:
+                self.conn.execute(
+                    "UPDATE game_characters SET model = ? WHERE uuid = ?",
+                    (model, char_uuid)
+                )
+            return True
+        except sqlite3.Error as e:
+            print(f"Ошибка при обновлении модели персонажа '{char_uuid}': {e}")
+            return False

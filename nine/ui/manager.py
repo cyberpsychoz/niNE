@@ -167,12 +167,87 @@ class UIManager:
         if 'main_menu' in self.active_components:
             self.active_components['main_menu'].show()
 
+    # ========== Управление экраном выбора персонажа ==========
+
+    def show_character_select(self, characters_data: list, max_characters: int = 2, client=None):
+        """
+        Показывает экран выбора персонажа.
+
+        Args:
+            characters_data: Список персонажей аккаунта
+            max_characters: Максимальное количество персонажей
+            client: Ссылка на клиент для отправки сообщений серверу
+        """
+        self._destroy_component('login_menu')
+        self._destroy_component('main_menu')
+
+        if 'character_select' not in self.active_components:
+            # Импортируем здесь чтобы избежать циклических импортов
+            from nine.plugins.dnd.cl_character_select import CharacterSelectUI
+            self.active_components['character_select'] = CharacterSelectUI(
+                self, characters_data, max_characters, client
+            )
+        else:
+            # Обновляем существующий компонент
+            self.active_components['character_select'].update_characters(
+                characters_data, max_characters
+            )
+            self.active_components['character_select'].show()
+
+        self.set_game_state(GameState.CHARACTER_SELECT)
+
+    def hide_character_select(self):
+        """Скрывает экран выбора персонажа."""
+        self._destroy_component('character_select')
+
+    def update_character_list(self, characters_data: list, max_characters: int = 2):
+        """Обновляет список персонажей на экране выбора."""
+        if 'character_select' in self.active_components:
+            self.active_components['character_select'].update_characters(
+                characters_data, max_characters
+            )
+
+    # ========== Управление экраном создания персонажа ==========
+
+    def show_character_create(self, client=None):
+        """
+        Показывает экран создания персонажа (7 шагов).
+
+        Args:
+            client: Ссылка на клиент для отправки сообщений серверу
+        """
+        # Скрываем выбор персонажа, но не уничтожаем
+        if 'character_select' in self.active_components:
+            self.active_components['character_select'].hide()
+
+        if 'character_create' not in self.active_components:
+            # Импортируем здесь чтобы избежать циклических импортов
+            from nine.plugins.dnd.cl_character_create import CharacterCreateUI
+            self.active_components['character_create'] = CharacterCreateUI(self, client)
+
+        self.set_game_state(GameState.CHARACTER_CREATE)
+
+    def hide_character_create(self):
+        """Скрывает экран создания персонажа и возвращает к выбору."""
+        self._destroy_component('character_create')
+        # Показываем экран выбора обратно
+        if 'character_select' in self.active_components:
+            self.active_components['character_select'].show()
+            self.set_game_state(GameState.CHARACTER_SELECT)
+
     # ========== Переход в игру ==========
 
-    def enter_game(self):
-        """Переход в игровое состояние (после подключения к серверу)."""
+    def enter_game(self, character_data: dict = None):
+        """
+        Переход в игровое состояние (после выбора персонажа).
+
+        Args:
+            character_data: Данные выбранного персонажа
+        """
         self.hide_main_menu()
-        self.hide_login_menu()
+        self._destroy_component('login_menu')
+        self._destroy_component('character_select')
+        self._destroy_component('character_create')
         self.set_game_state(GameState.IN_GAME)
 
     def exit_game(self):
