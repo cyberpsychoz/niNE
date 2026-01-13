@@ -1,11 +1,11 @@
-# niNE
-Это упрощенный 3D фреймворк для ролевых игр, вдохновленный SS14 и Garry's Mod. Он позволяет игрокам легко создавать серверы и расширять функциональность с помощью Python-плагинов с поддержкой дополнительных ресурсов.
+# D&D gamemode
+ D&D gamemode — это отдельная ветка разработки под игровой режим основанный на НРИ D&D пятой редакции, не влияющая на основное развитие niNE. Основной проект niNE продолжит развиваться независимо.
 
 ![Версия Python](https://img.shields.io/badge/python-3.12+-blue.svg)
 ![Лицензия](https://img.shields.io/badge/license-MIT-green.svg)
 ![Panda3D](https://img.shields.io/badge/engine-Panda3D-orange.svg)
 
-![logos](nine/assets/materials/preview_1.png)
+![logos](nine/assets/materials/textures/backgrounds/1.jpg)
 
 ## Особенности
 

@@ -303,7 +303,7 @@ class MainMenu(BaseUIComponent, DirectObject):
         # Логотип/название игры - слева вверху
         self._add_element('title', DirectLabel(
             parent=self.base.a2dTopLeft,
-            text="niNE",
+            text="D&D gamemode",
             scale=0.12,
             pos=(0.15, 0, -0.12),
             text_fg=(1, 1, 1, 0.95),
