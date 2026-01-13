@@ -75,6 +75,11 @@ class GameClient(ShowBase):
         self.in_game_menu_active = False
         self.camera_controller = None
 
+        # D&D character data
+        self.account_uuid = None
+        self.password = ""  # Stored for auth
+        self.current_character = None  # Currently selected character data
+
         # --- UI Setup ---
         callbacks = {
             "connect": self.open_login_menu, "exit": self.exit_game,
@@ -375,9 +380,14 @@ class GameClient(ShowBase):
         credentials = self.ui.get_login_credentials()
         ip_str = credentials.get("ip", "localhost:9009")
         self.character_name = credentials.get("name", "Player")
+        self.password = credentials.get("password", "")
 
         if not ip_str or not self.character_name:
             self.logger.warning("IP and Name fields must be filled.")
+            return
+
+        if not self.password:
+            self.logger.warning("Password field must be filled.")
             return
 
         try:
@@ -394,8 +404,15 @@ class GameClient(ShowBase):
         if self.dev_mode:
             auth_data = {"type": "dev_auth", "name": self.character_name, "uuid": self.client_uuid}
         else:
-            auth_data = {"type": "auth", "name": self.character_name}
+            # D&D auth with password
+            auth_data = {
+                "type": "auth",
+                "name": self.character_name,
+                "password": self.password
+            }
         self.asyncio_loop.create_task(send_message(self.writer, auth_data))
+        # Clear password from memory after sending
+        self.password = ""
 
     def load_actor(self, player_id, color, is_local_player=False):
         # Model contains embedded animations: idle, walk_forward, walk_backward, run_forward, strafe_left, strafe_right
@@ -444,10 +461,57 @@ class GameClient(ShowBase):
     def handle_network_data(self, data: dict):
         msg_type = data.get("type")
 
-        if msg_type == "welcome":
+        # ===== D&D Auth & Character Messages =====
+        if msg_type == "auth_success":
+            # Авторизация успешна, сохраняем account_uuid и запрашиваем список персонажей
+            self.account_uuid = data.get("account_uuid")
+            self.logger.info(f"Auth success, account: {self.account_uuid}")
+            # Запрашиваем список персонажей
+            self.send_message({"type": "character_list_request"})
+
+        elif msg_type == "auth_failed":
+            # Авторизация не удалась
+            reason = data.get("reason", "Unknown error")
+            self.logger.warning(f"Auth failed: {reason}")
+            # Возвращаемся в меню
+            self.disconnect()
+            # TODO: Показать сообщение об ошибке
+
+        elif msg_type == "character_list":
+            # Получен список персонажей - показываем UI выбора
+            characters = data.get("characters", [])
+            max_characters = data.get("max_characters", 2)
+            self.logger.info(f"Character list received: {len(characters)} characters")
+            self.ui.show_character_select(characters, max_characters, self)
+
+        elif msg_type == "character_created":
+            # Персонаж успешно создан - обновляем список
+            character = data.get("character")
+            self.logger.info(f"Character created: {character.get('character_name')}")
+            # Запрашиваем обновлённый список
+            self.send_message({"type": "character_list_request"})
+            # Скрываем экран создания, показываем выбор
+            self.ui.hide_character_create()
+
+        elif msg_type == "character_create_failed":
+            # Создание персонажа не удалось
+            reason = data.get("reason", "Unknown error")
+            self.logger.warning(f"Character create failed: {reason}")
+            # TODO: Показать сообщение об ошибке в UI создания
+
+        elif msg_type == "character_deleted":
+            # Персонаж удалён - запрашиваем обновлённый список
+            char_uuid = data.get("character_uuid")
+            self.logger.info(f"Character deleted: {char_uuid}")
+            self.send_message({"type": "character_list_request"})
+
+        elif msg_type == "welcome":
             # Переходим в игровое состояние (скрывает меню и уведомляет плагины)
-            self.ui.enter_game()
+            self.current_character = data.get("character_data")
+            self.ui.enter_game(self.current_character)
             self.player_id = data["id"]
+
+            # Загружаем актёра (TODO: использовать модель из character_data)
             self.load_actor(self.player_id, LColor(0.5, 0.8, 0.5, 1), is_local_player=True)
             self.player_actor.setPos(*data["pos"])
             self.camera_controller = CameraController(self, self.camera, self.win, self.player_actor, self.camera_sensitivity)
@@ -642,6 +706,15 @@ class GameClient(ShowBase):
             self.ui.show_in_game_menu(self)
             self.in_game_menu_active = True
             self.disable_game_input()
+
+    def send_message(self, data: dict):
+        """Отправляет сообщение на сервер."""
+        if self.is_connected and self.writer:
+            self.asyncio_loop.create_task(send_message(self.writer, data))
+
+    def disconnect(self):
+        """Отключается от сервера и возвращается в меню."""
+        self.disconnect_from_server()
 
     def send_chat_packet(self, message: str):
         if message.strip():

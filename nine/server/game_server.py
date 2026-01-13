@@ -1,4 +1,5 @@
 import asyncio
+import ipaddress
 import json
 import logging
 import os
@@ -18,6 +19,7 @@ globalClock = ClockObject.getGlobalClock()
 from nine.core.world import GameWorld
 from nine.core.events import EventManager
 from nine.core.plugins import PluginManager
+from nine.core.database import DatabaseManager
 
 # Load server-specific PRC file data
 loadPrcFileData("", """
@@ -61,6 +63,9 @@ class GameServer(ShowBase):
         # Setup World (uses Panda3D collision system, no Bullet)
         self.world = GameWorld(self.render)
 
+        # Database for accounts and characters
+        self.db = DatabaseManager("nine.db")
+
         # Event system and plugins
         self.is_server = True  # Plugins check this flag
         self.event_manager = EventManager()
@@ -76,6 +81,10 @@ class GameServer(ShowBase):
         self.event_manager.subscribe("inventory_send_to_client", self.handle_inventory_send)
         # Subscribe to system messages
         self.event_manager.subscribe("system_message_to_client", self.handle_system_message)
+
+        # Subscribe to D&D character events
+        self.event_manager.subscribe("dnd_send_to_client", self.handle_dnd_send)
+        self.event_manager.subscribe("dnd_character_selected", self.handle_character_selected)
 
         # Load plugins
         self.plugin_manager.load_plugins()
@@ -155,7 +164,7 @@ class GameServer(ShowBase):
                 print("Пожалуйста, введите 'y' или 'n'")
 
     def _generate_certificates(self) -> bool:
-        """Generate self-signed SSL certificates for development."""
+        """Generate self-signed SSL certificates for development using Python."""
         certs_dir = "certs"
         cert_path = os.path.join(certs_dir, "cert.pem")
         key_path = os.path.join(certs_dir, "key.pem")
@@ -166,36 +175,63 @@ class GameServer(ShowBase):
         print("Генерация SSL сертификатов...")
 
         try:
-            # Generate self-signed certificate using openssl
-            cmd = [
-                "openssl", "req", "-x509",
-                "-newkey", "rsa:4096",
-                "-keyout", key_path,
-                "-out", cert_path,
-                "-days", "365",
-                "-nodes",
-                "-subj", "/CN=localhost"
-            ]
+            from cryptography import x509
+            from cryptography.x509.oid import NameOID
+            from cryptography.hazmat.primitives import hashes, serialization
+            from cryptography.hazmat.primitives.asymmetric import rsa
+            from cryptography.hazmat.backends import default_backend
+            import datetime
 
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True
+            # Generate RSA key
+            key = rsa.generate_private_key(
+                public_exponent=65537,
+                key_size=4096,
+                backend=default_backend()
             )
 
-            if result.returncode != 0:
-                print(f"Ошибка генерации сертификатов: {result.stderr}")
-                self.logger.error(f"Certificate generation failed: {result.stderr}")
-                return False
+            # Generate self-signed certificate
+            subject = issuer = x509.Name([
+                x509.NameAttribute(NameOID.COMMON_NAME, "localhost"),
+            ])
+
+            cert = (
+                x509.CertificateBuilder()
+                .subject_name(subject)
+                .issuer_name(issuer)
+                .public_key(key.public_key())
+                .serial_number(x509.random_serial_number())
+                .not_valid_before(datetime.datetime.utcnow())
+                .not_valid_after(datetime.datetime.utcnow() + datetime.timedelta(days=365))
+                .add_extension(
+                    x509.SubjectAlternativeName([
+                        x509.DNSName("localhost"),
+                        x509.IPAddress(ipaddress.IPv4Address("127.0.0.1")),
+                    ]),
+                    critical=False,
+                )
+                .sign(key, hashes.SHA256(), default_backend())
+            )
+
+            # Write private key
+            with open(key_path, "wb") as f:
+                f.write(key.private_bytes(
+                    encoding=serialization.Encoding.PEM,
+                    format=serialization.PrivateFormat.TraditionalOpenSSL,
+                    encryption_algorithm=serialization.NoEncryption()
+                ))
+
+            # Write certificate
+            with open(cert_path, "wb") as f:
+                f.write(cert.public_bytes(serialization.Encoding.PEM))
 
             print(f"Сертификаты успешно созданы в папке '{certs_dir}/'")
             self.logger.info("Self-signed certificates generated successfully.")
             return True
 
-        except FileNotFoundError:
-            print("Ошибка: OpenSSL не найден в системе!")
-            print("Установите OpenSSL и добавьте его в PATH.")
-            self.logger.error("OpenSSL not found in system PATH.")
+        except ImportError:
+            print("Ошибка: библиотека 'cryptography' не установлена!")
+            print("Установите её командой: pip install cryptography")
+            self.logger.error("cryptography library not installed.")
             return False
         except Exception as e:
             print(f"Ошибка при генерации сертификатов: {e}")
@@ -255,9 +291,27 @@ class GameServer(ShowBase):
             self.handle_auth(client_id, data)
         elif msg_type == "dev_auth":
             self.handle_dev_auth(client_id, data)
+        # D&D Character messages
+        elif msg_type == "character_list_request":
+            self.event_manager.post("dnd_character_list_request", {"client_id": client_id})
+        elif msg_type == "character_select":
+            self.event_manager.post("dnd_character_select", {
+                "client_id": client_id,
+                "character_uuid": data.get("character_uuid")
+            })
+        elif msg_type == "character_create":
+            self.event_manager.post("dnd_character_create", {
+                "client_id": client_id,
+                **{k: v for k, v in data.items() if k != "type"}
+            })
+        elif msg_type == "character_delete":
+            self.event_manager.post("dnd_character_delete", {
+                "client_id": client_id,
+                "character_uuid": data.get("character_uuid")
+            })
         elif msg_type == "input":
              self.world.handle_input(client_id, data.get("state", {}))
-        elif msg_type == "move": # Dev clients send their own position
+        elif msg_type == "move":  # Dev clients send their own position
             if self.allow_dev_client:
                 self.world.handle_move(client_id, data)
         elif msg_type == "chat_message":
@@ -330,42 +384,78 @@ class GameServer(ShowBase):
         asyncio.run_coroutine_threadsafe(self.broadcast(join_data, exclude_ids=[client_id]), self.asyncio_loop)
 
     def handle_auth(self, client_id, data):
-        player_name = data.get("name")
-        
-        if not player_name:
+        """
+        D&D авторизация с проверкой пароля.
+        Если аккаунт существует - проверяем пароль.
+        Если не существует - создаём новый.
+        После успеха отправляем auth_success и ждём character_select.
+        """
+        import uuid as uuid_module
+
+        account_name = data.get("name", "").strip()
+        password = data.get("password", "")
+
+        if not account_name:
             self.logger.warning(f"Client {client_id} sent auth request with no name. Disconnecting.")
-            writer = self.clients.get(client_id)
-            if writer:
-                self.asyncio_loop.call_soon_threadsafe(writer.close)
+            asyncio.run_coroutine_threadsafe(
+                self.send_to_client(client_id, {"type": "auth_failed", "reason": "No account name provided"}),
+                self.asyncio_loop
+            )
             return
 
-        for p in self.world.players.values():
-            if p.name == player_name:
-                self.logger.warning(f"Player '{player_name}' is already logged in. Disconnecting new client {client_id}.")
-                writer = self.clients.get(client_id)
-                if writer:
-                    self.asyncio_loop.call_soon_threadsafe(writer.close)
+        if not password:
+            self.logger.warning(f"Client {client_id} sent auth request with no password.")
+            asyncio.run_coroutine_threadsafe(
+                self.send_to_client(client_id, {"type": "auth_failed", "reason": "No password provided"}),
+                self.asyncio_loop
+            )
+            return
+
+        # Проверяем существует ли аккаунт
+        existing_account = self.db.get_player_by_name(account_name)
+
+        if existing_account:
+            # Аккаунт существует - проверяем пароль
+            if not self.db.verify_player_password_by_name(account_name, password):
+                self.logger.warning(f"Wrong password for account '{account_name}' from client {client_id}")
+                asyncio.run_coroutine_threadsafe(
+                    self.send_to_client(client_id, {"type": "auth_failed", "reason": "wrong_password"}),
+                    self.asyncio_loop
+                )
                 return
 
-        player = self.world.add_player(client_id, player_name)
-        self.logger.info(f"Player '{player_name}' (Client #{client_id}) authenticated.")
+            account_uuid = existing_account["uuid"]
+            self.logger.info(f"Account '{account_name}' authenticated (Client #{client_id})")
+        else:
+            # Аккаунт не существует - создаём новый
+            account_uuid = str(uuid_module.uuid4())
+            success = self.db.create_player(account_uuid, account_name, password)
+            if not success:
+                self.logger.error(f"Failed to create account '{account_name}'")
+                asyncio.run_coroutine_threadsafe(
+                    self.send_to_client(client_id, {"type": "auth_failed", "reason": "Failed to create account"}),
+                    self.asyncio_loop
+                )
+                return
 
-        # Notify plugins about player join
-        self.event_manager.post("player_joined", {"uuid": client_id, "name": player_name})
+            self.logger.info(f"New account '{account_name}' created (Client #{client_id})")
 
-        # Prepare welcome message
-        other_players_state = {pid: p.get_state() for pid, p in self.world.players.items() if pid != client_id}
-        welcome_data = {
-            "type": "welcome",
-            "id": client_id,
-            "pos": player.get_state()["pos"],
-            "players": other_players_state
-        }
-        asyncio.run_coroutine_threadsafe(self.send_to_client(client_id, welcome_data), self.asyncio_loop)
+        # Уведомляем D&D плагин об успешной авторизации
+        self.event_manager.post("dnd_auth_success", {
+            "client_id": client_id,
+            "account_uuid": account_uuid,
+            "account_name": account_name
+        })
 
-        # Inform other players
-        join_data = {"type": "player_joined", "id": client_id, "player_info": player.get_state()}
-        asyncio.run_coroutine_threadsafe(self.broadcast(join_data, exclude_ids=[client_id]), self.asyncio_loop)
+        # Отправляем auth_success клиенту
+        asyncio.run_coroutine_threadsafe(
+            self.send_to_client(client_id, {
+                "type": "auth_success",
+                "account_uuid": account_uuid,
+                "account_name": account_name
+            }),
+            self.asyncio_loop
+        )
 
     def handle_chat_send(self, event_data: dict):
         """
@@ -458,6 +548,101 @@ class GameServer(ShowBase):
             asyncio.run_coroutine_threadsafe(
                 self.send_to_client(client_id, chat_data), self.asyncio_loop
             )
+
+    def handle_dnd_send(self, event_data: dict):
+        """
+        Отправляет D&D сообщение конкретному клиенту.
+        event_data = {
+            "client_id": client_id,
+            "data": message_data
+        }
+        """
+        client_id = event_data.get("client_id")
+        message_data = event_data.get("data", {})
+
+        if client_id is not None:
+            asyncio.run_coroutine_threadsafe(
+                self.send_to_client(client_id, message_data), self.asyncio_loop
+            )
+
+    def handle_character_selected(self, event_data: dict):
+        """
+        Обработчик выбора персонажа - создаёт игрока в мире.
+        event_data = {
+            "client_id": client_id,
+            "character": character_data dict
+        }
+        """
+        client_id = event_data.get("client_id")
+        character = event_data.get("character", {})
+
+        if client_id is None or not character:
+            return
+
+        character_name = character.get("character_name", f"Player_{client_id}")
+        character_uuid = character.get("uuid")
+
+        # Проверяем что имя не занято другим игроком
+        for pid, p in self.world.players.items():
+            if p.name == character_name and pid != client_id:
+                self.logger.warning(f"Character name '{character_name}' already in use by another player")
+                asyncio.run_coroutine_threadsafe(
+                    self.send_to_client(client_id, {
+                        "type": "error",
+                        "message": "Character already in use by another player"
+                    }),
+                    self.asyncio_loop
+                )
+                return
+
+        # Получаем позицию персонажа из БД или используем стартовую
+        pos_x = character.get("pos_x", 8.0)
+        pos_y = character.get("pos_y", -3.0)
+        pos_z = character.get("pos_z", 1.0)
+
+        # Создаём игрока в мире
+        player = self.world.add_player(client_id, character_name)
+        if player:
+            # Устанавливаем позицию из сохранения
+            player.set_position(Vec3(pos_x, pos_y, pos_z))
+
+        self.logger.info(f"Character '{character_name}' (Client #{client_id}) entered the game world")
+
+        # Уведомляем плагины о входе игрока
+        self.event_manager.post("player_joined", {
+            "uuid": client_id,
+            "name": character_name,
+            "character_uuid": character_uuid,
+            "character_data": character
+        })
+
+        # Отправляем welcome сообщение с данными персонажа
+        other_players_state = {
+            pid: p.get_state()
+            for pid, p in self.world.players.items()
+            if pid != client_id
+        }
+
+        welcome_data = {
+            "type": "welcome",
+            "id": client_id,
+            "pos": [pos_x, pos_y, pos_z],
+            "players": other_players_state,
+            "character_data": character
+        }
+        asyncio.run_coroutine_threadsafe(
+            self.send_to_client(client_id, welcome_data), self.asyncio_loop
+        )
+
+        # Уведомляем других игроков о входе
+        join_data = {
+            "type": "player_joined",
+            "id": client_id,
+            "player_info": player.get_state() if player else {"name": character_name}
+        }
+        asyncio.run_coroutine_threadsafe(
+            self.broadcast(join_data, exclude_ids=[client_id]), self.asyncio_loop
+        )
 
     async def send_to_clients(self, data, client_ids):
         """Sends a message to specific clients."""

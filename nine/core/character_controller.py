@@ -129,9 +129,9 @@ class CharacterController:
             self.velocity.z = self.jump_speed
             self.is_on_ground = False
             self.is_jumping = True  # Prevent ground detection while ascending
-            logger.info(f"[Player] 🚀 JUMP! velocity.z={self.velocity.z}, pos.z={self.actor.getZ():.2f}")
+            logger.info(f"[Player] JUMP! velocity.z={self.velocity.z}, pos.z={self.actor.getZ():.2f}")
         else:
-            logger.debug(f"[Player] ✗ Can't jump - not on ground (is_on_ground={self.is_on_ground})")
+            logger.debug(f"[Player] Can't jump - not on ground (is_on_ground={self.is_on_ground})")
 
     def get_anim_state(self):
         """Returns animation name based on movement state."""
@@ -221,7 +221,7 @@ class CharacterController:
         # DEBUG: Log ground hit info periodically
         if self._ground_log_counter % 20 == 0:
             into_node = entry.getIntoNodePath().getName()
-            logger.info(f"[Ground] ✓ Ray hit '{into_node}' at z={surface_point.z:.2f}, "
+            logger.info(f"[Ground] Ray hit '{into_node}' at z={surface_point.z:.2f}, "
                        f"player.z={current_z:.2f}, distance={ground_distance:.2f}")
 
         # Ground check threshold
