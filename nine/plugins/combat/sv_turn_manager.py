@@ -6,18 +6,24 @@ Turn Manager - управление ходами и выполнение бое�
 from typing import Optional, Dict, Any
 import math
 
-from nine.core.plugins import PluginModule
-from .sh_dice import DiceRoller
-from .sh_action_economy import (
+from nine.core.plugins import PluginContext
+from nine.plugins.combat.sh_dice import DiceRoller
+from nine.plugins.combat.sh_action_economy import (
     COMBAT_ACTIONS, ActionCost, TargetType, get_action
 )
 
 
-class TurnManager(PluginModule):
+class TurnManager:
     """
     Управляет выполнением действий в пошаговом бою.
     Валидирует действия, проверяет дальность, выполняет броски.
     """
+
+    def __init__(self, context: PluginContext):
+        self.context = context
+        self.app = context.app
+        self.logger = context.logger
+        self.event_manager = context.event_manager
 
     def on_load(self):
         self.logger.info("Turn Manager loaded")
@@ -41,7 +47,7 @@ class TurnManager(PluginModule):
         if self._combat_manager is None:
             # Ищем в том же плагине
             if hasattr(self.app, 'plugin_manager'):
-                combat_plugin = self.app.plugin_manager.get_plugin("nine.dnd.combat")
+                combat_plugin = self.app.plugin_manager.get_plugin("nine.combat")
                 if combat_plugin:
                     for module in combat_plugin.modules:
                         if hasattr(module, 'active_combats'):
@@ -393,13 +399,13 @@ class TurnManager(PluginModule):
 
         # Пытаемся как NPC
         if hasattr(self.app, 'plugin_manager'):
-            dnd_plugin = self.app.plugin_manager.get_plugin("nine.dnd")
-            if dnd_plugin:
-                for module in dnd_plugin.modules:
+            npc_plugin = self.app.plugin_manager.get_plugin("nine.npc")
+            if npc_plugin:
+                for module in npc_plugin.modules:
                     if hasattr(module, 'get_npc_entity'):
                         entity = module.get_npc_entity(entity_id)
                         if entity:
-                            from ..npc.sh_components import PositionComponent
+                            from nine.plugins.npc.sh_components import PositionComponent
                             pos = entity.get_component(PositionComponent)
                             if pos:
                                 return [pos.x, pos.y, pos.z]
@@ -480,13 +486,13 @@ class TurnManager(PluginModule):
     def _get_npc_combat_data(self, entity_id: str) -> Optional[dict]:
         """Получает боевые данные NPC."""
         if hasattr(self.app, 'plugin_manager'):
-            dnd_plugin = self.app.plugin_manager.get_plugin("nine.dnd")
-            if dnd_plugin:
-                for module in dnd_plugin.modules:
+            npc_plugin = self.app.plugin_manager.get_plugin("nine.npc")
+            if npc_plugin:
+                for module in npc_plugin.modules:
                     if hasattr(module, 'get_npc_entity'):
                         entity = module.get_npc_entity(entity_id)
                         if entity:
-                            from ..npc.sh_components import CombatComponent
+                            from nine.plugins.npc.sh_components import CombatComponent
                             combat = entity.get_component(CombatComponent)
                             if combat:
                                 return {

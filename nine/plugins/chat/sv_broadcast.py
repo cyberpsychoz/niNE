@@ -773,7 +773,7 @@ class ChatBroadcastModule(PluginModule):
     def _get_combat_manager(self):
         """Получает CombatManager из плагина боя."""
         if hasattr(self.app, 'plugin_manager'):
-            combat_plugin = self.app.plugin_manager.get_plugin("nine.dnd.combat")
+            combat_plugin = self.app.plugin_manager.get_plugin("nine.combat")
             if combat_plugin:
                 for module in combat_plugin.modules:
                     if hasattr(module, 'combat_manager'):
@@ -807,7 +807,7 @@ class ChatBroadcastModule(PluginModule):
         # Ищем враждебных NPC в радиусе
         hostile_npcs = []
         if hasattr(self.app, 'plugin_manager'):
-            npc_plugin = self.app.plugin_manager.get_plugin("nine.dnd.npc")
+            npc_plugin = self.app.plugin_manager.get_plugin("nine.npc")
             if npc_plugin:
                 for module in npc_plugin.modules:
                     if hasattr(module, 'get_npcs_in_radius'):

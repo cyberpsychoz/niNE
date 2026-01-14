@@ -10,7 +10,7 @@ from direct.gui.DirectGui import (
 from panda3d.core import TextNode
 
 from nine.core.plugins import PluginModule
-from .sh_action_economy import COMBAT_ACTIONS, ActionCost
+from nine.plugins.combat.sh_action_economy import COMBAT_ACTIONS, ActionCost
 
 
 class ActionBar(PluginModule):
@@ -317,7 +317,7 @@ class ActionBar(PluginModule):
         """Получает выбранную цель из target selector."""
         # Ищем target selector среди модулей
         if hasattr(self.app, 'plugin_manager'):
-            combat_plugin = self.app.plugin_manager.get_plugin("nine.dnd.combat")
+            combat_plugin = self.app.plugin_manager.get_plugin("nine.combat")
             if combat_plugin:
                 for module in combat_plugin.modules:
                     if hasattr(module, 'get_selected_target'):

@@ -15,7 +15,7 @@ import logging
 from nine.core.ecs import System, Entity, ECSWorld
 from nine.core.pathfinder import GridPathfinder, SteeringBehaviors
 
-from .sh_components import (
+from nine.plugins.npc.sh_components import (
     PositionComponent,
     AIComponent,
     PathfindingComponent,
@@ -27,7 +27,7 @@ from .sh_components import (
 )
 
 if TYPE_CHECKING:
-    from .sv_npc_manager import NPCManager
+    from nine.plugins.npc.sv_npc_manager import NPCManager
 
 logger = logging.getLogger(__name__)
 
