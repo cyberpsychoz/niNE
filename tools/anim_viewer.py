@@ -4,9 +4,9 @@
 Запуск: python tools/anim_viewer.py [model] [--anims source]
 
 Примеры:
-  python tools/anim_viewer.py                                    # player.bam со своими анимациями
+  python tools/anim_viewer.py                                    # base.bam со своими анимациями
   python tools/anim_viewer.py new_char.bam                       # new_char.bam со своими анимациями
-  python tools/anim_viewer.py new_char.bam --anims player.bam    # new_char.bam с анимациями от player.bam
+  python tools/anim_viewer.py new_char.bam --anims base.bam    # new_char.bam с анимациями от base.bam
 
 Управление:
   1-9: Переключение анимаций
@@ -38,7 +38,7 @@ loadPrcFileData('', 'audio-library-name null')
 getModelPath().appendDirectory(Filename.fromOsSpecific(project_root))
 
 class AnimViewer(ShowBase):
-    def __init__(self, model_path="nine/assets/models/player.bam", anims_source=None):
+    def __init__(self, model_path="nine/assets/models/base.bam", anims_source=None):
         ShowBase.__init__(self)
 
         self.model_path = model_path
@@ -315,15 +315,15 @@ if __name__ == "__main__":
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Примеры:
-  %(prog)s                                      # player.bam со своими анимациями
+  %(prog)s                                      # base.bam со своими анимациями
   %(prog)s new_char.bam                         # new_char.bam со своими анимациями
-  %(prog)s new_char.bam --anims player.bam      # new_char.bam + анимации от player.bam
-  %(prog)s new_char.bam -a player.bam           # то же самое, короткая форма
+  %(prog)s new_char.bam --anims base.bam      # new_char.bam + анимации от base.bam
+  %(prog)s new_char.bam -a base.bam           # то же самое, короткая форма
 
 Для моделей с Mixamo риги обычно совместимы (стандартный humanoid rig).
 """
     )
-    parser.add_argument("model", nargs="?", default="nine/assets/models/player.bam",
+    parser.add_argument("model", nargs="?", default="nine/assets/models/base.bam",
                         help="Путь к модели (.bam или .egg)")
     parser.add_argument("-a", "--anims", dest="anims_source", default=None,
                         help="Файл-источник анимаций (если отличается от модели)")

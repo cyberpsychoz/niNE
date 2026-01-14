@@ -1,8 +1,10 @@
 """
-Third-person orbit camera controller.
+Camera controller with first-person and third-person modes.
 
-Camera orbits around the player target. Mouse moves the camera, not the player.
-Player rotation is handled separately based on movement direction.
+Third-person: Camera orbits around the player target.
+First-person: Camera at player eye level, looking where player faces.
+
+Mouse moves the camera in both modes. Player rotation is handled based on movement direction.
 """
 
 from math import sin, cos, radians, pi
@@ -12,23 +14,39 @@ from direct.task import Task
 
 
 class CameraController:
-    def __init__(self, base, camera: NodePath, win, target: NodePath, sensitivity: float = 1.0):
+    def __init__(self, base, camera: NodePath, win, target: NodePath,
+                 sensitivity: float = 1.0, third_person: bool = True,
+                 invert_x: bool = False, invert_y: bool = False, fov: float = 70.0):
         self.base = base
         self.camera = camera
         self.win = win
         self.target = target
 
-        # Camera orbit parameters
-        self.distance = 2.0  # Closer to player
-        self.height_offset = 0.5  # Height above player to look at
+        # Camera mode
+        self.third_person = third_person
+
+        # Mouse inversion
+        self.invert_x = invert_x
+        self.invert_y = invert_y
+
+        # Field of view (for first-person)
+        self.fov = fov
+        self._apply_fov()
+
+        # Third-person orbit parameters
+        self.distance = 2.0  # Distance from player
+        self.tp_height_offset = 0.5  # Height above player to look at (third-person)
         self.min_distance = 2.0
         self.max_distance = 15.0
 
+        # First-person parameters
+        self.fp_eye_height = 0.5  # Eye height above player origin
+
         # Camera angles (degrees)
-        self.yaw = 0.0      # Horizontal angle around player (0 = behind player looking at +Y)
-        self.pitch = 20.0   # Vertical angle (positive = looking down from above)
-        self.min_pitch = -20.0
-        self.max_pitch = 70.0
+        self.yaw = 0.0      # Horizontal angle (0 = looking at +Y)
+        self.pitch = 20.0 if third_person else 0.0  # Vertical angle
+        self.min_pitch = -89.0 if not third_person else -20.0  # First-person can look almost straight up/down
+        self.max_pitch = 89.0 if not third_person else 70.0
 
         # Sensitivity (adjust for comfortable feel)
         self.sensitivity = sensitivity * 30.0
@@ -40,6 +58,16 @@ class CameraController:
 
         # State
         self._task = None
+
+    def _apply_fov(self):
+        """Apply field of view to the camera lens."""
+        if self.base.camLens:
+            self.base.camLens.setFov(self.fov)
+
+    def set_fov(self, fov: float):
+        """Set new field of view."""
+        self.fov = fov
+        self._apply_fov()
 
     def start(self):
         """Start camera updates and capture mouse."""
@@ -95,8 +123,18 @@ class CameraController:
             dy = my
             self.win.movePointer(0, self.win.getXSize() // 2, self.win.getYSize() // 2)
 
+        # Применяем инверсию мыши
+        if self.invert_x:
+            dx = -dx
+        if self.invert_y:
+            dy = -dy
+
         # Update target angles (raw input)
-        self.target_yaw += dx * self.sensitivity
+        # В first-person режиме инвертируем направление yaw для правильного управления
+        if self.third_person:
+            self.target_yaw += dx * self.sensitivity
+        else:
+            self.target_yaw -= dx * self.sensitivity  # Инверсия для FP
         self.target_pitch -= dy * self.sensitivity
 
         # Clamp target pitch
@@ -109,10 +147,17 @@ class CameraController:
         self.pitch += (self.target_pitch - self.pitch) * self.smoothing
 
     def _position_camera(self):
-        """Position camera in orbit around target."""
+        """Position camera based on current mode."""
+        if self.third_person:
+            self._position_camera_third_person()
+        else:
+            self._position_camera_first_person()
+
+    def _position_camera_third_person(self):
+        """Position camera in orbit around target (third-person mode)."""
         # Get target position
         target_pos = self.target.getPos()
-        look_at = Vec3(target_pos.x, target_pos.y, target_pos.z + self.height_offset)
+        look_at = Vec3(target_pos.x, target_pos.y, target_pos.z + self.tp_height_offset)
 
         # Convert spherical coordinates to cartesian
         # yaw=0 means camera is behind target (negative Y relative to target)
@@ -133,6 +178,21 @@ class CameraController:
         # Set camera position
         self.camera.setPos(look_at.x + cam_x, look_at.y + cam_y, look_at.z + cam_z)
         self.camera.lookAt(look_at)
+
+    def _position_camera_first_person(self):
+        """Position camera at player eye level (first-person mode)."""
+        # Get target position
+        target_pos = self.target.getPos()
+
+        # Camera at eye level
+        eye_pos = Vec3(target_pos.x, target_pos.y, target_pos.z + self.fp_eye_height)
+        self.camera.setPos(eye_pos)
+
+        # Set camera rotation directly from yaw and pitch
+        # In Panda3D: H (heading) = yaw, P (pitch) = tilt (positive = look down)
+        # yaw используется напрямую для направления взгляда
+        # pitch: положительный = смотрим вниз
+        self.camera.setHpr(self.yaw, self.pitch, 0)
 
     def get_forward_vector(self):
         """
@@ -179,6 +239,27 @@ class CameraController:
     def zoom(self, delta):
         """Adjust camera distance."""
         self.distance = max(self.min_distance, min(self.max_distance, self.distance + delta))
+
+    def set_third_person(self, third_person: bool):
+        """Switch between first-person and third-person modes."""
+        if self.third_person == third_person:
+            return
+
+        self.third_person = third_person
+
+        # Update pitch limits for new mode
+        if third_person:
+            self.min_pitch = -20.0
+            self.max_pitch = 70.0
+            # Reset pitch to reasonable third-person value
+            self.pitch = max(self.min_pitch, min(self.max_pitch, 20.0))
+            self.target_pitch = self.pitch
+        else:
+            self.min_pitch = -89.0
+            self.max_pitch = 89.0
+            # Reset pitch to level for first-person
+            self.pitch = 0.0
+            self.target_pitch = self.pitch
 
     def destroy(self):
         """Clean up."""

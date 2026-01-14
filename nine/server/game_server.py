@@ -89,6 +89,9 @@ class GameServer(ShowBase):
         # Load plugins
         self.plugin_manager.load_plugins()
 
+        # NPC Manager reference (will be set by plugin system)
+        self.npc_manager = None
+
         # Setup game loop
         self.taskMgr.add(self.game_loop, "game_loop")
         self.taskMgr.add(self.poll_asyncio, "asyncio-poll")
@@ -275,9 +278,28 @@ class GameServer(ShowBase):
             self.logger.info(f"[GameServer TICK #{self._tick_id}] world.update(dt={dt:.4f})")
         self.world.update(dt)
 
+        # 2.5. Update NPC system
+        if self.npc_manager:
+            self.npc_manager.update(dt)
+            # Обновляем кэш игроков для AI targeting
+            players_data = []
+            for cid, player in self.world.players.items():
+                state = player.get_state()
+                players_data.append({
+                    "uuid": str(cid),
+                    "name": player.name,
+                    "position": {"x": state["pos"][0], "y": state["pos"][1], "z": state["pos"][2]}
+                })
+            self.event_manager.post("player_update", {"players": players_data})
+
         # 3. Broadcast new state
         world_state = self.world.get_world_state()
-        if world_state["players"]:
+
+        # Добавляем NPC состояния
+        if self.npc_manager:
+            world_state["npcs"] = self.npc_manager.get_npc_states()
+
+        if world_state["players"] or world_state.get("npcs"):
             asyncio.run_coroutine_threadsafe(
                 self.broadcast(world_state), self.asyncio_loop
             )
@@ -575,6 +597,7 @@ class GameServer(ShowBase):
         """
         client_id = event_data.get("client_id")
         character = event_data.get("character", {})
+        self.logger.info(f"[DND] handle_character_selected: client_id={client_id}, character_name={character.get('character_name')}")
 
         if client_id is None or not character:
             return
@@ -604,7 +627,7 @@ class GameServer(ShowBase):
         player = self.world.add_player(client_id, character_name)
         if player:
             # Устанавливаем позицию из сохранения
-            player.set_position(Vec3(pos_x, pos_y, pos_z))
+            player.actor.setPos(pos_x, pos_y, pos_z)
 
         self.logger.info(f"Character '{character_name}' (Client #{client_id}) entered the game world")
 

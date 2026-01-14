@@ -150,10 +150,10 @@ pip install panda3d-blend2bam panda3d-gltf
 
 ```bash
 # Из GLB
-gltf2bam player.glb player.bam
+gltf2bam player.glb base.bam
 
 # Или напрямую из Blender файла
-blend2bam player.blend player.bam
+blend2bam player.blend base.bam
 ```
 
 ### Конвертация FBX → EGG → BAM
@@ -178,7 +178,7 @@ class Test(ShowBase):
         ShowBase.__init__(self)
 
         # Загрузка модели
-        self.actor = Actor("nine/assets/models/player.bam")
+        self.actor = Actor("nine/assets/models/base.bam")
         self.actor.setScale(0.01)  # Mixamo модели большие
         self.actor.reparentTo(self.render)
 
@@ -200,7 +200,7 @@ app.run()
 
 ```
 nine/assets/models/
-├── player.bam          # Основная модель
+├── base.bam          # Основная модель
 ├── player.glb          # Исходник (для редактирования)
 └── source/             # Исходные файлы
     ├── character.fbx
@@ -215,7 +215,7 @@ nine/assets/models/
 
 ```python
 def load_actor(self, player_id, color, is_local_player=False):
-    actor = Actor("nine/assets/models/player.bam")
+    actor = Actor("nine/assets/models/base.bam")
     actor.setScale(0.01)  # Подобрать под размер
     actor.setColor(color)
     actor.reparentTo(self.render)

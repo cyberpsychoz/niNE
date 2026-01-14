@@ -10,9 +10,17 @@ class Config:
     CONFIG_FILE = Path("config.json")
     
     DEFAULT_SETTINGS = {
+        # Общие
         "nickname": "Player",
         "resolution": "1280x720",
-        "available_resolutions": ["800x600", "1024x768", "1280x720", "1920x1080"]
+        "available_resolutions": ["800x600", "1024x768", "1280x720", "1920x1080"],
+        # Управление
+        "camera_sensitivity": 1.0,
+        "invert_mouse_x": False,
+        "invert_mouse_y": False,
+        "third_person_camera": True,  # True = от третьего лица, False = от первого лица
+        # Графика
+        "fov": 70,  # Поле зрения (для first-person)
     }
 
     def __new__(cls):

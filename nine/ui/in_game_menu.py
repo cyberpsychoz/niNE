@@ -88,8 +88,9 @@ class InGameMenu(BaseUIComponent):
         self.client.enable_game_input()
 
     def _on_settings_click(self):
-        """Открыть настройки (в будущем)."""
-        pass
+        """Открыть настройки."""
+        self.ui_manager.hide_in_game_menu()
+        self.ui_manager.show_settings_menu(self.client, from_in_game=True)
 
     def _on_disconnect_click(self):
         """Отключиться от сервера."""

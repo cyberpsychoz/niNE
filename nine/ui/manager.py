@@ -150,22 +150,27 @@ class UIManager:
 
     # ========== Управление меню настроек ==========
 
-    def show_settings_menu(self, client):
-        """Показывает меню настроек."""
+    def show_settings_menu(self, client, from_in_game: bool = False):
+        """
+        Показывает меню настроек.
+
+        Args:
+            client: Ссылка на клиент
+            from_in_game: True если открыто из игрового меню паузы
+        """
         # Только скрываем главное меню, не уничтожаем (для быстрого возврата)
         if 'main_menu' in self.active_components:
             self.active_components['main_menu'].hide()
 
         if 'settings_menu' not in self.active_components:
             self.active_components['settings_menu'] = SettingsMenu(self, client)
-            self.active_components['settings_menu'].show()
+
+        self.active_components['settings_menu'].from_in_game = from_in_game
+        self.active_components['settings_menu'].show()
 
     def hide_settings_menu(self):
-        """Скрывает меню настроек и возвращает главное меню."""
+        """Скрывает меню настроек."""
         self._destroy_component('settings_menu')
-        # Показываем главное меню обратно
-        if 'main_menu' in self.active_components:
-            self.active_components['main_menu'].show()
 
     # ========== Управление экраном выбора персонажа ==========
 

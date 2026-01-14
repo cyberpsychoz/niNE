@@ -1,11 +1,15 @@
 {
     "nickname": "MilkiWinky",
-    "resolution": "800x600",
+    "resolution": "1280x720",
     "available_resolutions": [
         "800x600",
         "1024x768",
         "1280x720",
         "1920x1080"
     ],
-    "camera_sensitivity": 0.9127820134162903
+    "camera_sensitivity": 0.9880418181419373,
+    "invert_mouse_x": false,
+    "invert_mouse_y": true,
+    "third_person_camera": false,
+    "fov": 120
 }

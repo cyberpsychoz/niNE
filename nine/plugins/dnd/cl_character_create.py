@@ -31,6 +31,8 @@ CLASSES = _constants.CLASSES
 BACKGROUNDS = _constants.BACKGROUNDS
 SKILLS = _constants.SKILLS
 STAT_GENERATION = _constants.STAT_GENERATION
+FEATURES = _constants.FEATURES
+get_feature_info = _constants.get_feature_info
 
 
 # Локализация
@@ -39,6 +41,7 @@ RACE_NAMES_RU = {
     "elf": "Эльф",
     "dwarf": "Дварф",
     "halfling": "Полурослик",
+    "orc": "Орк",
     "half_orc": "Полуорк",
     "tiefling": "Тифлинг",
 }
@@ -138,6 +141,9 @@ class CharacterCreateUI(BaseUIComponent):
             "charisma": 10,
             "skills": {},
         }
+
+        # Тултип для отображения описаний способностей
+        self._tooltip_frame = None
 
         self._create_base_ui()
         self._show_step(1)
@@ -240,6 +246,7 @@ class CharacterCreateUI(BaseUIComponent):
 
     def _clear_content(self):
         """Очищает содержимое текущего шага."""
+        self._hide_feature_tooltip()
         for child in self.content_frame.getChildren():
             child.removeNode()
 
@@ -275,6 +282,70 @@ class CharacterCreateUI(BaseUIComponent):
             7: self._show_step_confirm,
         }
         step_methods[step]()
+
+    def _show_feature_tooltip(self, feature_id: str, pos_x: float = 0, pos_y: float = -0.35):
+        """Показывает тултип с описанием способности."""
+        self._hide_feature_tooltip()
+
+        feat_info = get_feature_info(feature_id)
+        name = feat_info["name"]
+        description = feat_info["description"]
+
+        # Создаём фрейм тултипа
+        tooltip_width = 0.55
+        tooltip_height = 0.25
+
+        self._tooltip_frame = DirectFrame(
+            parent=self.content_frame,
+            frameSize=(-tooltip_width, tooltip_width, -tooltip_height, tooltip_height),
+            frameColor=(0.1, 0.1, 0.15, 0.95),
+            pos=(pos_x, 0, pos_y),
+        )
+        self._tooltip_frame.setTransparency(TransparencyAttrib.M_alpha)
+
+        # Заголовок способности
+        DirectLabel(
+            parent=self._tooltip_frame,
+            text=name,
+            scale=NineTheme.SMALL_SCALE * 1.1,
+            pos=(0, 0, tooltip_height - 0.05),
+            text_fg=NineTheme.TEXT_HIGHLIGHT,
+            text_align=TextNode.ACenter,
+            frameColor=(0, 0, 0, 0),
+        )
+
+        # Описание способности
+        DirectLabel(
+            parent=self._tooltip_frame,
+            text=description,
+            scale=NineTheme.SMALL_SCALE * 0.75,
+            pos=(0, 0, 0),
+            text_fg=NineTheme.TEXT_SECONDARY,
+            text_align=TextNode.ACenter,
+            text_wordwrap=25,
+            frameColor=(0, 0, 0, 0),
+        )
+
+        # Кнопка закрытия
+        DirectButton(
+            parent=self._tooltip_frame,
+            text="X",
+            scale=NineTheme.SMALL_SCALE * 0.8,
+            pos=(tooltip_width - 0.05, 0, tooltip_height - 0.05),
+            command=self._hide_feature_tooltip,
+            frameColor=(0.6, 0.15, 0.15, 0.9),
+            text_fg=(1, 1, 1, 1),
+            text_align=TextNode.ACenter,
+            pressEffect=True,
+            relief=DGG.FLAT,
+            frameSize=(-1, 1, -0.9, 1.1),
+        )
+
+    def _hide_feature_tooltip(self):
+        """Скрывает тултип."""
+        if self._tooltip_frame:
+            self._tooltip_frame.destroy()
+            self._tooltip_frame = None
 
     def _show_step_name(self):
         """Шаг 1: Имя и пол."""
@@ -360,7 +431,7 @@ class CharacterCreateUI(BaseUIComponent):
             parent=self.content_frame,
             text="Выберите расу:",
             scale=NineTheme.LABEL_SCALE,
-            pos=(0, 0, 0.35),
+            pos=(0, 0, 0.36),
             text_fg=NineTheme.TEXT_PRIMARY,
             text_align=TextNode.ACenter,
             frameColor=(0, 0, 0, 0),
@@ -368,11 +439,11 @@ class CharacterCreateUI(BaseUIComponent):
 
         self.race_buttons = {}
         races = list(RACES.keys())
-        cols = 2
-        start_x = -0.3
-        start_y = 0.2
-        spacing_x = 0.4
-        spacing_y = 0.15
+        cols = 3
+        start_x = -0.38
+        start_y = 0.26
+        spacing_x = 0.30
+        spacing_y = 0.13
 
         for i, race in enumerate(races):
             row = i // cols
@@ -383,10 +454,12 @@ class CharacterCreateUI(BaseUIComponent):
             is_selected = self.character_data["race"] == race
             color = NineTheme.accent_button_colors() if is_selected else NineTheme.button_colors()
 
+            race_data = RACES.get(race, {})
+            race_name_ru = race_data.get("name", RACE_NAMES_RU.get(race, race.title()))
             self.race_buttons[race] = DirectButton(
                 parent=self.content_frame,
-                text=RACE_NAMES_RU.get(race, race.title()),
-                scale=NineTheme.BUTTON_SCALE * 0.9,
+                text=race_name_ru,
+                scale=NineTheme.BUTTON_SCALE * 0.85,
                 pos=(x, 0, y),
                 command=lambda r=race: self._select_race(r),
                 frameColor=color,
@@ -394,29 +467,110 @@ class CharacterCreateUI(BaseUIComponent):
                 text_align=TextNode.ACenter,
                 pressEffect=True,
                 relief=DGG.FLAT,
-                frameSize=(-4, 4, -0.8, 1.1),
+                frameSize=(-3.5, 3.5, -0.9, 1.2),
             )
 
         # Описание выбранной расы
         self.race_desc_label = DirectLabel(
             parent=self.content_frame,
             text=self._get_race_description(self.character_data["race"]),
-            scale=NineTheme.SMALL_SCALE,
-            pos=(0, 0, -0.25),
+            scale=NineTheme.SMALL_SCALE * 0.85,
+            pos=(0, 0, -0.08),
             text_fg=NineTheme.TEXT_SECONDARY,
             text_align=TextNode.ACenter,
             frameColor=(0, 0, 0, 0),
         )
 
-    def _get_race_description(self, race: str) -> str:
-        """Возвращает описание расы с бонусами."""
+        # Кликабельные кнопки способностей
+        self._race_feature_btns = []
+        self._update_race_feature_buttons(self.character_data["race"])
+
+    def _truncate_text(self, text: str, max_len: int = 14) -> str:
+        """Обрезает текст до максимальной длины."""
+        if len(text) > max_len:
+            return text[:max_len-2] + ".."
+        return text
+
+    def _update_race_feature_buttons(self, race: str):
+        """Обновляет кнопки способностей для выбранной расы."""
+        # Удаляем старые кнопки
+        for btn in self._race_feature_btns:
+            btn.destroy()
+        self._race_feature_btns.clear()
+        self._hide_feature_tooltip()
+
         race_data = RACES.get(race, {})
+        features = race_data.get("features", [])
+
+        if not features:
+            return
+
+        # Подсказка
+        hint = DirectLabel(
+            parent=self.content_frame,
+            text="Способности (клик):",
+            scale=NineTheme.SMALL_SCALE * 0.7,
+            pos=(0, 0, -0.32),
+            text_fg=NineTheme.TEXT_HINT,
+            text_align=TextNode.ACenter,
+            frameColor=(0, 0, 0, 0),
+        )
+        self._race_feature_btns.append(hint)
+
+        # Создаём кнопки способностей в ряд по центру
+        num_features = len(features)
+        btn_width = 0.28
+        total_width = num_features * btn_width
+        start_x = -total_width / 2 + btn_width / 2
+        y = -0.38
+
+        for i, feat_id in enumerate(features):
+            feat_info = get_feature_info(feat_id)
+            x = start_x + i * btn_width
+            display_name = self._truncate_text(feat_info["name"], 12)
+
+            btn = DirectButton(
+                parent=self.content_frame,
+                text=display_name,
+                scale=NineTheme.SMALL_SCALE * 0.7,
+                pos=(x, 0, y),
+                command=lambda fid=feat_id: self._show_feature_tooltip(fid, pos_y=-0.05),
+                frameColor=(0.18, 0.18, 0.25, 0.95),
+                text_fg=NineTheme.TEXT_HIGHLIGHT,
+                text_align=TextNode.ACenter,
+                pressEffect=True,
+                relief=DGG.FLAT,
+                frameSize=(-5, 5, -1.1, 1.4),
+            )
+            self._race_feature_btns.append(btn)
+
+    def _get_race_description(self, race: str) -> str:
+        """Возвращает описание расы с бонусами и способностями."""
+        race_data = RACES.get(race, {})
+
+        # Бонусы характеристик
         bonuses = race_data.get("ability_bonuses", {})
         bonus_strs = []
         for stat, value in bonuses.items():
             stat_ru = STAT_NAMES_RU.get(stat, stat)
             bonus_strs.append(f"+{value} {stat_ru}")
-        return ", ".join(bonus_strs) if bonus_strs else "Нет бонусов"
+        bonus_text = ", ".join(bonus_strs) if bonus_strs else "Нет бонусов"
+
+        # Особенности расы
+        features = race_data.get("features", [])
+        feature_names = []
+        for feat_id in features:
+            feat_info = get_feature_info(feat_id)
+            feature_names.append(feat_info["name"])
+        features_text = ", ".join(feature_names) if feature_names else ""
+
+        # Скорость
+        speed = race_data.get("speed", 30)
+
+        result = f"Бонусы: {bonus_text}\nСкорость: {speed} фт."
+        if features_text:
+            result += f"\nСпособности: {features_text}"
+        return result
 
     def _select_race(self, race: str):
         """Выбор расы."""
@@ -428,6 +582,9 @@ class CharacterCreateUI(BaseUIComponent):
                 btn['frameColor'] = NineTheme.button_colors()
         if hasattr(self, 'race_desc_label'):
             self.race_desc_label['text'] = self._get_race_description(race)
+        # Обновляем кнопки способностей
+        if hasattr(self, '_race_feature_btns'):
+            self._update_race_feature_buttons(race)
 
     def _show_step_class(self):
         """Шаг 3: Выбор класса."""
@@ -435,7 +592,7 @@ class CharacterCreateUI(BaseUIComponent):
             parent=self.content_frame,
             text="Выберите класс:",
             scale=NineTheme.LABEL_SCALE,
-            pos=(0, 0, 0.35),
+            pos=(0, 0, 0.36),
             text_fg=NineTheme.TEXT_PRIMARY,
             text_align=TextNode.ACenter,
             frameColor=(0, 0, 0, 0),
@@ -443,11 +600,11 @@ class CharacterCreateUI(BaseUIComponent):
 
         self.class_buttons = {}
         classes = list(CLASSES.keys())
-        cols = 3
-        start_x = -0.4
-        start_y = 0.22
-        spacing_x = 0.32
-        spacing_y = 0.12
+        cols = 4
+        start_x = -0.45
+        start_y = 0.26
+        spacing_x = 0.26
+        spacing_y = 0.11
 
         for i, cls in enumerate(classes):
             row = i // cols
@@ -458,10 +615,12 @@ class CharacterCreateUI(BaseUIComponent):
             is_selected = self.character_data["class"] == cls
             color = NineTheme.accent_button_colors() if is_selected else NineTheme.button_colors()
 
+            cls_data = CLASSES.get(cls, {})
+            cls_name_ru = cls_data.get("name", CLASS_NAMES_RU.get(cls, cls.title()))
             self.class_buttons[cls] = DirectButton(
                 parent=self.content_frame,
-                text=CLASS_NAMES_RU.get(cls, cls.title()),
-                scale=NineTheme.BUTTON_SCALE * 0.8,
+                text=cls_name_ru,
+                scale=NineTheme.BUTTON_SCALE * 0.7,
                 pos=(x, 0, y),
                 command=lambda c=cls: self._select_class(c),
                 frameColor=color,
@@ -469,27 +628,98 @@ class CharacterCreateUI(BaseUIComponent):
                 text_align=TextNode.ACenter,
                 pressEffect=True,
                 relief=DGG.FLAT,
-                frameSize=(-3.5, 3.5, -0.8, 1.1),
+                frameSize=(-3.8, 3.8, -0.9, 1.2),
             )
 
         # Описание класса
         self.class_desc_label = DirectLabel(
             parent=self.content_frame,
             text=self._get_class_description(self.character_data["class"]),
-            scale=NineTheme.SMALL_SCALE,
-            pos=(0, 0, -0.35),
+            scale=NineTheme.SMALL_SCALE * 0.85,
+            pos=(0, 0, -0.15),
             text_fg=NineTheme.TEXT_SECONDARY,
             text_align=TextNode.ACenter,
             frameColor=(0, 0, 0, 0),
         )
 
+        # Кликабельные кнопки способностей класса
+        self._class_feature_btns = []
+        self._update_class_feature_buttons(self.character_data["class"])
+
+    def _update_class_feature_buttons(self, cls: str):
+        """Обновляет кнопки способностей для выбранного класса."""
+        # Удаляем старые кнопки
+        for btn in self._class_feature_btns:
+            btn.destroy()
+        self._class_feature_btns.clear()
+        self._hide_feature_tooltip()
+
+        class_data = CLASSES.get(cls, {})
+        features = class_data.get("features_1", [])
+
+        if not features:
+            return
+
+        # Подсказка
+        hint = DirectLabel(
+            parent=self.content_frame,
+            text="Способности 1 ур. (клик):",
+            scale=NineTheme.SMALL_SCALE * 0.7,
+            pos=(0, 0, -0.38),
+            text_fg=NineTheme.TEXT_HINT,
+            text_align=TextNode.ACenter,
+            frameColor=(0, 0, 0, 0),
+        )
+        self._class_feature_btns.append(hint)
+
+        # Создаём кнопки способностей в ряд по центру
+        num_features = len(features)
+        btn_width = 0.32
+        total_width = num_features * btn_width
+        start_x = -total_width / 2 + btn_width / 2
+        y = -0.44
+
+        for i, feat_id in enumerate(features):
+            feat_info = get_feature_info(feat_id)
+            x = start_x + i * btn_width
+            display_name = self._truncate_text(feat_info["name"], 14)
+
+            btn = DirectButton(
+                parent=self.content_frame,
+                text=display_name,
+                scale=NineTheme.SMALL_SCALE * 0.7,
+                pos=(x, 0, y),
+                command=lambda fid=feat_id: self._show_feature_tooltip(fid, pos_y=-0.1),
+                frameColor=(0.18, 0.18, 0.25, 0.95),
+                text_fg=NineTheme.TEXT_HIGHLIGHT,
+                text_align=TextNode.ACenter,
+                pressEffect=True,
+                relief=DGG.FLAT,
+                frameSize=(-5.5, 5.5, -1.1, 1.4),
+            )
+            self._class_feature_btns.append(btn)
+
     def _get_class_description(self, cls: str) -> str:
         """Возвращает описание класса."""
         class_data = CLASSES.get(cls, {})
-        hit_die = class_data.get("hit_die", "d8")
-        primary = class_data.get("primary_ability", "")
-        primary_ru = STAT_NAMES_RU.get(primary, primary)
-        return f"Кость хитов: {hit_die} | Основная характеристика: {primary_ru}"
+        hit_die = class_data.get("hit_die", 8)
+
+        # Основные характеристики
+        primary_stats = class_data.get("primary_stats", [])
+        primary_ru = ", ".join(STAT_NAMES_RU.get(s, s) for s in primary_stats)
+
+        # Способности 1 уровня
+        features_1 = class_data.get("features_1", [])
+        feature_names = []
+        for feat_id in features_1:
+            feat_info = get_feature_info(feat_id)
+            feature_names.append(feat_info["name"])
+        features_text = ", ".join(feature_names) if feature_names else ""
+
+        result = f"Кость хитов: d{hit_die} | Основная хар.: {primary_ru}"
+        if features_text:
+            result += f"\nСпособности 1 ур.: {features_text}"
+        return result
 
     def _select_class(self, cls: str):
         """Выбор класса."""
@@ -501,6 +731,9 @@ class CharacterCreateUI(BaseUIComponent):
                 btn['frameColor'] = NineTheme.button_colors()
         if hasattr(self, 'class_desc_label'):
             self.class_desc_label['text'] = self._get_class_description(cls)
+        # Обновляем кнопки способностей
+        if hasattr(self, '_class_feature_btns'):
+            self._update_class_feature_buttons(cls)
 
     def _show_step_stats(self):
         """Шаг 4: Характеристики с кнопками +/-."""
@@ -629,8 +862,15 @@ class CharacterCreateUI(BaseUIComponent):
         if hasattr(self, 'points_label'):
             self.points_label['text'] = f"Очков: {self.stat_points}"
 
+    def _get_skill_modifier(self, skill: str) -> int:
+        """Вычисляет модификатор навыка на основе связанной характеристики."""
+        skill_data = SKILLS.get(skill, {})
+        ability = skill_data.get("ability", "strength")
+        stat_value = self.character_data.get(ability, 10)
+        return (stat_value - 10) // 2
+
     def _show_step_skills(self):
-        """Шаг 5: Выбор навыков (упрощённая версия)."""
+        """Шаг 5: Выбор навыков."""
         DirectLabel(
             parent=self.content_frame,
             text="Выберите 2 навыка:",
@@ -641,13 +881,25 @@ class CharacterCreateUI(BaseUIComponent):
             frameColor=(0, 0, 0, 0),
         )
 
+        # Подсказка о выбранных
+        selected_count = len(self.character_data.get("skills", {}))
+        self.skills_count_label = DirectLabel(
+            parent=self.content_frame,
+            text=f"Выбрано: {selected_count}/2",
+            scale=NineTheme.SMALL_SCALE * 0.8,
+            pos=(0, 0, 0.27),
+            text_fg=NineTheme.TEXT_SECONDARY,
+            text_align=TextNode.ACenter,
+            frameColor=(0, 0, 0, 0),
+        )
+
         # Создаём прокручиваемую область для навыков
         scroll = DirectScrolledFrame(
             parent=self.content_frame,
-            frameSize=(-0.55, 0.55, -0.35, 0.25),
-            canvasSize=(-0.5, 0.5, -0.8, 0.3),
+            frameSize=(-0.55, 0.55, -0.4, 0.22),
+            canvasSize=(-0.5, 0.5, -0.9, 0.25),
             frameColor=(0.08, 0.08, 0.12, 0.5),
-            pos=(0, 0, -0.05),
+            pos=(0, 0, -0.08),
             scrollBarWidth=0.03,
             verticalScroll_frameColor=NineTheme.BTN_NORMAL,
             verticalScroll_thumb_frameColor=NineTheme.BTN_ACCENT_NORMAL,
@@ -656,7 +908,7 @@ class CharacterCreateUI(BaseUIComponent):
         canvas = scroll.getCanvas()
         self.skill_buttons = {}
         skills = list(SKILLS.keys())
-        start_y = 0.25
+        start_y = 0.2
         spacing = 0.1
 
         selected_skills = list(self.character_data.get("skills", {}).keys())
@@ -666,10 +918,18 @@ class CharacterCreateUI(BaseUIComponent):
             is_selected = skill in selected_skills
             color = NineTheme.accent_button_colors() if is_selected else NineTheme.button_colors()
 
+            # Получаем русское название и модификатор
+            skill_data = SKILLS.get(skill, {})
+            skill_name_ru = skill_data.get("name", skill)
+            modifier = self._get_skill_modifier(skill)
+            modifier_str = f"+{modifier}" if modifier >= 0 else str(modifier)
+
+            btn_text = f"{skill_name_ru} ({modifier_str})"
+
             self.skill_buttons[skill] = DirectButton(
                 parent=canvas,
-                text=SKILL_NAMES_RU.get(skill, skill),
-                scale=NineTheme.SMALL_SCALE,
+                text=btn_text,
+                scale=NineTheme.SMALL_SCALE * 0.9,
                 pos=(0, 0, y),
                 command=lambda s=skill: self._toggle_skill(s),
                 frameColor=color,
@@ -677,7 +937,7 @@ class CharacterCreateUI(BaseUIComponent):
                 text_align=TextNode.ACenter,
                 pressEffect=True,
                 relief=DGG.FLAT,
-                frameSize=(-6, 6, -1, 1.5),
+                frameSize=(-7, 7, -1.1, 1.4),
             )
 
     def _toggle_skill(self, skill: str):
@@ -702,6 +962,10 @@ class CharacterCreateUI(BaseUIComponent):
                 self.skill_buttons[skill]['frameColor'] = NineTheme.accent_button_colors()
             else:
                 self.skill_buttons[skill]['frameColor'] = NineTheme.button_colors()
+
+        # Обновляем счётчик
+        if hasattr(self, 'skills_count_label'):
+            self.skills_count_label['text'] = f"Выбрано: {len(skills)}/2"
 
     def _show_step_background(self):
         """Шаг 6: Выбор предыстории."""
@@ -741,9 +1005,10 @@ class CharacterCreateUI(BaseUIComponent):
 
             # Получаем бонусы
             bg_data = BACKGROUNDS.get(bg, {})
+            bg_name_ru = bg_data.get("name", BACKGROUND_NAMES_RU.get(bg, bg.title()))
             skills = bg_data.get("skill_proficiencies", [])
             skills_str = ", ".join(SKILL_NAMES_RU.get(s.lower().replace(" ", "_"), s) for s in skills)
-            btn_text = f"{BACKGROUND_NAMES_RU.get(bg, bg.title())} ({skills_str})"
+            btn_text = f"{bg_name_ru} ({skills_str})"
 
             self.bg_buttons[bg] = DirectButton(
                 parent=canvas,
@@ -792,7 +1057,7 @@ class CharacterCreateUI(BaseUIComponent):
         """Шаг 7: Подтверждение."""
         DirectLabel(
             parent=self.content_frame,
-            text="Подтвердите создание персонажа:",
+            text="Подтвердите создание:",
             scale=NineTheme.LABEL_SCALE,
             pos=(0, 0, 0.35),
             text_fg=NineTheme.TEXT_PRIMARY,
@@ -802,28 +1067,53 @@ class CharacterCreateUI(BaseUIComponent):
 
         # Сводка персонажа
         name = self.character_data.get("character_name", "Безымянный")
-        gender = "Мужской" if self.character_data["gender"] == "male" else "Женский"
-        race = RACE_NAMES_RU.get(self.character_data["race"], self.character_data["race"])
-        cls = CLASS_NAMES_RU.get(self.character_data["class"], self.character_data["class"])
-        bg = BACKGROUND_NAMES_RU.get(self.character_data["background"], self.character_data["background"]) or "Не выбрана"
+        gender = "М" if self.character_data["gender"] == "male" else "Ж"
+        race_key = self.character_data["race"]
+        race_data = RACES.get(race_key, {})
+        race = race_data.get("name", RACE_NAMES_RU.get(race_key, race_key))
+        cls_key = self.character_data["class"]
+        cls_data = CLASSES.get(cls_key, {})
+        cls = cls_data.get("name", CLASS_NAMES_RU.get(cls_key, cls_key))
+        bg_key = self.character_data["background"]
+        bg_data = BACKGROUNDS.get(bg_key, {})
+        bg = bg_data.get("name", BACKGROUND_NAMES_RU.get(bg_key, bg_key)) if bg_key else "Не выбрана"
 
-        summary = f"""
-Имя: {name}
-Пол: {gender}
-Раса: {race}
-Класс: {cls}
+        # Получаем выбранные навыки
+        selected_skills = list(self.character_data.get("skills", {}).keys())
+        skills_ru = []
+        for skill in selected_skills:
+            skill_data = SKILLS.get(skill, {})
+            skill_name = skill_data.get("name", skill)
+            modifier = self._get_skill_modifier(skill)
+            modifier_str = f"+{modifier}" if modifier >= 0 else str(modifier)
+            skills_ru.append(f"{skill_name} ({modifier_str})")
+        skills_text = ", ".join(skills_ru) if skills_ru else "Не выбраны"
+
+        # Вычисляем модификаторы характеристик
+        str_mod = (self.character_data['strength'] - 10) // 2
+        dex_mod = (self.character_data['dexterity'] - 10) // 2
+        con_mod = (self.character_data['constitution'] - 10) // 2
+        int_mod = (self.character_data['intelligence'] - 10) // 2
+        wis_mod = (self.character_data['wisdom'] - 10) // 2
+        cha_mod = (self.character_data['charisma'] - 10) // 2
+
+        def fmt_mod(m):
+            return f"+{m}" if m >= 0 else str(m)
+
+        summary = f"""{name} ({gender})
+{race} {cls}
 Предыстория: {bg}
 
-Сила: {self.character_data['strength']}  Ловкость: {self.character_data['dexterity']}
-Телосложение: {self.character_data['constitution']}  Интеллект: {self.character_data['intelligence']}
-Мудрость: {self.character_data['wisdom']}  Харизма: {self.character_data['charisma']}
-"""
+СИЛ: {self.character_data['strength']} ({fmt_mod(str_mod)})  ЛОВ: {self.character_data['dexterity']} ({fmt_mod(dex_mod)})  ТЕЛ: {self.character_data['constitution']} ({fmt_mod(con_mod)})
+ИНТ: {self.character_data['intelligence']} ({fmt_mod(int_mod)})  МДР: {self.character_data['wisdom']} ({fmt_mod(wis_mod)})  ХАР: {self.character_data['charisma']} ({fmt_mod(cha_mod)})
+
+Навыки: {skills_text}"""
 
         DirectLabel(
             parent=self.content_frame,
             text=summary.strip(),
-            scale=NineTheme.SMALL_SCALE,
-            pos=(0, 0, 0),
+            scale=NineTheme.SMALL_SCALE * 0.9,
+            pos=(0, 0, 0.05),
             text_fg=NineTheme.TEXT_SECONDARY,
             text_align=TextNode.ACenter,
             frameColor=(0, 0, 0, 0),
