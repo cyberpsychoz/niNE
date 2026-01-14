@@ -119,6 +119,26 @@ class DefaultChatConfig:
     COLOR_OOC_TAG = (0.9, 0.2, 0.2, 1.0)     # [OOC] тег - красный
     COLOR_OOC_TEXT = (0.7, 0.7, 0.7, 1.0)    # OOC текст - серый
 
+    # Command suggestions
+    COLOR_SUGGESTIONS_BG = (0.1, 0.08, 0.05, 0.95)
+    COLOR_SUGGESTIONS_TEXT = (0.9, 0.85, 0.7, 1.0)
+    COLOR_SUGGESTIONS_HIGHLIGHT = (1.0, 0.9, 0.5, 1.0)
+
+
+# Команды чата (для автокомплита на клиенте)
+CHAT_COMMANDS_CLIENT = {
+    # RP команды (доступны всем)
+    "me": "/me <действие> — действие от первого лица",
+    "it": "/it <текст> — безличное действие",
+    "looc": "/looc <текст> — локальный OOC чат",
+    "ooc": "/ooc <текст> — глобальный OOC чат",
+    "help": "/help — показать список команд",
+    # Предметы
+    "give": "/give <id> [кол-во] — выдать предмет",
+    "spawn": "/spawn <id> [кол-во] — заспавнить предмет",
+    "items": "/items — список предметов",
+}
+
 
 # =============================================================================
 # Классы данных
@@ -213,6 +233,11 @@ class ChatWindow(BaseUIComponent, DirectObject):
         self.color_ooc_tag = getattr(cfg, 'COLOR_OOC_TAG', (0.9, 0.2, 0.2, 1.0))
         self.color_ooc_text = LColor(*getattr(cfg, 'COLOR_OOC_TEXT', (0.7, 0.7, 0.7, 1.0)))
 
+        # Command suggestions colors
+        self.color_suggestions_bg = getattr(cfg, 'COLOR_SUGGESTIONS_BG', (0.1, 0.08, 0.05, 0.95))
+        self.color_suggestions_text = LColor(*getattr(cfg, 'COLOR_SUGGESTIONS_TEXT', (0.9, 0.85, 0.7, 1.0)))
+        self.color_suggestions_highlight = LColor(*getattr(cfg, 'COLOR_SUGGESTIONS_HIGHLIGHT', (1.0, 0.9, 0.5, 1.0)))
+
         # Настраиваем TextProperties для цветных тегов
         self._setup_text_properties()
 
@@ -231,6 +256,13 @@ class ChatWindow(BaseUIComponent, DirectObject):
         # Выделение текста (логическое, без визуального отображения)
         self.selection_start: int = -1  # -1 = нет выделения
         self.selection_end: int = -1
+
+        # Состояние подсказок команд
+        self._last_input_text: str = ""
+        self._suggestions_visible: bool = False
+        self._input_monitor_task = None
+        self._current_suggestions: List[tuple] = []  # Список (cmd_name, cmd_desc)
+        self._selected_suggestion: int = -1  # Индекс выбранной подсказки (-1 = нет)
 
         # --- Создание UI ---
         self._create_ui()
@@ -302,6 +334,22 @@ class ChatWindow(BaseUIComponent, DirectObject):
             overflow=True,
         ))
 
+        # Фрейм подсказок команд (над полем ввода)
+        self.suggestions_frame = self._add_element('suggestions_frame', DirectFrame(
+            parent=self.root,
+            pos=(0, 0, 0.065),  # Над полем ввода
+            frameSize=(0, self.chat_width, 0, 0.25),
+            frameColor=self.color_suggestions_bg,
+            borderWidth=(0.005, 0.005),
+        ))
+        self.suggestions_frame.hide()
+
+        # Контейнер для текста подсказок
+        self.suggestions_container = self._add_element(
+            'suggestions_container',
+            self.suggestions_frame.attach_new_node("suggestions_text")
+        )
+
         # Подсказка
         self.hint_text = self._create_hint_text()
 
@@ -353,6 +401,9 @@ class ChatWindow(BaseUIComponent, DirectObject):
         self.accept('arrow_right', self._on_cursor_move)
         self.accept('home', self._on_cursor_move)
         self.accept('end', self._on_cursor_move)
+        # Tab для навигации по подсказкам команд
+        self.accept('tab', self._on_tab_key)
+        self.accept('shift-tab', self._on_shift_tab_key)
 
     def _remove_keybindings(self):
         """Убирает keybindings."""
@@ -370,6 +421,8 @@ class ChatWindow(BaseUIComponent, DirectObject):
         self.ignore('arrow_right')
         self.ignore('home')
         self.ignore('end')
+        self.ignore('tab')
+        self.ignore('shift-tab')
 
     def _on_paste(self):
         """Вставка из буфера обмена."""
@@ -565,6 +618,171 @@ class ChatWindow(BaseUIComponent, DirectObject):
             self.input_history_index = -1
             self.input.enterText(self.current_input_backup)
             self.input.guiItem.setCursorPosition(len(self.current_input_backup))
+
+    # =========================================================================
+    # Подсказки команд
+    # =========================================================================
+
+    def _start_input_monitor(self):
+        """Запускает задачу мониторинга ввода для подсказок."""
+        if self._input_monitor_task:
+            return
+
+        def monitor_input(task):
+            if not self._is_open:
+                return task.done
+
+            current_text = self.input.get()
+
+            # Проверяем изменился ли текст
+            if current_text != self._last_input_text:
+                self._last_input_text = current_text
+                self._update_suggestions(current_text)
+
+            return task.cont
+
+        self._input_monitor_task = self.base.taskMgr.add(
+            monitor_input,
+            "chat_input_monitor"
+        )
+
+    def _stop_input_monitor(self):
+        """Останавливает задачу мониторинга ввода."""
+        if self._input_monitor_task:
+            self.base.taskMgr.remove(self._input_monitor_task)
+            self._input_monitor_task = None
+
+    def _update_suggestions(self, text: str):
+        """Обновляет подсказки на основе текста ввода."""
+        # Очищаем старые подсказки
+        for child in self.suggestions_container.get_children():
+            child.removeNode()
+
+        # Показываем подсказки только если текст начинается с /
+        if not text.startswith("/"):
+            self._hide_suggestions()
+            return
+
+        # Извлекаем частичную команду (без /)
+        partial_cmd = text[1:].split()[0] if len(text) > 1 else ""
+
+        # Фильтруем команды
+        matching_commands = []
+        for cmd_name, cmd_desc in CHAT_COMMANDS_CLIENT.items():
+            if not partial_cmd or cmd_name.startswith(partial_cmd.lower()):
+                matching_commands.append((cmd_name, cmd_desc))
+
+        if not matching_commands:
+            self._hide_suggestions()
+            return
+
+        # Сохраняем текущие подсказки и сбрасываем выбор
+        self._current_suggestions = matching_commands[:6]
+        self._selected_suggestion = -1
+
+        # Показываем подсказки
+        self._show_suggestions(self._current_suggestions)
+
+    def _show_suggestions(self, commands: list):
+        """Показывает список подсказок команд."""
+        # Очищаем старые
+        for child in self.suggestions_container.get_children():
+            child.removeNode()
+
+        y_pos = 0.22
+        line_height = 0.035
+
+        for i, (cmd_name, cmd_desc) in enumerate(commands):
+            tn = TextNode(f'suggestion_{cmd_name}')
+            tn.set_font(self.ui_manager.font)
+
+            # Подсветка выбранной подсказки
+            if i == self._selected_suggestion:
+                tn.set_text_color(self.color_suggestions_highlight)
+            else:
+                tn.set_text_color(self.color_suggestions_text)
+
+            tn.setText(cmd_desc)
+            tn.set_align(TextNode.ALeft)
+            tn.set_shadow(0.02, 0.02)
+            tn.set_shadow_color(LColor(0, 0, 0, 0.7))
+
+            node = self.suggestions_container.attach_new_node(tn)
+            node.set_scale(0.032)
+            node.set_pos(0.015, 0, y_pos)
+            y_pos -= line_height
+
+        # Подстраиваем размер фрейма под количество команд
+        frame_height = len(commands) * line_height + 0.02
+        self.suggestions_frame['frameSize'] = (0, self.chat_width, 0, frame_height)
+
+        self.suggestions_frame.show()
+        self._suggestions_visible = True
+
+    def _hide_suggestions(self):
+        """Скрывает подсказки."""
+        if self._suggestions_visible:
+            self.suggestions_frame.hide()
+            self._suggestions_visible = False
+            self._current_suggestions = []
+            self._selected_suggestion = -1
+
+            # Очищаем текст
+            for child in self.suggestions_container.get_children():
+                child.removeNode()
+
+    def _on_tab_key(self):
+        """Обработка Tab - переход к следующей подсказке или вставка выбранной."""
+        if not self._is_open:
+            return
+
+        if not self._suggestions_visible or not self._current_suggestions:
+            return
+
+        if self._selected_suggestion == -1:
+            # Начинаем выбор с первой подсказки
+            self._selected_suggestion = 0
+        else:
+            # Переходим к следующей или вставляем если уже выбрана
+            next_idx = self._selected_suggestion + 1
+            if next_idx >= len(self._current_suggestions):
+                # Вставляем выбранную команду
+                self._insert_selected_suggestion()
+                return
+            self._selected_suggestion = next_idx
+
+        # Перерисовываем подсказки с новым выбором
+        self._show_suggestions(self._current_suggestions)
+
+    def _on_shift_tab_key(self):
+        """Обработка Shift+Tab - переход к предыдущей подсказке."""
+        if not self._is_open:
+            return
+
+        if not self._suggestions_visible or not self._current_suggestions:
+            return
+
+        if self._selected_suggestion <= 0:
+            self._selected_suggestion = len(self._current_suggestions) - 1
+        else:
+            self._selected_suggestion -= 1
+
+        # Перерисовываем подсказки
+        self._show_suggestions(self._current_suggestions)
+
+    def _insert_selected_suggestion(self):
+        """Вставляет выбранную команду в поле ввода."""
+        if self._selected_suggestion < 0 or self._selected_suggestion >= len(self._current_suggestions):
+            return
+
+        cmd_name, _ = self._current_suggestions[self._selected_suggestion]
+        # Вставляем команду с / и пробелом
+        new_text = f"/{cmd_name} "
+        self.input.enterText(new_text)
+        self.input.guiItem.setCursorPosition(len(new_text))
+
+        # Скрываем подсказки
+        self._hide_suggestions()
 
     def _on_send_message(self, text: str):
         """Обработка отправки сообщения."""
@@ -844,6 +1062,10 @@ class ChatWindow(BaseUIComponent, DirectObject):
 
         self.input['focus'] = 1
 
+        # Запускаем мониторинг ввода для подсказок команд
+        self._last_input_text = ""
+        self._start_input_monitor()
+
         logger.debug("Чат открыт")
 
     def close(self):
@@ -854,6 +1076,10 @@ class ChatWindow(BaseUIComponent, DirectObject):
         self._is_open = False
 
         self._remove_keybindings()
+
+        # Останавливаем мониторинг и скрываем подсказки
+        self._stop_input_monitor()
+        self._hide_suggestions()
 
         self.history_frame.hide()
         self.input_frame.hide()
@@ -895,6 +1121,7 @@ class ChatWindow(BaseUIComponent, DirectObject):
     def destroy(self):
         """Уничтожает компонент чата."""
         self._remove_keybindings()
+        self._stop_input_monitor()
         self.ignoreAll()
 
         for visible_msg in self.visible_messages:

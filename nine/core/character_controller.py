@@ -247,7 +247,7 @@ class CharacterController:
         elif ground_distance < -0.1:
             # Below ground surface - push up
             self.is_on_ground = True
-            logger.warning(f"[Player] ⚠️ Below ground! Pushing up from z={current_z:.2f} to z={surface_point.z:.2f}")
+            logger.warning(f"[Player] Below ground! Pushing up from z={current_z:.2f} to z={surface_point.z:.2f}")
             self.actor.setZ(surface_point.z)
             self.velocity.z = 0
         else:
