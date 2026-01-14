@@ -201,6 +201,132 @@ class CombatComponent(Component):
 
 
 @dataclass
+class CombatSessionComponent(Component):
+    """
+    Компонент участия в пошаговом бою.
+    Добавляется сущностям при входе в бой, удаляется при выходе.
+    """
+    # Идентификация боя
+    combat_id: str = ""                      # UUID боевой сессии
+
+    # Инициатива
+    initiative: int = 0                       # Результат броска инициативы
+    initiative_modifier: int = 0              # Модификатор (обычно DEX)
+    turn_order_position: int = 0              # Позиция в очереди ходов
+
+    # Экономика действий (сбрасывается в начале хода)
+    movement_remaining: float = 30.0          # Оставшееся движение в футах
+    movement_speed: float = 30.0              # Базовая скорость
+    has_action: bool = True                   # Есть действие
+    has_bonus_action: bool = True             # Есть бонусное действие
+    has_reaction: bool = True                 # Есть реакция
+
+    # Состояние хода
+    is_current_turn: bool = False             # Сейчас ход этой сущности
+    is_incapacitated: bool = False            # Не может действовать
+    has_used_movement: bool = False           # Использовал движение
+
+    # Боевые состояния (conditions)
+    conditions: List[str] = field(default_factory=list)  # ["poisoned", "prone"]
+    condition_durations: Dict[str, int] = field(default_factory=dict)  # {"stunned": 2}
+    condition_sources: Dict[str, str] = field(default_factory=dict)  # {"charmed": "entity_id"}
+
+    # Концентрация (для заклинаний)
+    concentrating_on: Optional[str] = None    # ID заклинания
+    concentration_target: Optional[str] = None  # Цель концентрации
+
+    # Подготовленное действие
+    readied_action: Optional[str] = None      # ID действия
+    readied_trigger: str = ""                 # Описание триггера
+
+    # Текущая цель
+    selected_target_id: Optional[str] = None  # Выбранная цель
+
+    def reset_turn_resources(self):
+        """Сбрасывает ресурсы в начале хода."""
+        self.movement_remaining = self.movement_speed
+        self.has_action = True
+        self.has_bonus_action = True
+        self.has_reaction = True  # Реакция восстанавливается в начале хода
+        self.has_used_movement = False
+        self.readied_action = None
+        self.readied_trigger = ""
+
+    def consume_action(self) -> bool:
+        """Использует действие, возвращает успех."""
+        if self.has_action and not self.is_incapacitated:
+            self.has_action = False
+            return True
+        return False
+
+    def consume_bonus_action(self) -> bool:
+        """Использует бонусное действие, возвращает успех."""
+        if self.has_bonus_action and not self.is_incapacitated:
+            self.has_bonus_action = False
+            return True
+        return False
+
+    def consume_reaction(self) -> bool:
+        """Использует реакцию, возвращает успех."""
+        if self.has_reaction and not self.is_incapacitated:
+            self.has_reaction = False
+            return True
+        return False
+
+    def consume_movement(self, feet: float) -> bool:
+        """Использует движение, возвращает успех."""
+        if self.movement_remaining >= feet and not self.is_incapacitated:
+            self.movement_remaining -= feet
+            self.has_used_movement = True
+            return True
+        return False
+
+    def add_condition(self, condition_id: str, duration: int = -1, source: str = ""):
+        """Добавляет состояние."""
+        if condition_id not in self.conditions:
+            self.conditions.append(condition_id)
+        if duration > 0:
+            self.condition_durations[condition_id] = duration
+        if source:
+            self.condition_sources[condition_id] = source
+
+    def remove_condition(self, condition_id: str):
+        """Удаляет состояние."""
+        if condition_id in self.conditions:
+            self.conditions.remove(condition_id)
+        self.condition_durations.pop(condition_id, None)
+        self.condition_sources.pop(condition_id, None)
+
+    def has_condition(self, condition_id: str) -> bool:
+        """Проверяет наличие состояния."""
+        return condition_id in self.conditions
+
+    def tick_conditions(self):
+        """Уменьшает длительность состояний в конце хода."""
+        expired = []
+        for cond, duration in list(self.condition_durations.items()):
+            if duration > 0:
+                self.condition_durations[cond] = duration - 1
+                if self.condition_durations[cond] <= 0:
+                    expired.append(cond)
+
+        for cond in expired:
+            self.remove_condition(cond)
+
+
+@dataclass
+class TargetableComponent(Component):
+    """
+    Компонент, делающий сущность доступной для выбора как цели.
+    """
+    is_targetable: bool = True               # Можно выбрать как цель
+    target_priority: int = 0                  # Приоритет для AI (выше = важнее)
+    highlight_color: tuple = (1.0, 0.0, 0.0, 0.5)  # Цвет подсветки (RGBA)
+    is_highlighted: bool = False              # Сейчас подсвечен
+    is_selected: bool = False                 # Сейчас выбран как цель
+
+
+@dataclass
 class FactionComponent(Component):
     """
     Принадлежность к фракции и отношения.
@@ -325,6 +451,8 @@ COMPONENT_REGISTRY: Dict[str, type] = {
     "AIComponent": AIComponent,
     "PathfindingComponent": PathfindingComponent,
     "CombatComponent": CombatComponent,
+    "CombatSessionComponent": CombatSessionComponent,
+    "TargetableComponent": TargetableComponent,
     "FactionComponent": FactionComponent,
     "DialogueComponent": DialogueComponent,
     "InteractionComponent": InteractionComponent,
