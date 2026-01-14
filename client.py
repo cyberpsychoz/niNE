@@ -57,8 +57,16 @@ class GameClient(ShowBase):
             with open("config.json") as f:
                 config = json.load(f)
             self.camera_sensitivity = config.get("camera_sensitivity", 1.0)
+            self.third_person_camera = config.get("third_person_camera", True)
+            self.invert_mouse_x = config.get("invert_mouse_x", False)
+            self.invert_mouse_y = config.get("invert_mouse_y", False)
+            self.fov = config.get("fov", 70)
         except (FileNotFoundError, json.JSONDecodeError):
             self.camera_sensitivity = 1.0
+            self.third_person_camera = True
+            self.invert_mouse_x = False
+            self.invert_mouse_y = False
+            self.fov = 70
 
         self.player_id = -1
         self.is_connected = False
@@ -416,7 +424,7 @@ class GameClient(ShowBase):
 
     def load_actor(self, player_id, color, is_local_player=False):
         # Model contains embedded animations: idle, walk_forward, walk_backward, run_forward, strafe_left, strafe_right
-        actor = Actor("nine/assets/models/player.bam")
+        actor = Actor("nine/assets/models/base.bam")
         actor.set_scale(0.3)
         actor.setColor(color)
 
@@ -457,6 +465,21 @@ class GameClient(ShowBase):
                 actor.setPos(0, 0, 0)
 
         return Task.cont
+
+    def update_player_model_visibility(self):
+        """
+        Обновляет видимость модели игрока в зависимости от режима камеры.
+        В first-person режиме модель скрыта, в third-person — видима.
+        """
+        if not self.player_actor_model:
+            return
+
+        if self.camera_controller and not self.camera_controller.third_person:
+            # First-person: скрываем модель
+            self.player_actor_model.hide()
+        else:
+            # Third-person: показываем модель
+            self.player_actor_model.show()
 
     def handle_network_data(self, data: dict):
         msg_type = data.get("type")
@@ -514,7 +537,15 @@ class GameClient(ShowBase):
             # Загружаем актёра (TODO: использовать модель из character_data)
             self.load_actor(self.player_id, LColor(0.5, 0.8, 0.5, 1), is_local_player=True)
             self.player_actor.setPos(*data["pos"])
-            self.camera_controller = CameraController(self, self.camera, self.win, self.player_actor, self.camera_sensitivity)
+            self.camera_controller = CameraController(
+                self, self.camera, self.win, self.player_actor,
+                sensitivity=self.camera_sensitivity,
+                third_person=self.third_person_camera,
+                invert_x=self.invert_mouse_x,
+                invert_y=self.invert_mouse_y,
+                fov=self.fov
+            )
+            self.update_player_model_visibility()
             self.enable_game_input()
 
             for p_id, p_info in data.get("players", {}).items():

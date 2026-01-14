@@ -11,6 +11,67 @@
 - Не ломать базовый функционал niNE
 - Использовать D&D режим как опциональное расширение
 
+---
+
+## Текущий прогресс разработки
+
+### Фаза 0: Система персонажей — В ПРОЦЕССЕ
+
+#### ✅ Реализовано (январь 2026):
+
+**Плагины:**
+- `nine/plugins/dnd/sh_constants.py` — константы D&D 5e:
+  - 6 рас с бонусами и особенностями
+  - 12 классов с характеристиками, владениями и способностями 1 уровня
+  - 10 предысторий (backgrounds) с навыками и особенностями
+  - 18 навыков с привязкой к характеристикам
+  - Методы генерации характеристик (Point Buy, Standard Array)
+  - **FEATURES** — полный словарь способностей с русскими названиями и описаниями
+
+- `nine/plugins/dnd/cl_character_select.py` — экран выбора персонажа:
+  - Список персонажей аккаунта с карточками
+  - Отображение расы, класса, уровня на русском
+  - HP с цветовой индикацией (зелёный/жёлтый/красный)
+  - Дата последней игры
+  - Кнопка "Играть" для выбора персонажа
+  - Кнопка "Удалить" (квадратная с X)
+  - Кнопка "Создать персонажа" (если лимит не достигнут)
+
+- `nine/plugins/dnd/cl_character_create.py` — 7-шаговый мастер создания:
+  - **Шаг 1:** Имя и пол
+  - **Шаг 2:** Выбор расы с описанием бонусов, скорости и способностей (сетка 3 колонки)
+  - **Шаг 3:** Выбор класса с описанием и способностями 1 уровня (сетка 4 колонки)
+  - **Шаг 4:** Распределение характеристик (Point Buy, 27 очков)
+  - **Шаг 5:** Выбор 2 навыков — **на русском с модификаторами** (например "Атлетика (+2)")
+  - **Шаг 6:** Выбор предыстории
+  - **Шаг 7:** Подтверждение — полная сводка персонажа **включая выбранные навыки**
+  - **Кликабельные способности** — тултип с русским описанием при клике (кнопка X для закрытия)
+  - **Локализация** — все названия рас, классов, навыков берутся из `sh_constants.py`
+
+- `nine/plugins/dnd/sv_characters.py` — серверная логика персонажей
+- `nine/plugins/dnd/sh_plugin.py` — общий плагин
+
+**Интеграция с UIManager:**
+- `show_character_select()` / `hide_character_select()`
+- `show_character_create()` / `hide_character_create()`
+- GameState.CHARACTER_SELECT, GameState.CHARACTER_CREATE
+
+#### 🔄 В процессе:
+- Серверная валидация и сохранение персонажей в БД
+- Интеграция с системой спавна
+
+#### ⏳ Запланировано:
+- Система фракций (4 фракции с точками спавна)
+- 3D модели персонажей (12 моделей: 2 на расу)
+- Команда /charsetmodel для администраторов
+- **Деревья прокачки для каждого класса** — UI выбора способностей при повышении уровня:
+  - Подклассы (Archetype) на 3 уровне
+  - Способности на уровнях 1-20
+  - Улучшения характеристик (ASI) на 4, 8, 12, 16, 19 уровнях
+  - Выбор заклинаний для магических классов
+
+---
+
 ### Архитектура D&D режима
 
 D&D режим реализуется исключительно через систему плагинов:
@@ -805,7 +866,282 @@ CHA: 8   → 9
 
 ---
 
-#### C. Система фракций
+#### C. Система NPC (ECS-архитектура)
+
+**ВАЖНО:** NPC система должна быть реализована **ДО** системы фракций и отношений, так как фракции и отношения зависят от NPC.
+
+**Цель:** Создать гибкую систему NPC на основе Entity-Component-System (ECS) архитектуры, аналогичной системе предметов.
+
+##### Архитектурный подход: ECS
+
+Вместо монолитного класса NPC используем компонентный подход, где каждый NPC — это Entity с набором компонентов:
+
+```python
+# Пример структуры NPC как Entity с компонентами
+npc_entity = Entity(uuid="npc-001")
+npc_entity.add_component(PositionComponent(x=10, y=5, z=1))
+npc_entity.add_component(ModelComponent(model="human_male", animations=["idle", "walk"]))
+npc_entity.add_component(AIComponent(behavior="patrol", aggro_radius=10))
+npc_entity.add_component(DialogueComponent(dialogue_id="innkeeper_greeting"))
+npc_entity.add_component(CombatComponent(hp=30, ac=12, attacks=["shortsword"]))
+npc_entity.add_component(FactionComponent(faction_id="neutral", disposition=0))
+npc_entity.add_component(PathfindingComponent(navmesh_agent=True))
+npc_entity.add_component(InteractionComponent(interactions=["talk", "trade"]))
+```
+
+##### Компоненты NPC
+
+| Компонент | Описание | Данные |
+|-----------|----------|--------|
+| **PositionComponent** | Позиция и поворот в мире | x, y, z, rotation |
+| **ModelComponent** | 3D модель и анимации | model_path, current_anim, anim_speed |
+| **AIComponent** | Поведение AI | behavior_type, state, patrol_points |
+| **PathfindingComponent** | Навигация и путь | current_path, target_pos, navmesh_agent |
+| **DialogueComponent** | Диалоги и ответы | dialogue_tree_id, current_node |
+| **CombatComponent** | Боевые характеристики | hp, ac, attacks, saves |
+| **FactionComponent** | Принадлежность к фракции | faction_id, disposition_overrides |
+| **InteractionComponent** | Типы взаимодействия | interact_type, trigger_radius |
+| **InventoryComponent** | Инвентарь/торговля | items, gold, loot_table_id |
+| **QuestComponent** | Квестовая логика | quests_give, quests_receive |
+| **ScheduleComponent** | Расписание действий | schedule_entries, current_activity |
+
+##### Системы (Systems) для обработки компонентов
+
+```python
+# Серверные системы
+class AISystem:
+    """Обновляет состояние AI для всех NPC с AIComponent."""
+    def update(self, dt: float):
+        for entity in entities_with(AIComponent):
+            ai = entity.get_component(AIComponent)
+            if ai.behavior == "patrol":
+                self._update_patrol(entity, dt)
+            elif ai.behavior == "hostile":
+                self._update_hostile(entity, dt)
+            elif ai.behavior == "idle":
+                self._update_idle(entity, dt)
+
+class PathfindingSystem:
+    """Вычисляет и обновляет пути для NPC."""
+    def update(self, dt: float):
+        for entity in entities_with(PathfindingComponent):
+            pathfinding = entity.get_component(PathfindingComponent)
+            if pathfinding.needs_repath:
+                pathfinding.current_path = self.navmesh.find_path(
+                    entity.position, pathfinding.target_pos
+                )
+
+class CombatAISystem:
+    """Управляет боевым поведением NPC."""
+    def update(self, dt: float):
+        for entity in entities_with(CombatComponent, AIComponent):
+            # Поиск целей, выбор действий в бою
+            ...
+
+class FactionSystem:
+    """Обрабатывает отношения между фракциями."""
+    def get_disposition(self, npc: Entity, target: Entity) -> int:
+        # Возвращает отношение NPC к цели
+        ...
+```
+
+##### Pathfinding (Навигация)
+
+**КРИТИЧНО:** Требует модификации ядра движка.
+
+**Варианты реализации:**
+
+1. **NavMesh (рекомендуется):**
+   ```python
+   # Генерация NavMesh из геометрии карты
+   class NavMeshGenerator:
+       def generate_from_collision(self, collision_polygons: List) -> NavMesh:
+           # Конвертирует collision polygons в walkable навигационную сетку
+           ...
+
+   # Поиск пути
+   class NavMeshPathfinder:
+       def find_path(self, start: Vec3, end: Vec3) -> List[Vec3]:
+           # A* по NavMesh полигонам
+           ...
+   ```
+
+2. **Grid-based (простая альтернатива):**
+   ```python
+   class GridPathfinder:
+       def __init__(self, world, cell_size: float = 1.0):
+           self.grid = self._build_grid(world)
+
+       def find_path(self, start: Vec3, end: Vec3) -> List[Vec3]:
+           # A* по сетке с учётом препятствий
+           ...
+   ```
+
+**Изменения в ядре для NavMesh:**
+- `nine/core/navmesh.py` — генерация и работа с NavMesh
+- `nine/core/world.py` — интеграция NavMesh с миром
+- `nine/core/pathfinder.py` — алгоритмы поиска пути (A*, Dijkstra)
+
+**Пример использования:**
+```python
+# В AISystem
+def _update_patrol(self, entity: Entity, dt: float):
+    ai = entity.get_component(AIComponent)
+    pathfinding = entity.get_component(PathfindingComponent)
+    position = entity.get_component(PositionComponent)
+
+    # Если достигли точки патрулирования — переход к следующей
+    if position.distance_to(ai.patrol_points[ai.current_point]) < 0.5:
+        ai.current_point = (ai.current_point + 1) % len(ai.patrol_points)
+        pathfinding.target_pos = ai.patrol_points[ai.current_point]
+        pathfinding.needs_repath = True
+```
+
+##### Типы NPC
+
+| Тип | Компоненты | Поведение |
+|-----|------------|-----------|
+| **Торговец** | Position, Model, Dialogue, Inventory, Faction, Interaction | Стоит на месте, торгует |
+| **Квестодатель** | Position, Model, Dialogue, Quest, Faction | Выдаёт/принимает квесты |
+| **Патрульный** | Position, Model, AI(patrol), Pathfinding, Combat, Faction | Ходит по маршруту |
+| **Враг** | Position, Model, AI(hostile), Pathfinding, Combat, Faction | Атакует враждебных |
+| **Компаньон** | Position, Model, AI(follow), Pathfinding, Combat, Inventory | Следует за игроком |
+| **Житель** | Position, Model, AI(schedule), Pathfinding, Schedule, Dialogue | Живёт по расписанию |
+
+##### База данных NPC
+
+```sql
+-- Шаблоны NPC (для спавна)
+CREATE TABLE npc_templates (
+    id TEXT PRIMARY KEY,
+    name TEXT,
+    model TEXT,                     -- Путь к модели
+
+    -- Компоненты (JSON)
+    ai_config TEXT,                 -- {"behavior": "patrol", "aggro_radius": 10, ...}
+    combat_stats TEXT,              -- {"hp": 30, "ac": 12, "attacks": [...]}
+    dialogue_id TEXT,               -- Ссылка на диалог
+    faction_id TEXT,                -- Фракция по умолчанию
+    loot_table_id TEXT,             -- Таблица лута
+    schedule_id TEXT,               -- Расписание (если есть)
+
+    -- Метаданные
+    spawn_weight INTEGER DEFAULT 1, -- Вес для случайного спавна
+    tags TEXT                       -- JSON тегов ["humanoid", "vendor", "guard"]
+);
+
+-- Экземпляры NPC в мире
+CREATE TABLE npc_instances (
+    uuid TEXT PRIMARY KEY,
+    template_id TEXT,
+
+    -- Позиция
+    pos_x REAL, pos_y REAL, pos_z REAL,
+    rotation REAL,
+
+    -- Состояние
+    hp_current INTEGER,
+    ai_state TEXT,                  -- idle/patrol/combat/dead/fleeing
+
+    -- Переопределения (JSON, опционально)
+    custom_dialogue_id TEXT,
+    custom_faction_id TEXT,
+    custom_inventory TEXT,
+
+    -- Персистентность
+    is_persistent BOOLEAN DEFAULT TRUE,
+    respawn_time INTEGER,           -- Секунды до респавна (0 = нет респавна)
+    last_death_time TIMESTAMP,
+
+    FOREIGN KEY (template_id) REFERENCES npc_templates(id)
+);
+
+-- Patrol маршруты
+CREATE TABLE patrol_routes (
+    id TEXT PRIMARY KEY,
+    name TEXT,
+    points TEXT                     -- JSON [[x,y,z], [x,y,z], ...]
+);
+```
+
+##### Сетевые сообщения NPC
+
+```json
+// Синхронизация NPC с клиентами
+{"type": "npc_spawn", "uuid": "npc-001", "template_id": "guard", "pos": [x,y,z]}
+{"type": "npc_update", "uuid": "npc-001", "pos": [x,y,z], "anim": "walk", "state": "patrol"}
+{"type": "npc_despawn", "uuid": "npc-001"}
+
+// Взаимодействие
+{"type": "npc_interact", "npc_uuid": "npc-001", "interaction": "talk"}
+{"type": "npc_dialogue_start", "npc_uuid": "npc-001", "dialogue_id": "innkeeper"}
+{"type": "npc_dialogue_choice", "npc_uuid": "npc-001", "choice_id": 2}
+{"type": "npc_trade_open", "npc_uuid": "npc-001", "inventory": [...]}
+
+// AI события (сервер → клиент)
+{"type": "npc_aggro", "npc_uuid": "npc-001", "target_uuid": "player-001"}
+{"type": "npc_combat_action", "npc_uuid": "npc-001", "action": "attack", "target": "player-001"}
+{"type": "npc_death", "npc_uuid": "npc-001", "loot": [...]}
+
+// DM команды
+{"type": "dm_npc_spawn", "template_id": "goblin", "pos": [x,y,z]}
+{"type": "dm_npc_control", "npc_uuid": "npc-001", "command": "move_to", "target": [x,y,z]}
+{"type": "dm_npc_say", "npc_uuid": "npc-001", "text": "Стой! Кто идёт?"}
+```
+
+##### Плагины NPC системы
+
+```
+nine/plugins/dnd/npc/
+├── sv_npc_manager.py        # Менеджер NPC на сервере (спавн, деспавн, тик)
+├── sv_npc_ai.py             # AI системы (patrol, hostile, schedule)
+├── sv_npc_combat.py         # Боевая логика NPC
+├── sv_npc_pathfinding.py    # Обёртка над navmesh/grid pathfinder
+├── cl_npc_renderer.py       # Отрисовка NPC на клиенте
+├── cl_npc_interaction.py    # UI взаимодействия (E для диалога)
+├── cl_npc_dialogue.py       # Система диалогов
+├── sh_npc_components.py     # Общие классы компонентов
+└── data/
+    ├── npc_templates.json   # Шаблоны NPC
+    ├── patrol_routes.json   # Маршруты патрулирования
+    └── dialogues/           # Файлы диалогов
+        ├── guard.json
+        ├── merchant.json
+        └── innkeeper.json
+```
+
+##### Модификации ядра (nine/core/)
+
+**Новые файлы:**
+- `nine/core/ecs.py` — базовые классы Entity, Component, System
+- `nine/core/navmesh.py` — генерация и работа с NavMesh
+- `nine/core/pathfinder.py` — алгоритмы поиска пути
+
+**Изменения существующих:**
+- `nine/core/world.py`:
+  - Добавить `NavMesh` как часть мира
+  - Интегрировать ECS EntityManager
+  - Метод `spawn_npc()`, `despawn_npc()`
+
+- `nine/server/game_server.py`:
+  - Тик для NPC систем в game_loop()
+  - Синхронизация NPC с клиентами
+
+##### Порядок реализации NPC
+
+1. **ECS Framework** — базовые классы Entity/Component/System в `nine/core/ecs.py`
+2. **Компоненты NPC** — PositionComponent, ModelComponent, AIComponent
+3. **Простой Spawner** — спавн статичных NPC (торговцы)
+4. **Pathfinding (Grid)** — простой A* по сетке
+5. **AI Systems** — patrol, idle, hostile
+6. **Диалоги** — система диалогов
+7. **Combat AI** — боевое поведение
+8. **NavMesh** — продвинутый pathfinding (опционально, можно позже)
+9. **Расписания** — NPC с дневным циклом (опционально)
+
+---
+
+#### D. Система фракций
 
 **Цель:** Разделение игроков по группам с уникальными точками спавна и отношениями.
 
@@ -860,13 +1196,14 @@ CHA: 8   → 9
 | **0A** | Экран выбора персонажа | Меню выбора/создания/удаления персонажей | **КРИТИЧЕСКИЙ** | — |
 | **0B** | Создание персонажа (D&D) | Выбор расы, пола, класса, распределение характеристик (Point Buy/Standard Array/Roll 4d6), выбор навыков | **КРИТИЧЕСКИЙ** | 0A |
 | **0C** | Модели персонажей | 12 готовых моделей (2 на расу: male/female) + команда /charsetmodel | **КРИТИЧЕСКИЙ** | Blender assets |
-| **0D** | Система фракций | 4 фракции, точки спавна, отношения | **КРИТИЧЕСКИЙ** | 0A |
-| **1** | dnd_character (лист персонажа) | UI листа персонажа с полными характеристиками | Высокий | 0A-0D |
+| **0D** | **Система NPC (ECS)** | ECS-архитектура, pathfinding, AI, диалоги | **КРИТИЧЕСКИЙ** | Модификация ядра |
+| **0E** | Система фракций | 4 фракции, точки спавна, отношения | **КРИТИЧЕСКИЙ** | 0D (NPC) |
+| **1** | dnd_character (лист персонажа) | UI листа персонажа с полными характеристиками | Высокий | 0A-0E |
 | **2** | dnd_dice | Система бросков кубов | Высокий | 1 |
-| **3** | dnd_combat | Пошаговый бой с инициативой | Высокий | 1, 2 |
-| **4** | dnd_dm | DM режим с невидимостью и панелью управления | Высокий | 1, 3 |
+| **3** | dnd_combat | Пошаговый бой с инициативой | Высокий | 1, 2, 0D |
+| **4** | dnd_dm | DM режим с невидимостью и панелью управления | Высокий | 1, 3, 0D |
 | **5** | dnd_audio | Система музыки и звуков (фоновая музыка, эмбиент, эффекты) | Высокий | — |
-| **...** | Остальные системы | НПС, заклинания, условия... | Средний/Низкий | ... |
+| **...** | Остальные системы | Заклинания, условия, квесты... | Средний/Низкий | ... |
 
 **Итого Фаза 0 включает:**
 1. ✅ **Многоэтапный процесс создания персонажа (7 шагов)** — буквальное заполнение чарлиста D&D
@@ -878,10 +1215,11 @@ CHA: 8   → 9
 7. ✅ **Особенности и черты** — выбор классовых особенностей (Fighting Style), черты характера (Traits, Ideals, Bonds, Flaws)
 8. ✅ **Биография** — имя, фракция, физическое описание (возраст, рост, вес, глаза), отличительные черты, биография, мотивация
 9. ✅ **Финальный чарлист** — полный лист персонажа с превью 3D модели
-10. ✅ **Система фракций** — 4 фракции с точками спавна и отношениями
-11. ✅ **Команда /charsetmodel** — административная команда для смены модели персонажа
+10. ⏳ **Система NPC (ECS)** — ECS-архитектура, компоненты, AI, pathfinding, диалоги (требует модификации ядра)
+11. ⏳ **Система фракций** — 4 фракции с точками спавна и отношениями (зависит от NPC)
+12. ✅ **Команда /charsetmodel** — административная команда для смены модели персонажа
 
-**Результат:** Игрок создаёт **полноценного D&D персонажа**, готового к игре, с заполненным листом персонажа и выбранной 3D моделью.
+**Результат:** Игрок создаёт **полноценного D&D персонажа**, готового к игре, с заполненным листом персонажа и выбранной 3D моделью. Мир населён NPC с AI поведением и диалогами.
 
 ---
 
@@ -1255,73 +1593,18 @@ CHA: 8   → 9
 
 #### C. Система НПС (dnd_npc)
 
-**Цель:** НПС с диалогами, квестами и AI поведением
+**См. детальную документацию:** Секция **"C. Система NPC (ECS-архитектура)"** в Фазе 0.
 
-**Плагины:**
-- `dnd_npc/sv_npc.py` — логика НПС, AI
-- `dnd_npc/cl_npc_dialogue.py` — UI диалогов
-- `dnd_npc/data/` — JSON файлы НПС и диалогов
+NPC система перенесена в Фазу 0 как критический компонент, необходимый для работы фракций и отношений.
 
-**Реализация:**
-1. **База данных НПС:**
-   ```sql
-   CREATE TABLE npc_templates (
-       id TEXT PRIMARY KEY,
-       name TEXT,
-       model TEXT,           -- Путь к модели
-       dialogue_id TEXT,     -- Ссылка на файл диалога
-       stats TEXT,           -- JSON статов для боя
-       loot_table TEXT,      -- JSON таблицы лута
-       ai_behavior TEXT      -- hostile/neutral/friendly
-   );
+**Краткое содержание:**
+- ECS-архитектура с компонентами (Position, Model, AI, Dialogue, Combat, Faction)
+- Pathfinding (NavMesh/Grid-based)
+- AI системы (patrol, hostile, idle, schedule)
+- Диалоги и торговля
+- Требует модификации ядра (`nine/core/ecs.py`, `nine/core/navmesh.py`)
 
-   CREATE TABLE npc_instances (
-       uuid TEXT PRIMARY KEY,
-       template_id TEXT,
-       pos_x REAL, pos_y REAL, pos_z REAL,
-       hp_current INTEGER,
-       state TEXT            -- idle/patrol/combat/dead
-   );
-   ```
-
-2. **Диалоги (JSON формат):**
-   ```json
-   {
-     "id": "innkeeper_greeting",
-     "nodes": [
-       {
-         "id": "start",
-         "npc_text": "Добро пожаловать в таверну! Что желаете?",
-         "choices": [
-           {"text": "Мне нужна комната", "next": "rent_room"},
-           {"text": "Есть ли работа?", "next": "quest_offer"},
-           {"text": "Прощайте", "next": "end"}
-         ]
-       },
-       {
-         "id": "rent_room",
-         "npc_text": "5 золотых за ночь.",
-         "condition": {"gold": 5},
-         "action": {"remove_gold": 5, "give_buff": "rested"},
-         "next": "end"
-       }
-     ]
-   }
-   ```
-
-3. **AI поведение:**
-   - **Idle** — стоит на месте, может иметь патрульные точки
-   - **Patrol** — ходит по заданному маршруту
-   - **Combat** — атакует ближайшего врага в радиусе агро
-   - **Flee** — убегает при низком HP
-   - **Dead** — не двигается, можно лутать
-
-4. **Интерактивность:**
-   - **E** на НПС — открыть диалог / торговлю
-   - **Клик на труп** — окно лута
-   - **DM может управлять НПС** — говорить от их имени, двигать
-
-**Приоритет:** Средний — нужен для квестов и окружения
+**Приоритет:** Критический (Фаза 0D)
 
 ---
 
@@ -1602,35 +1885,41 @@ nine/plugins/dnd/
 
 ### План разработки D&D режима
 
-| Этап | Плагины | Приоритет | Оценка |
-|------|---------|-----------|--------|
-| **1. Персонаж** | dnd_character, dnd_dice | Критический | 1-2 недели |
-| **2. Бой** | dnd_combat | Критический | 2-3 недели |
-| **3. DM режим** | dnd_dm | Высокий | 1-2 недели |
-| **4. Аудио** | dnd_audio | Высокий | 1 неделя |
-| **5. Инвентарь** | dnd_inventory | Высокий | 1 неделя |
-| **6. НПС** | dnd_npc | Средний | 2 недели |
-| **7. Заклинания** | dnd_spells | Средний | 2 недели |
-| **8. Условия** | dnd_conditions | Средний | 1 неделя |
-| **9. Квесты** | dnd_quests | Низкий | 1 неделя |
-| **10. Отдых** | dnd_rest | Низкий | 3 дня |
+| Этап | Плагины | Приоритет | Зависимости |
+|------|---------|-----------|-------------|
+| **0. NPC система (ECS)** | npc/, core/ecs.py, core/navmesh.py | **Критический** | Модификация ядра |
+| **1. Персонаж** | dnd_character, dnd_dice | Критический | — |
+| **2. Бой** | dnd_combat | Критический | 0, 1 |
+| **3. DM режим** | dnd_dm | Высокий | 0, 1, 2 |
+| **4. Аудио** | dnd_audio | Высокий | — |
+| **5. Инвентарь** | dnd_inventory | Высокий | 1 |
+| **6. Заклинания** | dnd_spells | Средний | 1, 2 |
+| **7. Условия** | dnd_conditions | Средний | 2 |
+| **8. Квесты** | dnd_quests | Низкий | 0 |
+| **9. Отдых** | dnd_rest | Низкий | 1 |
 
 ---
 
 ### Первые шаги
 
-**Начать с:**
-1. Создать структуру папок `nine/plugins/dnd/`
-2. Реализовать `dnd_character` — это фундамент для всего остального
-3. Реализовать `dnd_dice` — нужен для тестирования характеристик
-4. Протестировать броски и отображение листа персонажа
+**КРИТИЧЕСКИ ВАЖНО — NPC система (перед всем остальным):**
+1. Создать `nine/core/ecs.py` — базовые классы Entity, Component, System
+2. Создать `nine/core/pathfinder.py` — Grid-based A* pathfinding
+3. Реализовать базовые компоненты NPC (Position, Model, AI)
+4. Добавить простой спавнер для статичных NPC
 
 **Затем:**
-1. `dnd_combat` — основная механика D&D
-2. `dnd_dm` — без этого нельзя вести сессии
-3. `dnd_audio` — атмосфера критична для D&D сессий
-4. `dnd_inventory` — для полноты ощущения D&D
+1. `dnd_character` — лист персонажа, это фундамент для механик
+2. `dnd_dice` — нужен для тестирования характеристик
+3. `dnd_combat` — основная механика D&D (зависит от NPC для врагов)
+4. `dnd_dm` — без этого нельзя вести сессии
+
+**Далее:**
+1. `dnd_audio` — атмосфера критична для D&D сессий
+2. `dnd_inventory` — для полноты ощущения D&D
+3. NavMesh — продвинутый pathfinding (опционально)
 
 **Опционально:**
-- НПС, заклинания, условия — можно добавлять постепенно
+- Заклинания, условия — можно добавлять постепенно
 - Квесты и отдых — низкий приоритет, DM может делать это вручную
+- NPC расписания — добавит жизни миру, но не обязательно сразу

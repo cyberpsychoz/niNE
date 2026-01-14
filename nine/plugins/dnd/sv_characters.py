@@ -85,7 +85,7 @@ class CharacterServerModule(PluginModule):
 
         if client_id is not None and account_uuid:
             self.authenticated_clients[client_id] = account_uuid
-            self.logger.debug(f"Client {client_id} authenticated as account {account_uuid}")
+            self.logger.info(f"[DND] Client {client_id} authenticated as account {account_uuid}")
 
     def on_character_list_request(self, data: dict):
         """
@@ -127,12 +127,16 @@ class CharacterServerModule(PluginModule):
         """
         client_id = data.get("client_id")
         character_uuid = data.get("character_uuid")
+        self.logger.info(f"[DND] on_character_select: client_id={client_id}, character_uuid={character_uuid}")
 
         if client_id is None or not character_uuid:
+            self.logger.warning(f"[DND] on_character_select: missing client_id or character_uuid")
             return
 
         account_uuid = self.authenticated_clients.get(client_id)
+        self.logger.info(f"[DND] on_character_select: account_uuid from cache = {account_uuid}")
         if not account_uuid:
+            self.logger.warning(f"[DND] on_character_select: client {client_id} not authenticated")
             self._send_to_client(client_id, {
                 "type": "error",
                 "message": "Not authenticated"
@@ -141,11 +145,14 @@ class CharacterServerModule(PluginModule):
 
         db = self._get_db()
         if not db:
+            self.logger.error(f"[DND] on_character_select: database unavailable")
             return
 
         # Получаем данные персонажа
         character = db.get_character(character_uuid)
+        self.logger.info(f"[DND] on_character_select: character found = {character is not None}")
         if not character:
+            self.logger.warning(f"[DND] on_character_select: character {character_uuid} not found")
             self._send_to_client(client_id, {
                 "type": "error",
                 "message": "Character not found"
@@ -153,7 +160,10 @@ class CharacterServerModule(PluginModule):
             return
 
         # Проверяем что персонаж принадлежит этому аккаунту
-        if character.get("account_uuid") != account_uuid:
+        char_account = character.get("account_uuid")
+        self.logger.info(f"[DND] on_character_select: char_account={char_account}, expected={account_uuid}")
+        if char_account != account_uuid:
+            self.logger.warning(f"[DND] on_character_select: character belongs to {char_account}, not {account_uuid}")
             self._send_to_client(client_id, {
                 "type": "error",
                 "message": "Character does not belong to this account"
@@ -168,12 +178,13 @@ class CharacterServerModule(PluginModule):
         db.update_character(character_uuid, {})
 
         # Отправляем событие для создания игрока в мире
+        self.logger.info(f"[DND] on_character_select: posting dnd_character_selected event")
         self.event_manager.post("dnd_character_selected", {
             "client_id": client_id,
             "character": character
         })
 
-        self.logger.info(f"Client {client_id} selected character '{character.get('character_name')}'")
+        self.logger.info(f"[DND] Client {client_id} selected character '{character.get('character_name')}'")
 
     def on_character_create(self, data: dict):
         """

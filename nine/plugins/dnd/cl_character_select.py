@@ -19,6 +19,7 @@ RACE_NAMES_RU = {
     "elf": "Эльф",
     "dwarf": "Дварф",
     "halfling": "Полурослик",
+    "orc": "Орк",
     "half_orc": "Полуорк",
     "tiefling": "Тифлинг",
 }
@@ -209,20 +210,60 @@ class CharacterSelectUI(BaseUIComponent):
             race = char.get('race', 'human')
             char_class = char.get('class', 'fighter')
             level = char.get('level', 1)
+            hp_current = char.get('hp_current', 10)
+            hp_max = char.get('hp_max', 10)
+            last_played = char.get('last_played', '')
 
             race_ru = RACE_NAMES_RU.get(race, race.title())
             class_ru = CLASS_NAMES_RU.get(char_class, char_class.title())
 
-            info_text = f"{race_ru} • {class_ru} • Уровень {level}"
+            info_text = f"{race_ru} • {class_ru} • Ур. {level}"
             DirectLabel(
                 parent=card,
                 text=info_text,
                 scale=NineTheme.SMALL_SCALE,
-                pos=(-card_width/2 + 0.08, 0, card_height/2 - 0.12),
+                pos=(-card_width/2 + 0.08, 0, card_height/2 - 0.11),
                 text_fg=NineTheme.TEXT_SECONDARY,
                 text_align=TextNode.ALeft,
                 frameColor=(0, 0, 0, 0),
             )
+
+            # HP и последний вход
+            hp_color = (0.3, 0.8, 0.3, 1) if hp_current == hp_max else (0.8, 0.6, 0.2, 1)
+            if hp_current < hp_max * 0.3:
+                hp_color = (0.8, 0.2, 0.2, 1)
+
+            DirectLabel(
+                parent=card,
+                text=f"HP: {hp_current}/{hp_max}",
+                scale=NineTheme.SMALL_SCALE * 0.9,
+                pos=(-card_width/2 + 0.08, 0, -card_height/2 + 0.05),
+                text_fg=hp_color,
+                text_align=TextNode.ALeft,
+                frameColor=(0, 0, 0, 0),
+            )
+
+            # Форматируем дату последнего входа
+            last_played_str = ""
+            if last_played:
+                try:
+                    from datetime import datetime
+                    if isinstance(last_played, str):
+                        dt = datetime.fromisoformat(last_played.replace('Z', '+00:00'))
+                        last_played_str = dt.strftime("%d.%m.%Y %H:%M")
+                except Exception:
+                    last_played_str = ""
+
+            if last_played_str:
+                DirectLabel(
+                    parent=card,
+                    text=f"Последняя игра: {last_played_str}",
+                    scale=NineTheme.SMALL_SCALE * 0.8,
+                    pos=(card_width/2 - 0.35, 0, -card_height/2 + 0.05),
+                    text_fg=NineTheme.TEXT_HINT,
+                    text_align=TextNode.ARight,
+                    frameColor=(0, 0, 0, 0),
+                )
 
             # Кнопка "Играть"
             char_uuid = char.get('uuid')
@@ -240,19 +281,19 @@ class CharacterSelectUI(BaseUIComponent):
                 frameSize=(-3.5, 3.5, -1.2, 1.5),
             )
 
-            # Кнопка "Удалить"
+            # Кнопка "Удалить" (красный X)
             DirectButton(
                 parent=card,
                 text="X",
                 scale=NineTheme.SMALL_SCALE,
                 pos=(card_width/2 - 0.05, 0, card_height/2 - 0.05),
                 command=lambda uuid=char_uuid, name=char_name: self._on_delete_character(uuid, name),
-                frameColor=(0.5, 0.2, 0.2, 0.8),
-                text_fg=NineTheme.TEXT_PRIMARY,
+                frameColor=(0.6, 0.15, 0.15, 0.9),
+                text_fg=(1, 1, 1, 1),
                 text_align=TextNode.ACenter,
                 pressEffect=True,
                 relief=DGG.FLAT,
-                frameSize=(-1.5, 1.5, -1, 1.2),
+                frameSize=(-1.3, 1.3, -1.1, 1.3),
             )
 
     def update_characters(self, characters_data: list, max_characters: int):
