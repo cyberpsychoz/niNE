@@ -15,9 +15,9 @@ import logging
 
 from nine.core.ecs import ECSWorld, Entity, create_entity_from_template
 from nine.core.pathfinder import GridPathfinder
-from nine.core.plugins import PluginModule, PluginContext
+from nine.core.plugins import PluginContext
 
-from .sh_components import (
+from nine.plugins.npc.sh_components import (
     PositionComponent,
     ModelComponent,
     AIComponent,
@@ -32,7 +32,7 @@ from .sh_components import (
     AIBehavior,
     AIState,
 )
-from .sv_npc_ai import AISystem, PathfindingSystem, CombatAISystem
+from nine.plugins.npc.sv_npc_ai import AISystem, PathfindingSystem, CombatAISystem
 
 if TYPE_CHECKING:
     from nine.core.events import EventManager
@@ -40,9 +40,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class NPCManager(PluginModule):
+class NPCManager:
     """
-    Серверный плагин управления NPC.
+    Серверный менеджер NPC.
 
     Обязанности:
     - Загрузка шаблонов NPC из JSON
@@ -51,10 +51,11 @@ class NPCManager(PluginModule):
     - Синхронизация с клиентами
     """
 
-    plugin_type = 'server'
-
     def __init__(self, context: PluginContext):
-        super().__init__(context)
+        self.context = context
+        self.app = context.app
+        self.logger = context.logger
+        self.event_manager = context.event_manager
 
     def on_load(self):
         """Инициализация при загрузке плагина."""

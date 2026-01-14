@@ -300,13 +300,13 @@ class CombatUI(PluginModule):
 
         # Пытаемся как NPC
         if hasattr(self.app, 'plugin_manager'):
-            dnd_plugin = self.app.plugin_manager.get_plugin("nine.dnd")
-            if dnd_plugin:
-                for module in dnd_plugin.modules:
+            npc_plugin = self.app.plugin_manager.get_plugin("nine.npc")
+            if npc_plugin:
+                for module in npc_plugin.modules:
                     if hasattr(module, 'get_npc_entity'):
                         entity = module.get_npc_entity(entity_id)
                         if entity:
-                            from ..npc.sh_components import NPCInfoComponent
+                            from nine.plugins.npc.sh_components import NPCInfoComponent
                             info = entity.get_component(NPCInfoComponent)
                             if info:
                                 return info.display_name

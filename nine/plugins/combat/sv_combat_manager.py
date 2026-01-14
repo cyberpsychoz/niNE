@@ -8,8 +8,8 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple
 from enum import Enum, auto
 
-from nine.core.plugins import PluginModule
-from .sh_dice import DiceRoller
+from nine.core.plugins import PluginContext
+from nine.plugins.combat.sh_dice import DiceRoller
 
 
 class CombatEndReason(Enum):
@@ -290,11 +290,17 @@ class CombatInstance:
         pass
 
 
-class CombatManager(PluginModule):
+class CombatManager:
     """
     Менеджер всех боевых сессий.
     Координирует создание, управление и завершение боёв.
     """
+
+    def __init__(self, context: PluginContext):
+        self.context = context
+        self.app = context.app
+        self.logger = context.logger
+        self.event_manager = context.event_manager
 
     def on_load(self):
         self.logger.info("Combat Manager loaded")
@@ -521,13 +527,13 @@ class CombatManager(PluginModule):
         """Получает данные NPC из ECS."""
         # Получаем из NPC менеджера
         if hasattr(self.app, 'plugin_manager'):
-            dnd_plugin = self.app.plugin_manager.get_plugin("nine.dnd")
-            if dnd_plugin:
-                for module in dnd_plugin.modules:
+            npc_plugin = self.app.plugin_manager.get_plugin("nine.npc")
+            if npc_plugin:
+                for module in npc_plugin.modules:
                     if hasattr(module, 'get_npc_entity'):
                         entity = module.get_npc_entity(entity_id)
                         if entity:
-                            from ..npc.sh_components import (
+                            from nine.plugins.npc.sh_components import (
                                 CombatComponent, FactionComponent, NPCInfoComponent
                             )
 

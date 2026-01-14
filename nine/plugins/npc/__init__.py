@@ -16,7 +16,7 @@ NPC система для D&D режима niNE.
 - cl_npc_interaction.py - UI взаимодействия
 """
 
-from .sh_components import (
+from nine.plugins.npc.sh_components import (
     PositionComponent,
     ModelComponent,
     AIComponent,
