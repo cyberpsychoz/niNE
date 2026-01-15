@@ -22,6 +22,7 @@ _constants = _load_constants()
 RACES = _constants.RACES
 CLASSES = _constants.CLASSES
 BACKGROUNDS = _constants.BACKGROUNDS
+FACTIONS = _constants.FACTIONS
 MAX_CHARACTERS_PER_ACCOUNT = _constants.MAX_CHARACTERS_PER_ACCOUNT
 calculate_modifier = _constants.calculate_modifier
 calculate_proficiency_bonus = _constants.calculate_proficiency_bonus
@@ -244,6 +245,11 @@ class CharacterServerModule(PluginModule):
         if background and background not in BACKGROUNDS:
             background = ""
 
+        # Валидация фракции
+        faction = data.get("faction", "neutral")
+        if faction not in FACTIONS:
+            faction = "neutral"
+
         # Получаем характеристики
         strength = self._validate_stat(data.get("strength", 10))
         dexterity = self._validate_stat(data.get("dexterity", 10))
@@ -269,6 +275,10 @@ class CharacterServerModule(PluginModule):
         ac = calculate_base_ac(dex_mod)
         prof_bonus = calculate_proficiency_bonus(1)
 
+        # Получаем точку спавна фракции
+        faction_data = FACTIONS.get(faction, {})
+        spawn_pos = faction_data.get("default_spawn", [8.0, -3.0, 1.0])
+
         # Формируем данные персонажа
         character_data = {
             "account_uuid": account_uuid,
@@ -277,6 +287,7 @@ class CharacterServerModule(PluginModule):
             "gender": gender,
             "class": char_class,
             "level": 1,
+            "faction": faction,
             "strength": strength,
             "dexterity": dexterity,
             "constitution": constitution,
@@ -295,9 +306,9 @@ class CharacterServerModule(PluginModule):
             "biography": data.get("biography", ""),
             "equipment": data.get("equipment", {}),
             "gold": data.get("gold", 10),
-            "pos_x": 8.0,  # Стартовая позиция
-            "pos_y": -3.0,
-            "pos_z": 1.0,
+            "pos_x": spawn_pos[0],  # Стартовая позиция из фракции
+            "pos_y": spawn_pos[1],
+            "pos_z": spawn_pos[2],
         }
 
         # Создаём персонажа в БД

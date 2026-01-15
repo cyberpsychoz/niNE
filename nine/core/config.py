@@ -21,6 +21,11 @@ class Config:
         "third_person_camera": True,  # True = от третьего лица, False = от первого лица
         # Графика
         "fov": 70,  # Поле зрения (для first-person)
+        # Звук
+        "audio_master_volume": 100,  # Общая громкость (0-100)
+        "audio_bgm_volume": 70,      # Громкость музыки (0-100)
+        "audio_sfx_volume": 80,      # Громкость звуковых эффектов (0-100)
+        "audio_ambient_volume": 60,  # Громкость эмбиента/окружения (0-100)
     }
 
     def __new__(cls):

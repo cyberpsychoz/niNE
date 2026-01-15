@@ -25,7 +25,8 @@ from nine.core.plugins import PluginManager
 from nine.core.network import send_message, read_messages
 from nine.ui.manager import UIManager
 
-loadPrcFileData("", "audio-library-name null")
+# Audio enabled - using OpenAL (default)
+# loadPrcFileData("", "audio-library-name null")  # Uncomment to disable audio
 
 
 class GameClient(ShowBase):

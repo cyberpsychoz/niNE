@@ -32,6 +32,7 @@ BACKGROUNDS = _constants.BACKGROUNDS
 SKILLS = _constants.SKILLS
 STAT_GENERATION = _constants.STAT_GENERATION
 FEATURES = _constants.FEATURES
+FACTIONS = _constants.FACTIONS
 get_feature_info = _constants.get_feature_info
 
 
@@ -104,27 +105,35 @@ STAT_NAMES_RU = {
     "charisma": "Харизма",
 }
 
+FACTION_NAMES_RU = {
+    "alliance": "Альянс",
+    "horde": "Орда",
+    "neutral": "Нейтралы",
+    "undead": "Нежить",
+}
+
 
 class CharacterCreateUI(BaseUIComponent):
     """
     UI мастер создания персонажа D&D.
-    7 шагов:
+    8 шагов:
     1. Имя и пол
     2. Раса
     3. Класс
     4. Характеристики
     5. Навыки
     6. Предыстория
-    7. Подтверждение
+    7. Фракция
+    8. Подтверждение
     """
 
     def __init__(self, ui_manager, client):
         super().__init__(ui_manager)
         self.client = client
 
-        # Текущий шаг (1-7)
+        # Текущий шаг (1-8)
         self.current_step = 1
-        self.total_steps = 7
+        self.total_steps = 8
 
         # Данные персонажа
         self.character_data = {
@@ -133,6 +142,7 @@ class CharacterCreateUI(BaseUIComponent):
             "race": "human",
             "class": "fighter",
             "background": "",
+            "faction": "neutral",
             "strength": 10,
             "dexterity": 10,
             "constitution": 10,
@@ -279,7 +289,8 @@ class CharacterCreateUI(BaseUIComponent):
             4: self._show_step_stats,
             5: self._show_step_skills,
             6: self._show_step_background,
-            7: self._show_step_confirm,
+            7: self._show_step_faction,
+            8: self._show_step_confirm,
         }
         step_methods[step]()
 
@@ -1053,8 +1064,75 @@ class CharacterCreateUI(BaseUIComponent):
         if hasattr(self, 'bg_desc_label'):
             self.bg_desc_label['text'] = self._get_background_description(bg)
 
+    def _show_step_faction(self):
+        """Шаг 7: Выбор фракции."""
+        DirectLabel(
+            parent=self.content_frame,
+            text="Выберите фракцию:",
+            scale=NineTheme.LABEL_SCALE,
+            pos=(0, 0, 0.35),
+            text_fg=NineTheme.TEXT_PRIMARY,
+            text_align=TextNode.ACenter,
+            frameColor=(0, 0, 0, 0),
+        )
+
+        self.faction_buttons = {}
+        factions = list(FACTIONS.keys())
+        start_y = 0.2
+        spacing = 0.13
+
+        for i, faction in enumerate(factions):
+            y = start_y - i * spacing
+            is_selected = self.character_data["faction"] == faction
+            color = NineTheme.accent_button_colors() if is_selected else NineTheme.button_colors()
+
+            faction_data = FACTIONS.get(faction, {})
+            faction_name_ru = faction_data.get("name_ru", FACTION_NAMES_RU.get(faction, faction.title()))
+
+            self.faction_buttons[faction] = DirectButton(
+                parent=self.content_frame,
+                text=faction_name_ru,
+                scale=NineTheme.BUTTON_SCALE,
+                pos=(0, 0, y),
+                command=lambda f=faction: self._select_faction(f),
+                frameColor=color,
+                text_fg=NineTheme.TEXT_PRIMARY,
+                text_align=TextNode.ACenter,
+                pressEffect=True,
+                relief=DGG.FLAT,
+                frameSize=(-5, 5, -0.9, 1.2),
+            )
+
+        # Описание выбранной фракции
+        self.faction_desc_label = DirectLabel(
+            parent=self.content_frame,
+            text=self._get_faction_description(self.character_data["faction"]),
+            scale=NineTheme.SMALL_SCALE * 0.85,
+            pos=(0, 0, -0.38),
+            text_fg=NineTheme.TEXT_SECONDARY,
+            text_align=TextNode.ACenter,
+            text_wordwrap=35,
+            frameColor=(0, 0, 0, 0),
+        )
+
+    def _get_faction_description(self, faction: str) -> str:
+        """Возвращает описание фракции."""
+        faction_data = FACTIONS.get(faction, {})
+        return faction_data.get("description", "Описание недоступно")
+
+    def _select_faction(self, faction: str):
+        """Выбор фракции."""
+        self.character_data["faction"] = faction
+        for f, btn in self.faction_buttons.items():
+            if f == faction:
+                btn['frameColor'] = NineTheme.accent_button_colors()
+            else:
+                btn['frameColor'] = NineTheme.button_colors()
+        if hasattr(self, 'faction_desc_label'):
+            self.faction_desc_label['text'] = self._get_faction_description(faction)
+
     def _show_step_confirm(self):
-        """Шаг 7: Подтверждение."""
+        """Шаг 8: Подтверждение."""
         DirectLabel(
             parent=self.content_frame,
             text="Подтвердите создание:",
@@ -1077,6 +1155,11 @@ class CharacterCreateUI(BaseUIComponent):
         bg_key = self.character_data["background"]
         bg_data = BACKGROUNDS.get(bg_key, {})
         bg = bg_data.get("name", BACKGROUND_NAMES_RU.get(bg_key, bg_key)) if bg_key else "Не выбрана"
+
+        # Получаем фракцию
+        faction_key = self.character_data["faction"]
+        faction_data = FACTIONS.get(faction_key, {})
+        faction = faction_data.get("name_ru", FACTION_NAMES_RU.get(faction_key, faction_key))
 
         # Получаем выбранные навыки
         selected_skills = list(self.character_data.get("skills", {}).keys())
@@ -1102,6 +1185,7 @@ class CharacterCreateUI(BaseUIComponent):
 
         summary = f"""{name} ({gender})
 {race} {cls}
+Фракция: {faction}
 Предыстория: {bg}
 
 СИЛ: {self.character_data['strength']} ({fmt_mod(str_mod)})  ЛОВ: {self.character_data['dexterity']} ({fmt_mod(dex_mod)})  ТЕЛ: {self.character_data['constitution']} ({fmt_mod(con_mod)})
@@ -1113,7 +1197,7 @@ class CharacterCreateUI(BaseUIComponent):
             parent=self.content_frame,
             text=summary.strip(),
             scale=NineTheme.SMALL_SCALE * 0.9,
-            pos=(0, 0, 0.05),
+            pos=(0, 0, 0.02),
             text_fg=NineTheme.TEXT_SECONDARY,
             text_align=TextNode.ACenter,
             frameColor=(0, 0, 0, 0),
