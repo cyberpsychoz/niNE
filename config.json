@@ -10,6 +10,10 @@
     "camera_sensitivity": 0.9880418181419373,
     "invert_mouse_x": false,
     "invert_mouse_y": true,
-    "third_person_camera": false,
-    "fov": 120
+    "third_person_camera": true,
+    "fov": 70,
+    "audio_master_volume": 100,
+    "audio_bgm_volume": 70,
+    "audio_sfx_volume": 80,
+    "audio_ambient_volume": 60
 }

@@ -717,3 +717,64 @@ def get_model_for_race_gender(race: str, gender: str) -> str:
     """Получить название модели для расы и пола."""
     race_data = RACES.get(race, RACES["human"])
     return race_data["models"].get(gender, race_data["models"]["male"])
+
+
+# =============================================================================
+# ФРАКЦИИ (Factions)
+# =============================================================================
+
+FACTIONS = {
+    "alliance": {
+        "name": "Alliance",
+        "name_ru": "Альянс",
+        "description": "Союз людей, эльфов и дварфов. Стремятся к порядку и справедливости.",
+        "color": "#0066CC",
+        "default_spawn": [8.0, -3.0, 1.0],
+    },
+    "horde": {
+        "name": "Horde",
+        "name_ru": "Орда",
+        "description": "Объединение орков и других воинственных рас. Ценят силу и честь.",
+        "color": "#CC0000",
+        "default_spawn": [15.0, -3.0, 1.0],
+    },
+    "neutral": {
+        "name": "Neutral",
+        "name_ru": "Нейтралы",
+        "description": "Свободные искатели приключений, не связанные политикой.",
+        "color": "#999999",
+        "default_spawn": [0.0, 0.0, 1.0],
+    },
+    "undead": {
+        "name": "Undead",
+        "name_ru": "Нежить",
+        "description": "Проклятые существа из тёмных земель. Отвергнуты живыми.",
+        "color": "#6600CC",
+        "default_spawn": [-10.0, -3.0, 1.0],
+    },
+}
+
+
+# =============================================================================
+# СПИСОК ДОСТУПНЫХ МОДЕЛЕЙ (для команды /charsetmodel)
+# =============================================================================
+
+AVAILABLE_MODELS = [
+    "human_male", "human_female",
+    "elf_male", "elf_female",
+    "dwarf_male", "dwarf_female",
+    "halfling_male", "halfling_female",
+    "orc_male", "orc_female",
+    "tiefling_male", "tiefling_female",
+]
+
+
+# =============================================================================
+# РОЛИ ПОЛЬЗОВАТЕЛЕЙ
+# =============================================================================
+
+USER_ROLES = {
+    "player": {"name": "Игрок", "name_ru": "Игрок", "level": 0},
+    "dm": {"name": "Dungeon Master", "name_ru": "Мастер игры", "level": 1},
+    "admin": {"name": "Administrator", "name_ru": "Администратор", "level": 2},
+}

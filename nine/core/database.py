@@ -57,6 +57,8 @@ class DatabaseManager:
                 """)
             # Создаем таблицу D&D персонажей
             self.create_characters_table()
+            # Создаем таблицу фракций
+            self.create_factions_table()
         except sqlite3.Error as e:
             print(f"Ошибка при создании таблиц: {e}")
 
@@ -73,7 +75,12 @@ class DatabaseManager:
                     print("Миграция: добавление колонок password_hash и salt...")
                     cursor.execute("ALTER TABLE players ADD COLUMN password_hash TEXT")
                     cursor.execute("ALTER TABLE players ADD COLUMN salt TEXT")
-                
+
+                # Миграция: добавление роли пользователя
+                if 'role' not in columns:
+                    print("Миграция: добавление колонки role в players...")
+                    cursor.execute("ALTER TABLE players ADD COLUMN role TEXT DEFAULT 'player'")
+
                 # Создаем уникальный индекс для name, если его нет
                 cursor.execute("PRAGMA index_list(players)")
                 indexes = [row['name'] for row in cursor.fetchall()]
@@ -89,9 +96,16 @@ class DatabaseManager:
                         )
                     """)
                     cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_players_name ON players(name)")
-                
+
+                # Миграция: добавление фракции в game_characters
+                cursor.execute("PRAGMA table_info(game_characters)")
+                char_columns = [row['name'] for row in cursor.fetchall()]
+                if char_columns and 'faction' not in char_columns:
+                    print("Миграция: добавление колонки faction в game_characters...")
+                    cursor.execute("ALTER TABLE game_characters ADD COLUMN faction TEXT DEFAULT 'neutral'")
+
                 print("Миграция схемы завершена.")
-        
+
         except sqlite3.Error as e:
             if "duplicate column name" not in str(e):
                 print(f"Ошибка при миграции схемы: {e}")
@@ -381,14 +395,14 @@ class DatabaseManager:
                 self.conn.execute("""
                     INSERT INTO game_characters (
                         uuid, account_uuid, character_name,
-                        race, gender, model, class, level,
+                        race, gender, model, class, level, faction,
                         strength, dexterity, constitution, intelligence, wisdom, charisma,
                         hp_current, hp_max, armor_class, proficiency_bonus,
                         skills, proficiencies, class_features,
                         background, personality, biography,
                         equipment, gold,
                         pos_x, pos_y, pos_z
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     char_uuid,
                     data.get('account_uuid'),
@@ -398,6 +412,7 @@ class DatabaseManager:
                     model,
                     data.get('class', 'fighter'),
                     data.get('level', 1),
+                    data.get('faction', 'neutral'),
                     data.get('strength', 10),
                     data.get('dexterity', 10),
                     data.get('constitution', 10),
@@ -515,4 +530,129 @@ class DatabaseManager:
             return True
         except sqlite3.Error as e:
             print(f"Ошибка при обновлении модели персонажа '{char_uuid}': {e}")
+            return False
+
+    def update_character_faction(self, char_uuid: str, faction: str) -> bool:
+        """Обновляет фракцию персонажа (для админ-команды /charsetfaction)."""
+        if not self.conn:
+            return False
+        try:
+            with self.conn:
+                self.conn.execute(
+                    "UPDATE game_characters SET faction = ? WHERE uuid = ?",
+                    (faction, char_uuid)
+                )
+            return True
+        except sqlite3.Error as e:
+            print(f"Ошибка при обновлении фракции персонажа '{char_uuid}': {e}")
+            return False
+
+    # ==========================================================================
+    # FACTIONS SYSTEM - Методы для работы с фракциями
+    # ==========================================================================
+
+    def create_factions_table(self):
+        """Создает таблицу фракций с начальными данными."""
+        if not self.conn:
+            return
+        try:
+            with self.conn:
+                self.conn.execute("""
+                    CREATE TABLE IF NOT EXISTS factions (
+                        id TEXT PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        name_ru TEXT NOT NULL,
+                        description TEXT DEFAULT '',
+                        spawn_x REAL DEFAULT 8.0,
+                        spawn_y REAL DEFAULT -3.0,
+                        spawn_z REAL DEFAULT 1.0,
+                        color TEXT DEFAULT '#FFFFFF'
+                    )
+                """)
+                # Заполняем начальные данные если таблица пуста
+                cursor = self.conn.cursor()
+                cursor.execute("SELECT COUNT(*) FROM factions")
+                if cursor.fetchone()[0] == 0:
+                    self.conn.executemany(
+                        """INSERT INTO factions (id, name, name_ru, description, spawn_x, spawn_y, spawn_z, color)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                        [
+                            ('alliance', 'Alliance', 'Альянс',
+                             'Союз людей, эльфов и дварфов. Стремятся к порядку и справедливости.',
+                             8.0, -3.0, 1.0, '#0066CC'),
+                            ('horde', 'Horde', 'Орда',
+                             'Объединение орков и других воинственных рас. Ценят силу и честь.',
+                             15.0, -3.0, 1.0, '#CC0000'),
+                            ('neutral', 'Neutral', 'Нейтралы',
+                             'Свободные искатели приключений, не связанные политикой.',
+                             0.0, 0.0, 1.0, '#999999'),
+                            ('undead', 'Undead', 'Нежить',
+                             'Проклятые существа из тёмных земель. Отвергнуты живыми.',
+                             -10.0, -3.0, 1.0, '#6600CC'),
+                        ]
+                    )
+                    print("Таблица factions заполнена начальными данными.")
+                print("Таблица factions создана/проверена.")
+        except sqlite3.Error as e:
+            print(f"Ошибка при создании таблицы factions: {e}")
+
+    def get_faction(self, faction_id: str) -> Optional[Dict]:
+        """Получает данные фракции по ID."""
+        if not self.conn:
+            return None
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT * FROM factions WHERE id = ?", (faction_id,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        except sqlite3.Error as e:
+            print(f"Ошибка при получении фракции '{faction_id}': {e}")
+            return None
+
+    def get_all_factions(self) -> List[Dict]:
+        """Получает список всех фракций."""
+        if not self.conn:
+            return []
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT * FROM factions ORDER BY id")
+            return [dict(row) for row in cursor.fetchall()]
+        except sqlite3.Error as e:
+            print(f"Ошибка при получении списка фракций: {e}")
+            return []
+
+    # ==========================================================================
+    # ROLES SYSTEM - Методы для работы с ролями пользователей
+    # ==========================================================================
+
+    def get_player_role(self, account_uuid: str) -> str:
+        """Получает роль игрока (player/dm/admin)."""
+        if not self.conn:
+            return "player"
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT role FROM players WHERE uuid = ?", (account_uuid,))
+            row = cursor.fetchone()
+            return row['role'] if row and row['role'] else "player"
+        except sqlite3.Error as e:
+            print(f"Ошибка при получении роли игрока '{account_uuid}': {e}")
+            return "player"
+
+    def set_player_role(self, account_uuid: str, role: str) -> bool:
+        """Устанавливает роль игрока."""
+        valid_roles = ('player', 'dm', 'admin')
+        if role not in valid_roles:
+            print(f"Недопустимая роль: {role}. Допустимые: {valid_roles}")
+            return False
+        if not self.conn:
+            return False
+        try:
+            with self.conn:
+                self.conn.execute(
+                    "UPDATE players SET role = ? WHERE uuid = ?",
+                    (role, account_uuid)
+                )
+            return True
+        except sqlite3.Error as e:
+            print(f"Ошибка при установке роли для '{account_uuid}': {e}")
             return False

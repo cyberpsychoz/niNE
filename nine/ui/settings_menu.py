@@ -67,6 +67,7 @@ class SettingsMenu(BaseUIComponent):
         self._create_general_tab(panel_width, panel_height)
         self._create_controls_tab(panel_width, panel_height)
         self._create_graphics_tab(panel_width, panel_height)
+        self._create_audio_tab(panel_width, panel_height)
 
         # Кнопки внизу
         btn_y = -panel_height/2 + 0.12
@@ -110,6 +111,7 @@ class SettingsMenu(BaseUIComponent):
             ("general", "Общие"),
             ("controls", "Управление"),
             ("graphics", "Графика"),
+            ("audio", "Звук"),
         ]
 
         tab_y = panel_height/2 - 0.22
@@ -388,6 +390,160 @@ class SettingsMenu(BaseUIComponent):
             frameColor=(0, 0, 0, 0),
         )
 
+    def _create_audio_tab(self, panel_width, panel_height):
+        """Создаёт содержимое вкладки 'Звук'."""
+        frame = DirectFrame(
+            parent=self.panel,
+            frameSize=(-panel_width/2 + 0.05, panel_width/2 - 0.05, -0.45, 0.35),
+            frameColor=(0, 0, 0, 0),
+            pos=(0, 0, -0.05),
+        )
+        self.tab_frames["audio"] = frame
+
+        label_x = -panel_width/2 + 0.15
+        value_x = 0.05
+        row_height = 0.13
+        row_y = 0.28
+
+        # Общая громкость
+        DirectLabel(
+            parent=frame,
+            text="Общая громкость:",
+            scale=NineTheme.LABEL_SCALE,
+            pos=(label_x, 0, row_y),
+            text_align=TextNode.ALeft,
+            text_fg=NineTheme.TEXT_SECONDARY,
+            frameColor=(0, 0, 0, 0),
+        )
+
+        initial_master = config.get("audio_master_volume", 100)
+
+        self.master_volume_slider = DirectSlider(
+            parent=frame,
+            range=(0, 100),
+            value=initial_master,
+            scale=0.35,
+            pos=(value_x + 0.15, 0, row_y),
+            thumb_frameColor=NineTheme.BTN_HOVER,
+            frameColor=NineTheme.BG_LIGHT,
+            command=self._on_master_volume_changed
+        )
+
+        self.master_volume_label = DirectLabel(
+            parent=frame,
+            text=f"{int(initial_master)}%",
+            scale=NineTheme.LABEL_SCALE,
+            pos=(panel_width/2 - 0.15, 0, row_y),
+            text_align=TextNode.ARight,
+            text_fg=NineTheme.TEXT_PRIMARY,
+            frameColor=(0, 0, 0, 0),
+        )
+
+        # Громкость музыки
+        row_y -= row_height
+        DirectLabel(
+            parent=frame,
+            text="Музыка:",
+            scale=NineTheme.LABEL_SCALE,
+            pos=(label_x, 0, row_y),
+            text_align=TextNode.ALeft,
+            text_fg=NineTheme.TEXT_SECONDARY,
+            frameColor=(0, 0, 0, 0),
+        )
+
+        initial_bgm = config.get("audio_bgm_volume", 70)
+
+        self.bgm_volume_slider = DirectSlider(
+            parent=frame,
+            range=(0, 100),
+            value=initial_bgm,
+            scale=0.35,
+            pos=(value_x + 0.15, 0, row_y),
+            thumb_frameColor=NineTheme.BTN_HOVER,
+            frameColor=NineTheme.BG_LIGHT,
+            command=self._on_bgm_volume_changed
+        )
+
+        self.bgm_volume_label = DirectLabel(
+            parent=frame,
+            text=f"{int(initial_bgm)}%",
+            scale=NineTheme.LABEL_SCALE,
+            pos=(panel_width/2 - 0.15, 0, row_y),
+            text_align=TextNode.ARight,
+            text_fg=NineTheme.TEXT_PRIMARY,
+            frameColor=(0, 0, 0, 0),
+        )
+
+        # Громкость звуковых эффектов
+        row_y -= row_height
+        DirectLabel(
+            parent=frame,
+            text="Звуки (SFX):",
+            scale=NineTheme.LABEL_SCALE,
+            pos=(label_x, 0, row_y),
+            text_align=TextNode.ALeft,
+            text_fg=NineTheme.TEXT_SECONDARY,
+            frameColor=(0, 0, 0, 0),
+        )
+
+        initial_sfx = config.get("audio_sfx_volume", 80)
+
+        self.sfx_volume_slider = DirectSlider(
+            parent=frame,
+            range=(0, 100),
+            value=initial_sfx,
+            scale=0.35,
+            pos=(value_x + 0.15, 0, row_y),
+            thumb_frameColor=NineTheme.BTN_HOVER,
+            frameColor=NineTheme.BG_LIGHT,
+            command=self._on_sfx_volume_changed
+        )
+
+        self.sfx_volume_label = DirectLabel(
+            parent=frame,
+            text=f"{int(initial_sfx)}%",
+            scale=NineTheme.LABEL_SCALE,
+            pos=(panel_width/2 - 0.15, 0, row_y),
+            text_align=TextNode.ARight,
+            text_fg=NineTheme.TEXT_PRIMARY,
+            frameColor=(0, 0, 0, 0),
+        )
+
+        # Громкость эмбиента
+        row_y -= row_height
+        DirectLabel(
+            parent=frame,
+            text="Окружение:",
+            scale=NineTheme.LABEL_SCALE,
+            pos=(label_x, 0, row_y),
+            text_align=TextNode.ALeft,
+            text_fg=NineTheme.TEXT_SECONDARY,
+            frameColor=(0, 0, 0, 0),
+        )
+
+        initial_ambient = config.get("audio_ambient_volume", 60)
+
+        self.ambient_volume_slider = DirectSlider(
+            parent=frame,
+            range=(0, 100),
+            value=initial_ambient,
+            scale=0.35,
+            pos=(value_x + 0.15, 0, row_y),
+            thumb_frameColor=NineTheme.BTN_HOVER,
+            frameColor=NineTheme.BG_LIGHT,
+            command=self._on_ambient_volume_changed
+        )
+
+        self.ambient_volume_label = DirectLabel(
+            parent=frame,
+            text=f"{int(initial_ambient)}%",
+            scale=NineTheme.LABEL_SCALE,
+            pos=(panel_width/2 - 0.15, 0, row_y),
+            text_align=TextNode.ARight,
+            text_fg=NineTheme.TEXT_PRIMARY,
+            frameColor=(0, 0, 0, 0),
+        )
+
     def _switch_tab(self, tab_id):
         """Переключает активную вкладку."""
         self.current_tab = tab_id
@@ -441,6 +597,41 @@ class SettingsMenu(BaseUIComponent):
             self.client.camera_controller.set_third_person(third_person)
             self.client.update_player_model_visibility()
 
+    def _on_master_volume_changed(self):
+        """Callback при изменении общей громкости."""
+        new_value = int(self.master_volume_slider.getValue())
+        self.master_volume_label['text'] = f"{new_value}%"
+        # Применяем сразу
+        if hasattr(self.base, 'audio_manager') and self.base.audio_manager:
+            self.base.audio_manager.set_master_volume(new_value / 100.0)
+
+    def _on_bgm_volume_changed(self):
+        """Callback при изменении громкости музыки."""
+        new_value = int(self.bgm_volume_slider.getValue())
+        self.bgm_volume_label['text'] = f"{new_value}%"
+        # Применяем сразу
+        if hasattr(self.base, 'audio_manager') and self.base.audio_manager:
+            from nine.core.audio_manager import AudioChannel
+            self.base.audio_manager.set_channel_volume(AudioChannel.BGM, new_value / 100.0)
+
+    def _on_sfx_volume_changed(self):
+        """Callback при изменении громкости SFX."""
+        new_value = int(self.sfx_volume_slider.getValue())
+        self.sfx_volume_label['text'] = f"{new_value}%"
+        # Применяем сразу
+        if hasattr(self.base, 'audio_manager') and self.base.audio_manager:
+            from nine.core.audio_manager import AudioChannel
+            self.base.audio_manager.set_channel_volume(AudioChannel.SFX, new_value / 100.0)
+
+    def _on_ambient_volume_changed(self):
+        """Callback при изменении громкости эмбиента."""
+        new_value = int(self.ambient_volume_slider.getValue())
+        self.ambient_volume_label['text'] = f"{new_value}%"
+        # Применяем сразу
+        if hasattr(self.base, 'audio_manager') and self.base.audio_manager:
+            from nine.core.audio_manager import AudioChannel
+            self.base.audio_manager.set_channel_volume(AudioChannel.BGS, new_value / 100.0)
+
     def _on_save_click(self):
         """Сохраняет все настройки."""
         # Общие
@@ -456,6 +647,12 @@ class SettingsMenu(BaseUIComponent):
         # Графика
         new_fov = int(self.fov_slider.getValue())
 
+        # Звук
+        master_volume = int(self.master_volume_slider.getValue())
+        bgm_volume = int(self.bgm_volume_slider.getValue())
+        sfx_volume = int(self.sfx_volume_slider.getValue())
+        ambient_volume = int(self.ambient_volume_slider.getValue())
+
         # Сохраняем в конфиг
         config.set("nickname", new_nickname)
         config.set("resolution", selected_resolution)
@@ -464,6 +661,10 @@ class SettingsMenu(BaseUIComponent):
         config.set("invert_mouse_y", invert_y)
         config.set("third_person_camera", third_person)
         config.set("fov", new_fov)
+        config.set("audio_master_volume", master_volume)
+        config.set("audio_bgm_volume", bgm_volume)
+        config.set("audio_sfx_volume", sfx_volume)
+        config.set("audio_ambient_volume", ambient_volume)
 
         # Применяем настройки
         if self.client:
@@ -504,6 +705,19 @@ class SettingsMenu(BaseUIComponent):
             self.client.camera_controller.set_fov(saved_fov)
             self.client.camera_controller.sensitivity = saved_sensitivity * 30.0
             self.client.update_player_model_visibility()
+
+        # Восстанавливаем аудио настройки
+        if hasattr(self.base, 'audio_manager') and self.base.audio_manager:
+            from nine.core.audio_manager import AudioChannel
+            saved_master = config.get("audio_master_volume", 100)
+            saved_bgm = config.get("audio_bgm_volume", 70)
+            saved_sfx = config.get("audio_sfx_volume", 80)
+            saved_ambient = config.get("audio_ambient_volume", 60)
+
+            self.base.audio_manager.set_master_volume(saved_master / 100.0)
+            self.base.audio_manager.set_channel_volume(AudioChannel.BGM, saved_bgm / 100.0)
+            self.base.audio_manager.set_channel_volume(AudioChannel.SFX, saved_sfx / 100.0)
+            self.base.audio_manager.set_channel_volume(AudioChannel.BGS, saved_ambient / 100.0)
 
         self._go_back()
 
