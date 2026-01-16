@@ -129,35 +129,35 @@ class LoginMenu(BaseUIComponent):
         btn_y = -panel_height/2 + 0.12
         btn_spacing = 0.28
 
-        # Кнопка "Войти" (акцентная)
-        login_btn = self._add_element('login_button', DirectButton(
-            parent=panel,
+        # Кнопка "Войти" (акцентная) - с звуками
+        self._create_button(
+            name='login_button',
             text="Войти",
-            scale=NineTheme.BUTTON_SCALE,
-            pos=(-btn_spacing/2 - 0.08, 0, btn_y),
             command=self.ui_manager.callbacks.get("attempt_login"),
-            frameColor=NineTheme.accent_button_colors(),
-            text_fg=NineTheme.TEXT_PRIMARY,
-            text_align=TextNode.ACenter,
-            pressEffect=True,
-            relief=DGG.FLAT,
-            frameSize=(-2.5, 2.5, -0.8, 1.1),
-        ))
-
-        # Кнопка "Назад"
-        back_btn = self._add_element('back_button', DirectButton(
             parent=panel,
-            text="Назад",
-            scale=NineTheme.BUTTON_SCALE,
-            pos=(btn_spacing/2, 0, btn_y),
-            command=self.ui_manager.callbacks.get("close_login_menu"),
-            frameColor=NineTheme.button_colors(),
-            text_fg=NineTheme.TEXT_PRIMARY,
+            pos=(-btn_spacing/2 - 0.08, 0, btn_y),
+            accent=True,
             text_align=TextNode.ACenter,
             pressEffect=True,
             relief=DGG.FLAT,
             frameSize=(-2.5, 2.5, -0.8, 1.1),
-        ))
+        )
+
+        # Кнопка "Назад" - с звуками
+        self._create_button(
+            name='back_button',
+            text="Назад",
+            command=self.ui_manager.callbacks.get("close_login_menu"),
+            parent=panel,
+            pos=(btn_spacing/2, 0, btn_y),
+            text_align=TextNode.ACenter,
+            pressEffect=True,
+            relief=DGG.FLAT,
+            frameSize=(-2.5, 2.5, -0.8, 1.1),
+        )
+
+        # Звук открытия меню
+        self._play_open_sound()
 
     def get_credentials(self) -> dict:
         """Возвращает словарь с данными для входа."""

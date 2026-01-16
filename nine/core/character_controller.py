@@ -239,7 +239,7 @@ class CharacterController:
                 if abs(ground_distance) > snap_threshold:
                     self.actor.setZ(surface_point.z)
                     if not was_on_ground:
-                        logger.info(f"[Player] 💥 Landed! (from z={current_z:.2f} to z={surface_point.z:.2f})")
+                        logger.info(f"[Player] Landed! (from z={current_z:.2f} to z={surface_point.z:.2f})")
                 self.velocity.z = 0
             else:
                 # Moving up OR actively jumping - don't snap

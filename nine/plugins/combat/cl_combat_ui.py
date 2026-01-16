@@ -75,7 +75,7 @@ class CombatUI(PluginModule):
 
         # Автоскрытие через 3 секунды (если не наш ход)
         if not is_my_turn:
-            self.base.taskMgr.doMethodLater(
+            self.app.taskMgr.doMethodLater(
                 3.0,
                 self._fade_turn_indicator,
                 "fade-turn-indicator"
@@ -83,7 +83,7 @@ class CombatUI(PluginModule):
 
     def _hide_turn_indicator(self):
         """Скрывает индикатор хода."""
-        self.base.taskMgr.remove("fade-turn-indicator")
+        self.app.taskMgr.remove("fade-turn-indicator")
         if self.turn_indicator:
             self.turn_indicator.destroy()
             self.turn_indicator = None
@@ -166,7 +166,7 @@ class CombatUI(PluginModule):
             msg.destroy()
             return task.done
 
-        self.base.taskMgr.doMethodLater(duration, cleanup, f"msg-cleanup-{id(msg)}")
+        self.app.taskMgr.doMethodLater(duration, cleanup, f"msg-cleanup-{id(msg)}")
 
     def _log_to_chat(self, message: str):
         """Логирует сообщение в чат."""
@@ -190,7 +190,7 @@ class CombatUI(PluginModule):
             banner.destroy()
             return task.done
 
-        self.base.taskMgr.doMethodLater(2.0, cleanup, "combat-banner-cleanup")
+        self.app.taskMgr.doMethodLater(2.0, cleanup, "combat-banner-cleanup")
 
     def _show_combat_end_banner(self, reason: str):
         """Показывает баннер окончания боя."""
@@ -219,7 +219,7 @@ class CombatUI(PluginModule):
             banner.destroy()
             return task.done
 
-        self.base.taskMgr.doMethodLater(3.0, cleanup, "combat-end-banner-cleanup")
+        self.app.taskMgr.doMethodLater(3.0, cleanup, "combat-end-banner-cleanup")
 
     def _cleanup_ui(self):
         """Очищает все UI элементы."""

@@ -43,7 +43,7 @@ class AudioIntegration(PluginModule):
         self.event_manager.subscribe("dm_audio_command", self._on_dm_audio_command)
 
         # Автозапуск музыки
-        self.base.taskMgr.doMethodLater(1.0, self._start_default_music, "start-music")
+        self.app.taskMgr.doMethodLater(1.0, self._start_default_music, "start-music")
 
     def on_unload(self):
         self.event_manager.unsubscribe("combat_started", self._on_combat_started)
@@ -64,12 +64,12 @@ class AudioIntegration(PluginModule):
             from nine.core.audio_manager import AudioManager
 
             # Проверяем, есть ли уже audio manager
-            if hasattr(self.base, 'audio_manager') and self.base.audio_manager:
-                self.audio = self.base.audio_manager
+            if hasattr(self.app, 'audio_manager') and self.app.audio_manager:
+                self.audio = self.app.audio_manager
             else:
-                self.audio = AudioManager(self.base)
+                self.audio = AudioManager(self.app)
                 self.audio.logger = self.logger
-                self.base.audio_manager = self.audio
+                self.app.audio_manager = self.audio
 
             self.logger.info("AudioManager initialized")
         except Exception as e:
@@ -165,7 +165,7 @@ class AudioIntegration(PluginModule):
                 self.audio.play_sfx("sword_blocked", volume=0.6, pitch_variance=0.1)
             return task.done
 
-        self.base.taskMgr.doMethodLater(0.15, play_hit_sound, "play-hit-sound")
+        self.app.taskMgr.doMethodLater(0.15, play_hit_sound, "play-hit-sound")
 
     def _on_turn_start(self, data: dict):
         """Начало хода — звуковой сигнал для игрока."""
