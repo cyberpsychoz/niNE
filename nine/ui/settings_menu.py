@@ -69,37 +69,34 @@ class SettingsMenu(BaseUIComponent):
         self._create_graphics_tab(panel_width, panel_height)
         self._create_audio_tab(panel_width, panel_height)
 
-        # Кнопки внизу
+        # Кнопки внизу (с звуками)
         btn_y = -panel_height/2 + 0.12
         btn_spacing = 0.35
 
-        self._add_element('save_button', DirectButton(
-            parent=self.panel,
+        self._create_button(
+            name='save_button',
             text="Сохранить",
-            scale=NineTheme.BUTTON_SCALE,
-            pos=(-btn_spacing/2 - 0.15, 0, btn_y),
             command=self._on_save_click,
-            frameColor=NineTheme.accent_button_colors(),
-            text_fg=NineTheme.TEXT_PRIMARY,
-            text_align=TextNode.ACenter,
-            pressEffect=True,
-            relief=DGG.FLAT,
-            frameSize=(-3.5, 3.5, -0.8, 1.1),
-        ))
-
-        self._add_element('back_button', DirectButton(
             parent=self.panel,
-            text="Назад",
-            scale=NineTheme.BUTTON_SCALE,
-            pos=(btn_spacing/2 + 0.15, 0, btn_y),
-            command=self._on_back_click,
-            frameColor=NineTheme.button_colors(),
-            text_fg=NineTheme.TEXT_PRIMARY,
+            pos=(-btn_spacing/2 - 0.15, 0, btn_y),
+            accent=True,
             text_align=TextNode.ACenter,
             pressEffect=True,
             relief=DGG.FLAT,
             frameSize=(-3.5, 3.5, -0.8, 1.1),
-        ))
+        )
+
+        self._create_button(
+            name='back_button',
+            text="Назад",
+            command=self._on_back_click,
+            parent=self.panel,
+            pos=(btn_spacing/2 + 0.15, 0, btn_y),
+            text_align=TextNode.ACenter,
+            pressEffect=True,
+            relief=DGG.FLAT,
+            frameSize=(-3.5, 3.5, -0.8, 1.1),
+        )
 
         # Показываем первую вкладку
         self._switch_tab("general")

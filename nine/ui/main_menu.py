@@ -327,24 +327,14 @@ class MainMenu(BaseUIComponent, DirectObject):
         for i, (text, command) in enumerate(buttons_data):
             y_pos = menu_y - i * item_spacing
 
-            btn = self._add_element(f'menu_item_{i}', DirectButton(
-                parent=self.base.a2dBottomLeft,
+            # Используем новый метод создания кнопок с звуками
+            self._create_menu_button(
+                name=f'menu_item_{i}',
                 text=text,
-                text_font=self.ui_manager.font,
-                scale=NineTheme.MENU_ITEM_SCALE,
-                pos=(menu_x, 0, y_pos),
                 command=command,
-                text_align=0,  # Left align
-                text_fg=NineTheme.TEXT_SECONDARY,
-                text_shadow=(0, 0, 0, 0.9),
-                text_shadowOffset=(0.04, 0.04),
-                frameColor=(0, 0, 0, 0),
-                relief=None,
-                pressEffect=False,
-            ))
-
-            btn.bind(DGG.ENTER, self._on_button_enter, [btn])
-            btn.bind(DGG.EXIT, self._on_button_exit, [btn])
+                parent=self.base.a2dBottomLeft,
+                pos=(menu_x, 0, y_pos),
+            )
 
         # Версия - слева внизу
         self._add_element('version', DirectLabel(
@@ -356,14 +346,6 @@ class MainMenu(BaseUIComponent, DirectObject):
             text_align=0,
             frameColor=(0, 0, 0, 0),
         ))
-
-    def _on_button_enter(self, btn, event):
-        """Hover эффект - подсветка текста."""
-        btn['text_fg'] = NineTheme.TEXT_HIGHLIGHT
-
-    def _on_button_exit(self, btn, event):
-        """Убираем hover эффект."""
-        btn['text_fg'] = NineTheme.TEXT_SECONDARY
 
     def _on_window_event(self, window):
         """Пересчитывает фон при изменении размера окна."""

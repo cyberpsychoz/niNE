@@ -227,3 +227,132 @@ def game_loop(self, task):
 2. Обновление состояния игроков (`world.update(dt)`)
 3. Симуляция физики (`physics_world.doPhysics(dt)`)
 4. Рассылка состояния мира клиентам
+
+---
+
+## Боевая система (Combat)
+
+**Плагин:** `nine.combat` (`nine/plugins/combat/`)
+
+Пошаговая боевая система в стиле D&D 5e / Baldur's Gate 3.
+
+### Архитектура
+
+```
+combat/
+├── sh_plugin.py           # Общий плагин (регистрация)
+├── sh_dice.py             # Система бросков кубов
+├── sh_action_economy.py   # Экономика действий D&D
+├── sv_plugin.py           # Серверный модуль
+├── sv_combat_manager.py   # Менеджер боёв
+├── sv_turn_manager.py     # Управление ходами
+├── cl_combat_ui.py        # Главный UI боя
+├── cl_initiative_display.py  # Панель инициативы (слева)
+├── cl_action_bar.py       # Панель действий (внизу)
+├── cl_target_selector.py  # Выбор целей курсором
+└── cl_spectator_mode.py   # Режим наблюдателя
+```
+
+### Ключевые компоненты
+
+- **CombatManager** - управляет боевыми сессиями, участниками
+- **TurnManager** - валидация и выполнение действий
+- **DiceRoller** - парсинг и бросок кубов (`2d6+3`, `d20`)
+
+### Боевой цикл
+
+1. DM начинает бой командой `/startcombat [radius]`
+2. Сервер собирает участников, бросает инициативу
+3. Отправляет `combat_started` всем клиентам
+4. По очереди ходов отправляет `combat_turn_start`
+5. Игрок выбирает действие, клиент отправляет `combat_action`
+6. Сервер валидирует, выполняет, отправляет `combat_action_result`
+7. Бой заканчивается победой/поражением/командой DM
+
+---
+
+## Система NPC
+
+**Плагин:** `nine.npc` (`nine/plugins/npc/`)
+
+ECS-based система NPC с AI и интеграцией в боевую систему.
+
+### Архитектура
+
+```
+npc/
+├── sh_plugin.py        # Общий плагин
+├── sh_components.py    # ECS компоненты (Position, AI, Combat, Faction...)
+├── sv_plugin.py        # Серверный модуль
+├── sv_npc_manager.py   # Менеджер NPC (спавн, деспавн, синхронизация)
+├── sv_npc_ai.py        # AI системы (патруль, агрессия, преследование)
+└── cl_npc_renderer.py  # Клиентский рендерер (модели, имена, HP)
+```
+
+### Компоненты NPC
+
+- **PositionComponent** - позиция в мире (x, y, z, rotation)
+- **ModelComponent** - 3D модель и анимации
+- **AIComponent** - поведение AI (IDLE, PATROL, HOSTILE, PURSUING)
+- **CombatComponent** - боевые характеристики (HP, AC, атака)
+- **FactionComponent** - фракция (враждебность к игрокам)
+- **NPCInfoComponent** - имя, тип, описание
+
+### AI состояния
+
+- **IDLE** - стоит на месте
+- **PATROL** - патрулирует между точками
+- **HOSTILE** - агрессивен, ищет цели
+- **PURSUING** - преследует цель
+- **ATTACKING** - атакует (в бою)
+
+### Спавн NPC
+
+```
+/spawn goblin 10 5 0        # Спавн гоблина в точке (10, 5, 0)
+/spawn orc                   # Спавн орка в позиции DM
+/despawn abc123              # Удалить NPC по ID
+```
+
+---
+
+## Аудио система
+
+**Файлы:**
+- `nine/core/audio_manager.py` - AudioManager
+- `nine/plugins/dnd/audio/` - интеграция с игровыми событиями
+
+### AudioManager
+
+Управляет всеми звуками в игре:
+
+```python
+audio = AudioManager(base)
+
+# Фоновая музыка
+audio.play_bgm("combat", crossfade=1.5)  # С плавным переходом
+audio.stop_bgm()
+
+# Ambient звуки
+audio.set_ambient("forest_day")
+audio.stop_ambient()
+
+# Звуковые эффекты
+audio.play_sfx("sword_hit", volume=0.8, pitch_variance=0.1)
+
+# Шаги
+audio.play_footstep("stone", is_running=True, has_chain_armor=False)
+```
+
+### Плейлисты
+
+- **BGM:** adventure, combat, tavern, town, dungeon
+- **Ambient:** forest_day, forest_night, dungeon, town
+- **SFX:** sword_attack, sword_hit, sword_blocked, sword_unsheath
+
+### Интеграция с событиями
+
+AudioIntegration автоматически реагирует на:
+- `combat_started` / `combat_ended` - переключение на боевую музыку
+- `combat_action_result` - звуки атак
+- `player_jump` / `player_land` - звуки прыжка/приземления

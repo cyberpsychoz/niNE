@@ -87,28 +87,28 @@ class SpectatorMode(PluginModule):
         self.is_spectating = True
 
         # Сохраняем текущее состояние камеры
-        self.original_camera_parent = self.base.camera.getParent()
-        self.original_camera_pos = self.base.camera.getPos()
-        self.original_camera_hpr = self.base.camera.getHpr()
+        self.original_camera_parent = self.app.camera.getParent()
+        self.original_camera_pos = self.app.camera.getPos()
+        self.original_camera_hpr = self.app.camera.getHpr()
 
         # Отсоединяем камеру от персонажа
-        self.base.camera.reparentTo(self.base.render)
+        self.app.camera.reparentTo(self.app.render)
 
         # Останавливаем обычный контроллер камеры
-        if hasattr(self.base, 'camera_controller') and self.base.camera_controller:
-            self.base.camera_controller.stop()
+        if hasattr(self.app, 'camera_controller') and self.app.camera_controller:
+            self.app.camera_controller.stop()
 
         # Освобождаем курсор для управления мышью
         props = WindowProperties()
         props.setCursorHidden(True)
         props.setMouseMode(WindowProperties.M_relative)
-        self.base.win.requestProperties(props)
+        self.app.win.requestProperties(props)
 
         # Регистрируем управление
         self._setup_controls()
 
         # Запускаем задачу обновления
-        self.base.taskMgr.add(self._update_task, "spectator-update")
+        self.app.taskMgr.add(self._update_task, "spectator-update")
 
         # Показываем статус
         self._show_status()
@@ -120,20 +120,20 @@ class SpectatorMode(PluginModule):
         self.is_spectating = False
 
         # Останавливаем задачу
-        self.base.taskMgr.remove("spectator-update")
+        self.app.taskMgr.remove("spectator-update")
 
         # Убираем управление
         self._remove_controls()
 
         # Возвращаем камеру
         if self.original_camera_parent:
-            self.base.camera.reparentTo(self.original_camera_parent)
-            self.base.camera.setPos(0, 0, 0)  # Сбрасываем позицию относительно родителя
-            self.base.camera.setHpr(0, 0, 0)
+            self.app.camera.reparentTo(self.original_camera_parent)
+            self.app.camera.setPos(0, 0, 0)  # Сбрасываем позицию относительно родителя
+            self.app.camera.setHpr(0, 0, 0)
 
         # Возобновляем обычный контроллер камеры
-        if hasattr(self.base, 'camera_controller') and self.base.camera_controller:
-            self.base.camera_controller.start()
+        if hasattr(self.app, 'camera_controller') and self.app.camera_controller:
+            self.app.camera_controller.start()
 
         # Скрываем статус
         self._hide_status()
@@ -147,42 +147,42 @@ class SpectatorMode(PluginModule):
     def _setup_controls(self):
         """Настраивает управление спектатором."""
         # Движение
-        self.base.accept("w", self._set_key, ["forward", True])
-        self.base.accept("w-up", self._set_key, ["forward", False])
-        self.base.accept("s", self._set_key, ["backward", True])
-        self.base.accept("s-up", self._set_key, ["backward", False])
-        self.base.accept("a", self._set_key, ["left", True])
-        self.base.accept("a-up", self._set_key, ["left", False])
-        self.base.accept("d", self._set_key, ["right", True])
-        self.base.accept("d-up", self._set_key, ["right", False])
+        self.app.accept("w", self._set_key, ["forward", True])
+        self.app.accept("w-up", self._set_key, ["forward", False])
+        self.app.accept("s", self._set_key, ["backward", True])
+        self.app.accept("s-up", self._set_key, ["backward", False])
+        self.app.accept("a", self._set_key, ["left", True])
+        self.app.accept("a-up", self._set_key, ["left", False])
+        self.app.accept("d", self._set_key, ["right", True])
+        self.app.accept("d-up", self._set_key, ["right", False])
 
         # Вверх/вниз
-        self.base.accept("space", self._set_key, ["up", True])
-        self.base.accept("space-up", self._set_key, ["up", False])
-        self.base.accept("control", self._set_key, ["down", True])
-        self.base.accept("control-up", self._set_key, ["down", False])
+        self.app.accept("space", self._set_key, ["up", True])
+        self.app.accept("space-up", self._set_key, ["up", False])
+        self.app.accept("control", self._set_key, ["down", True])
+        self.app.accept("control-up", self._set_key, ["down", False])
 
         # Ускорение
-        self.base.accept("shift", self._set_key, ["fast", True])
-        self.base.accept("shift-up", self._set_key, ["fast", False])
+        self.app.accept("shift", self._set_key, ["fast", True])
+        self.app.accept("shift-up", self._set_key, ["fast", False])
 
         # Shift+WASD
-        self.base.accept("shift-w", self._set_key, ["forward", True])
-        self.base.accept("shift-w-up", self._set_key, ["forward", False])
-        self.base.accept("shift-s", self._set_key, ["backward", True])
-        self.base.accept("shift-s-up", self._set_key, ["backward", False])
-        self.base.accept("shift-a", self._set_key, ["left", True])
-        self.base.accept("shift-a-up", self._set_key, ["left", False])
-        self.base.accept("shift-d", self._set_key, ["right", True])
-        self.base.accept("shift-d-up", self._set_key, ["right", False])
+        self.app.accept("shift-w", self._set_key, ["forward", True])
+        self.app.accept("shift-w-up", self._set_key, ["forward", False])
+        self.app.accept("shift-s", self._set_key, ["backward", True])
+        self.app.accept("shift-s-up", self._set_key, ["backward", False])
+        self.app.accept("shift-a", self._set_key, ["left", True])
+        self.app.accept("shift-a-up", self._set_key, ["left", False])
+        self.app.accept("shift-d", self._set_key, ["right", True])
+        self.app.accept("shift-d-up", self._set_key, ["right", False])
 
     def _remove_controls(self):
         """Убирает управление спектатором."""
         for key in ["w", "s", "a", "d", "space", "control", "shift"]:
-            self.base.ignore(key)
-            self.base.ignore(f"{key}-up")
-            self.base.ignore(f"shift-{key}")
-            self.base.ignore(f"shift-{key}-up")
+            self.app.ignore(key)
+            self.app.ignore(f"{key}-up")
+            self.app.ignore(f"shift-{key}")
+            self.app.ignore(f"shift-{key}-up")
 
     def _set_key(self, key: str, value: bool):
         """Устанавливает состояние клавиши."""
@@ -206,17 +206,17 @@ class SpectatorMode(PluginModule):
 
     def _handle_mouse(self):
         """Обрабатывает движение мыши для поворота камеры."""
-        if not self.base.mouseWatcherNode.hasMouse():
+        if not self.app.mouseWatcherNode.hasMouse():
             return
 
         # В режиме M_relative мышь возвращает смещение
-        md = self.base.win.getPointer(0)
+        md = self.app.win.getPointer(0)
         x = md.getX()
         y = md.getY()
 
         # Центр окна
-        center_x = self.base.win.getXSize() // 2
-        center_y = self.base.win.getYSize() // 2
+        center_x = self.app.win.getXSize() // 2
+        center_y = self.app.win.getYSize() // 2
 
         # Вычисляем смещение от центра
         dx = x - center_x
@@ -224,24 +224,24 @@ class SpectatorMode(PluginModule):
 
         # Применяем поворот
         if dx != 0 or dy != 0:
-            h = self.base.camera.getH() - dx * self.mouse_sensitivity
-            p = self.base.camera.getP() - dy * self.mouse_sensitivity
+            h = self.app.camera.getH() - dx * self.mouse_sensitivity
+            p = self.app.camera.getP() - dy * self.mouse_sensitivity
 
             # Ограничиваем pitch
             p = max(-89, min(89, p))
 
-            self.base.camera.setHpr(h, p, 0)
+            self.app.camera.setHpr(h, p, 0)
 
             # Возвращаем мышь в центр
-            self.base.win.movePointer(0, center_x, center_y)
+            self.app.win.movePointer(0, center_x, center_y)
 
     def _handle_movement(self, dt: float):
         """Обрабатывает перемещение камеры."""
         speed = self.fast_speed if self.keys["fast"] else self.fly_speed
 
         # Получаем направления камеры
-        forward = self.base.camera.getQuat().getForward()
-        right = self.base.camera.getQuat().getRight()
+        forward = self.app.camera.getQuat().getForward()
+        right = self.app.camera.getQuat().getRight()
         up = Vec3(0, 0, 1)
 
         move = Vec3(0, 0, 0)
@@ -261,8 +261,8 @@ class SpectatorMode(PluginModule):
 
         if move.length() > 0:
             move.normalize()
-            self.base.camera.setPos(
-                self.base.camera.getPos() + move * speed * dt
+            self.app.camera.setPos(
+                self.app.camera.getPos() + move * speed * dt
             )
 
     # =========================================================================
@@ -301,7 +301,7 @@ class SpectatorMode(PluginModule):
             msg.destroy()
             return task.done
 
-        self.base.taskMgr.doMethodLater(2.0, cleanup, f"msg-{id(msg)}")
+        self.app.taskMgr.doMethodLater(2.0, cleanup, f"msg-{id(msg)}")
 
     # =========================================================================
     # Публичные методы
@@ -317,4 +317,5 @@ class SpectatorMode(PluginModule):
 
 
 # Импорт для globalClock
-from direct.showbase.ShowBase import globalClock
+from panda3d.core import ClockObject
+globalClock = ClockObject.getGlobalClock()

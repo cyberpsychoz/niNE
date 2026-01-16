@@ -39,10 +39,10 @@ class FootstepSystem(PluginModule):
         self.was_on_ground = True
 
         # Запускаем задачу обновления
-        self.base.taskMgr.add(self._update_task, "footstep-update")
+        self.app.taskMgr.add(self._update_task, "footstep-update")
 
     def on_unload(self):
-        self.base.taskMgr.remove("footstep-update")
+        self.app.taskMgr.remove("footstep-update")
         self.logger.info("Footstep System unloaded")
 
     def _get_audio(self):
@@ -50,8 +50,8 @@ class FootstepSystem(PluginModule):
         if self.audio:
             return self.audio
 
-        if hasattr(self.base, 'audio_manager'):
-            self.audio = self.base.audio_manager
+        if hasattr(self.app, 'audio_manager'):
+            self.audio = self.app.audio_manager
             return self.audio
 
         return None
@@ -107,8 +107,8 @@ class FootstepSystem(PluginModule):
     def _get_player_state(self) -> dict:
         """Получает состояние игрока."""
         # Пытаемся получить из dev_state (если клиент в dev mode)
-        if hasattr(self.base, '_dev_state'):
-            state = self.base._dev_state
+        if hasattr(self.app, '_dev_state'):
+            state = self.app._dev_state
             return {
                 "is_moving": state.get("is_moving", False),
                 "is_running": state.get("is_running", False),
@@ -116,8 +116,8 @@ class FootstepSystem(PluginModule):
             }
 
         # Проверяем keyMap для определения движения
-        if hasattr(self.base, 'keyMap'):
-            km = self.base.keyMap
+        if hasattr(self.app, 'keyMap'):
+            km = self.app.keyMap
             is_moving = km.get("w") or km.get("a") or km.get("s") or km.get("d")
             is_running = km.get("shift", False) and is_moving
 

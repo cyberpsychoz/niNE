@@ -141,7 +141,7 @@ class ActionBar(PluginModule):
             self.action_buttons[action_id] = btn
 
             # Привязываем горячую клавишу
-            self.base.accept(hotkey.lower(), self._on_action_click, [action_id])
+            self.app.accept(hotkey.lower(), self._on_action_click, [action_id])
 
     def _create_resource_indicators(self):
         """Создаёт индикаторы ресурсов."""
@@ -353,7 +353,7 @@ class ActionBar(PluginModule):
 
         # Отвязываем горячие клавиши
         for hotkey in ["1", "2", "3", "4", "5", "e"]:
-            self.base.ignore(hotkey)
+            self.app.ignore(hotkey)
 
     def _on_turn_start(self, data: dict):
         """Обрабатывает начало хода."""

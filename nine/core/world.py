@@ -54,7 +54,7 @@ class Player:
 
         # Debug: Log jump attempts
         if do_jump:
-            logger.info(f"[Player '{self.name}'] 🎮 Jump button pressed! keys={self.keys}")
+            logger.info(f"[Player '{self.name}'] Jump button pressed! keys={self.keys}")
 
         result = self.character_controller.update(dt, move_vector, is_running, do_jump)
         if result:
@@ -469,7 +469,7 @@ class GameWorld:
 
             # Debug: Log when space is pressed
             if input_data.get("space", False):
-                logger.info(f"[World] 🎮 Received SPACE input for '{player.name}': {input_data}")
+                logger.info(f"[World] Received SPACE input for '{player.name}': {input_data}")
 
             player.keys = input_data
 

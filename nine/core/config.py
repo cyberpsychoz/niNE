@@ -26,6 +26,9 @@ class Config:
         "audio_bgm_volume": 70,      # Громкость музыки (0-100)
         "audio_sfx_volume": 80,      # Громкость звуковых эффектов (0-100)
         "audio_ambient_volume": 60,  # Громкость эмбиента/окружения (0-100)
+        "audio_ui_volume": 70,       # Громкость звуков интерфейса (0-100)
+        "ui_sound_pack": "fantasy",  # Звуковой пак UI: fantasy, piano, skyward
+        "ui_sounds_enabled": True,   # Включить звуки интерфейса
     }
 
     def __new__(cls):

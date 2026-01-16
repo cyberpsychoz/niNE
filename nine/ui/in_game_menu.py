@@ -52,7 +52,7 @@ class InGameMenu(BaseUIComponent):
             frameColor=(0, 0, 0, 0),
         ))
 
-        # Кнопки
+        # Кнопки с звуками
         buttons_data = [
             ("Продолжить", self._on_continue_click),
             ("Настройки", self._on_settings_click),
@@ -65,21 +65,28 @@ class InGameMenu(BaseUIComponent):
         for i, (text, command) in enumerate(buttons_data):
             y_pos = button_start_y - i * button_spacing
 
-            btn = self._add_element(f'button_{i}', DirectButton(
-                parent=panel,
+            self._create_button(
+                name=f'button_{i}',
                 text=text,
-                scale=NineTheme.BUTTON_SCALE,
-                pos=(0, 0, y_pos),
                 command=command,
-                frameColor=NineTheme.button_colors(),
-                text_fg=NineTheme.TEXT_PRIMARY,
+                parent=panel,
+                pos=(0, 0, y_pos),
                 text_align=TextNode.ACenter,
                 pressEffect=True,
                 relief=DGG.FLAT,
                 frameSize=(-3.8, 3.8, -0.8, 1.1),
-            ))
+            )
 
         self.hide()
+
+    def show(self):
+        """Показывает меню с звуком."""
+        super().show()
+        self._play_open_sound()
+        # Показываем все элементы
+        for element in self._elements.values():
+            if hasattr(element, 'show'):
+                element.show()
 
     def _on_continue_click(self):
         """Продолжить игру."""

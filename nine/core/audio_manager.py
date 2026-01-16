@@ -80,7 +80,7 @@ class AudioManager:
             AudioChannel.BGM: config.get("audio_bgm_volume", 70) / 100.0,
             AudioChannel.BGS: config.get("audio_ambient_volume", 60) / 100.0,
             AudioChannel.SFX: config.get("audio_sfx_volume", 80) / 100.0,
-            AudioChannel.UI: 0.6,
+            AudioChannel.UI: config.get("audio_ui_volume", 70) / 100.0,
             AudioChannel.VOICE: 1.0,
         }
 
@@ -276,6 +276,44 @@ class AudioManager:
             self._sfx_aliases[f"footstep_{surface_lower}_chain_land"] = [
                 f"sfx/Footsteps/{surface}/{surface} Chain Land.ogg"
             ]
+
+        # UI звуки
+        self._ui_sound_packs = {
+            "fantasy": {
+                "hover": [f"ui/Fantasy/Fantasy_UI ({i}).wav" for i in [1, 2, 3, 4, 5]],
+                "click": [f"ui/Fantasy/Fantasy_UI ({i}).wav" for i in [10, 11, 12, 13]],
+                "confirm": [f"ui/Fantasy/Fantasy_UI ({i}).wav" for i in [20, 21, 22]],
+                "cancel": [f"ui/Fantasy/Fantasy_UI ({i}).wav" for i in [30, 31, 32]],
+                "open": [f"ui/Fantasy/Fantasy_UI ({i}).wav" for i in [40, 41]],
+                "close": [f"ui/Fantasy/Fantasy_UI ({i}).wav" for i in [45, 46]],
+                "error": [f"ui/Fantasy/Fantasy_UI ({i}).wav" for i in [50, 51]],
+                "success": [f"ui/Fantasy/Fantasy_UI ({i}).wav" for i in [55, 56]],
+            },
+            "piano": {
+                "hover": [f"ui/Piano/Piano_Ui ({i}).wav" for i in [1, 2]],
+                "click": [f"ui/Piano/Piano_Ui ({i}).wav" for i in [3, 4]],
+                "confirm": [f"ui/Piano/Piano_Ui (5).wav"],
+                "cancel": [f"ui/Piano/Piano_Ui (6).wav"],
+                "open": [f"ui/Piano/Piano_Ui (7).wav"],
+                "close": [f"ui/Piano/Piano_Ui (6).wav"],
+                "error": [f"ui/Piano/Piano_Ui (2).wav"],
+                "success": [f"ui/Piano/Piano_Ui (5).wav"],
+            },
+            "skyward": {
+                "hover": [f"ui/Skyward Hero/SkywardHero_UI ({i}).wav" for i in [1, 2, 3, 4, 5]],
+                "click": [f"ui/Skyward Hero/SkywardHero_UI ({i}).wav" for i in [10, 11, 12, 13]],
+                "confirm": [f"ui/Skyward Hero/SkywardHero_UI ({i}).wav" for i in [20, 21, 22]],
+                "cancel": [f"ui/Skyward Hero/SkywardHero_UI ({i}).wav" for i in [30, 31, 32]],
+                "open": [f"ui/Skyward Hero/SkywardHero_UI ({i}).wav" for i in [35, 36]],
+                "close": [f"ui/Skyward Hero/SkywardHero_UI ({i}).wav" for i in [37, 38]],
+                "error": [f"ui/Skyward Hero/SkywardHero_UI ({i}).wav" for i in [40, 41]],
+                "success": [f"ui/Skyward Hero/SkywardHero_UI ({i}).wav" for i in [43, 44]],
+            },
+        }
+
+        # Текущий UI звуковой пак
+        from nine.core.config import config
+        self._current_ui_pack = config.get("ui_sound_pack", "fantasy")
 
     # =========================================================================
     # Загрузка звуков
@@ -559,6 +597,93 @@ class AudioManager:
         armor = "_chain" if has_chain_armor else ""
         sfx_name = f"footstep_{surface}{armor}_land"
         return self.play_sfx(sfx_name, volume=0.8)
+
+    # =========================================================================
+    # UI Sounds
+    # =========================================================================
+
+    def play_ui_sound(self, sound_type: str, volume: float = 1.0) -> Optional[AudioSound]:
+        """
+        Воспроизводит звук интерфейса.
+
+        Args:
+            sound_type: Тип звука (hover, click, confirm, cancel, open, close, error, success)
+            volume: Множитель громкости (0.0 - 1.0)
+
+        Returns:
+            AudioSound объект или None
+        """
+        pack = self._ui_sound_packs.get(self._current_ui_pack)
+        if not pack:
+            pack = self._ui_sound_packs.get("fantasy", {})
+
+        sounds = pack.get(sound_type, [])
+        if not sounds:
+            return None
+
+        # Выбираем случайный звук из вариантов
+        path = random.choice(sounds)
+
+        # Загружаем
+        sound = self._load_sound(path)
+        if not sound:
+            return None
+
+        # Настраиваем громкость
+        final_volume = self._get_channel_volume(AudioChannel.UI) * volume
+        sound.setVolume(final_volume)
+        sound.setLoop(False)
+
+        # Воспроизводим
+        sound.play()
+
+        return sound
+
+    def play_ui_hover(self, volume: float = 0.5) -> Optional[AudioSound]:
+        """Воспроизводит звук наведения на элемент UI."""
+        return self.play_ui_sound("hover", volume)
+
+    def play_ui_click(self, volume: float = 0.7) -> Optional[AudioSound]:
+        """Воспроизводит звук клика по элементу UI."""
+        return self.play_ui_sound("click", volume)
+
+    def play_ui_confirm(self, volume: float = 0.8) -> Optional[AudioSound]:
+        """Воспроизводит звук подтверждения."""
+        return self.play_ui_sound("confirm", volume)
+
+    def play_ui_cancel(self, volume: float = 0.6) -> Optional[AudioSound]:
+        """Воспроизводит звук отмены."""
+        return self.play_ui_sound("cancel", volume)
+
+    def play_ui_open(self, volume: float = 0.7) -> Optional[AudioSound]:
+        """Воспроизводит звук открытия окна/меню."""
+        return self.play_ui_sound("open", volume)
+
+    def play_ui_close(self, volume: float = 0.6) -> Optional[AudioSound]:
+        """Воспроизводит звук закрытия окна/меню."""
+        return self.play_ui_sound("close", volume)
+
+    def play_ui_error(self, volume: float = 0.8) -> Optional[AudioSound]:
+        """Воспроизводит звук ошибки."""
+        return self.play_ui_sound("error", volume)
+
+    def play_ui_success(self, volume: float = 0.8) -> Optional[AudioSound]:
+        """Воспроизводит звук успеха."""
+        return self.play_ui_sound("success", volume)
+
+    def set_ui_sound_pack(self, pack_name: str):
+        """
+        Устанавливает UI звуковой пак.
+
+        Args:
+            pack_name: Имя пака (fantasy, piano, skyward)
+        """
+        if pack_name in self._ui_sound_packs:
+            self._current_ui_pack = pack_name
+
+    def get_ui_sound_packs(self) -> List[str]:
+        """Возвращает список доступных UI звуковых паков."""
+        return list(self._ui_sound_packs.keys())
 
     # =========================================================================
     # Громкость

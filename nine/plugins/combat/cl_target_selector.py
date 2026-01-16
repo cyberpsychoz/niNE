@@ -41,18 +41,18 @@ class TargetSelector(PluginModule):
         self._setup_picker()
 
         # Подписки на события
-        self.base.accept("c", self._toggle_cursor_mode)
-        self.base.accept("mouse1", self._on_left_click)
-        self.base.accept("mouse3", self._on_right_click)
+        self.app.accept("c", self._toggle_cursor_mode)
+        self.app.accept("mouse1", self._on_left_click)
+        self.app.accept("mouse3", self._on_right_click)
 
         self.event_manager.subscribe("combat_started", self._on_combat_started)
         self.event_manager.subscribe("combat_ended", self._on_combat_ended)
         self.event_manager.subscribe("combat_turn_start", self._on_turn_start)
 
     def on_unload(self):
-        self.base.ignore("c")
-        self.base.ignore("mouse1")
-        self.base.ignore("mouse3")
+        self.app.ignore("c")
+        self.app.ignore("mouse1")
+        self.app.ignore("mouse3")
 
         self.event_manager.unsubscribe("combat_started", self._on_combat_started)
         self.event_manager.unsubscribe("combat_ended", self._on_combat_ended)
@@ -78,7 +78,7 @@ class TargetSelector(PluginModule):
         self.picker_ray = CollisionRay()
         self.picker_node.addSolid(self.picker_ray)
 
-        self.picker_np = self.base.camera.attachNewNode(self.picker_node)
+        self.picker_np = self.app.camera.attachNewNode(self.picker_node)
         self.picker_traverser.addCollider(self.picker_np, self.picker_handler)
 
     # =========================================================================
@@ -88,9 +88,9 @@ class TargetSelector(PluginModule):
     def _toggle_cursor_mode(self):
         """Переключает между режимом камеры и курсора."""
         # Не переключаем если открыт чат или меню
-        if hasattr(self.base, 'is_chat_active') and self.base.is_chat_active():
+        if hasattr(self.app, 'is_chat_active') and self.app.is_chat_active():
             return
-        if hasattr(self.base, 'in_game_menu_active') and self.base.in_game_menu_active:
+        if hasattr(self.app, 'in_game_menu_active') and self.app.in_game_menu_active:
             return
 
         if self.cursor_mode:
@@ -103,17 +103,17 @@ class TargetSelector(PluginModule):
         self.cursor_mode = True
 
         # Останавливаем камеру
-        if hasattr(self.base, 'camera_controller') and self.base.camera_controller:
-            self.base.camera_controller.stop()
+        if hasattr(self.app, 'camera_controller') and self.app.camera_controller:
+            self.app.camera_controller.stop()
         else:
             # Показываем курсор вручную
             props = WindowProperties()
             props.setCursorHidden(False)
             props.setMouseMode(WindowProperties.M_absolute)
-            self.base.win.requestProperties(props)
+            self.app.win.requestProperties(props)
 
         # Запускаем задачу обновления наведения
-        self.base.taskMgr.add(self._update_hover_task, "target-hover-task")
+        self.app.taskMgr.add(self._update_hover_task, "target-hover-task")
 
         # Показываем подсказку
         self._show_cursor_mode_hint()
@@ -125,17 +125,17 @@ class TargetSelector(PluginModule):
         self.cursor_mode = False
 
         # Возобновляем камеру
-        if hasattr(self.base, 'camera_controller') and self.base.camera_controller:
-            self.base.camera_controller.start()
+        if hasattr(self.app, 'camera_controller') and self.app.camera_controller:
+            self.app.camera_controller.start()
         else:
             # Скрываем курсор вручную
             props = WindowProperties()
             props.setCursorHidden(True)
             props.setMouseMode(WindowProperties.M_relative)
-            self.base.win.requestProperties(props)
+            self.app.win.requestProperties(props)
 
         # Останавливаем задачу
-        self.base.taskMgr.remove("target-hover-task")
+        self.app.taskMgr.remove("target-hover-task")
 
         # Убираем подсветку
         self._clear_hover()
@@ -155,21 +155,21 @@ class TargetSelector(PluginModule):
             return task.done
 
         # Проверяем наличие мыши в окне
-        if not self.base.mouseWatcherNode.hasMouse():
+        if not self.app.mouseWatcherNode.hasMouse():
             return task.cont
 
         # Получаем позицию мыши
-        mouse_pos = self.base.mouseWatcherNode.getMouse()
+        mouse_pos = self.app.mouseWatcherNode.getMouse()
 
         # Устанавливаем луч от камеры через позицию мыши
         self.picker_ray.setFromLens(
-            self.base.camNode,
+            self.app.camNode,
             mouse_pos.getX(),
             mouse_pos.getY()
         )
 
         # Выполняем raycast
-        self.picker_traverser.traverse(self.base.render)
+        self.picker_traverser.traverse(self.app.render)
 
         # Обрабатываем результаты
         if self.picker_handler.getNumEntries() > 0:
@@ -191,7 +191,7 @@ class TargetSelector(PluginModule):
         """Извлекает ID сущности из узла."""
         # Ищем среди родителей узел с тегом entity_id
         current = node_path
-        while current and current != self.base.render:
+        while current and current != self.app.render:
             # Проверяем python tag
             if current.hasPythonTag("entity_id"):
                 return current.getPythonTag("entity_id")
@@ -243,12 +243,12 @@ class TargetSelector(PluginModule):
     def _find_entity_node(self, entity_id: str):
         """Находит узел сущности по ID."""
         # Ищем NPC
-        npc_node = self.base.render.find(f"**/npc_{entity_id}")
+        npc_node = self.app.render.find(f"**/npc_{entity_id}")
         if not npc_node.isEmpty():
             return npc_node
 
         # Ищем игрока
-        player_node = self.base.render.find(f"**/player_{entity_id}")
+        player_node = self.app.render.find(f"**/player_{entity_id}")
         if not player_node.isEmpty():
             return player_node
 
