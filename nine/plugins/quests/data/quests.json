@@ -1,0 +1,267 @@
+{
+  "quests": [
+    {
+      "id": "tutorial_1",
+      "name": "First Steps",
+      "name_ru": "Первые шаги",
+      "description": "Learn the basics of adventuring by speaking with the local guard captain.",
+      "description_ru": "Изучите основы приключений, поговорив с местным капитаном стражи.",
+      "level_requirement": 1,
+      "giver_npc_id": "guard_captain",
+      "turn_in_npc_id": "guard_captain",
+      "objectives": [
+        {
+          "id": "talk_captain",
+          "type": "talk",
+          "description": "Speak with Guard Captain Marcus",
+          "description_ru": "Поговорите с капитаном стражи Маркусом",
+          "target_id": "guard_captain",
+          "target_count": 1
+        }
+      ],
+      "rewards": {
+        "experience": 50,
+        "gold": 10
+      },
+      "dialog_accept": "Welcome, adventurer! There's much to learn in these lands.",
+      "dialog_progress": "Have you found Captain Marcus yet?",
+      "dialog_complete": "Well done! You're ready for your first real challenge."
+    },
+    {
+      "id": "goblin_threat",
+      "name": "Goblin Threat",
+      "name_ru": "Угроза гоблинов",
+      "description": "Goblins have been spotted near the village. Eliminate them before they become a bigger problem.",
+      "description_ru": "Гоблины замечены рядом с деревней. Уничтожьте их, пока они не стали серьёзной проблемой.",
+      "level_requirement": 1,
+      "prerequisites": ["tutorial_1"],
+      "giver_npc_id": "guard_captain",
+      "turn_in_npc_id": "guard_captain",
+      "objectives": [
+        {
+          "id": "kill_goblins",
+          "type": "kill",
+          "description": "Kill 5 Goblins",
+          "description_ru": "Убейте 5 гоблинов",
+          "target_id": "goblin",
+          "target_count": 5
+        }
+      ],
+      "rewards": {
+        "experience": 150,
+        "gold": 25,
+        "items": [
+          {"id": "health_potion", "count": 2}
+        ]
+      },
+      "dialog_accept": "Those green menaces have been causing trouble. Deal with them!",
+      "dialog_progress": "Keep at it! Those goblins won't defeat themselves.",
+      "dialog_complete": "Excellent work! The village is safer thanks to you."
+    },
+    {
+      "id": "lost_supplies",
+      "name": "Lost Supplies",
+      "name_ru": "Потерянные припасы",
+      "description": "A merchant lost his supply crates near the old mill. Help him recover them.",
+      "description_ru": "Торговец потерял ящики с припасами возле старой мельницы. Помогите ему их найти.",
+      "level_requirement": 1,
+      "giver_npc_id": "merchant_aldric",
+      "turn_in_npc_id": "merchant_aldric",
+      "objectives": [
+        {
+          "id": "collect_crates",
+          "type": "collect",
+          "description": "Collect Supply Crates",
+          "description_ru": "Соберите ящики с припасами",
+          "target_id": "supply_crate",
+          "target_count": 3
+        },
+        {
+          "id": "return_to_merchant",
+          "type": "talk",
+          "description": "Return to Merchant Aldric",
+          "description_ru": "Вернитесь к торговцу Олдрику",
+          "target_id": "merchant_aldric",
+          "target_count": 1
+        }
+      ],
+      "rewards": {
+        "experience": 100,
+        "gold": 50
+      },
+      "dialog_accept": "I lost some valuable goods near the old mill. Can you help me find them?",
+      "dialog_progress": "Any luck finding those crates?",
+      "dialog_complete": "You found them all! Here's your reward, friend."
+    },
+    {
+      "id": "cave_exploration",
+      "name": "Into the Darkness",
+      "name_ru": "Во тьму",
+      "description": "Strange sounds have been reported from the nearby cave. Investigate and report back.",
+      "description_ru": "Из ближайшей пещеры доносятся странные звуки. Исследуйте и доложите.",
+      "level_requirement": 2,
+      "prerequisites": ["goblin_threat"],
+      "giver_npc_id": "guard_captain",
+      "turn_in_npc_id": "guard_captain",
+      "objectives": [
+        {
+          "id": "reach_cave",
+          "type": "reach_location",
+          "description": "Reach the Cave Entrance",
+          "description_ru": "Доберитесь до входа в пещеру",
+          "target_id": "cave_entrance",
+          "location": [100, 50, 0],
+          "radius": 10,
+          "target_count": 1
+        },
+        {
+          "id": "explore_cave",
+          "type": "reach_location",
+          "description": "Explore the Cave Depths",
+          "description_ru": "Исследуйте глубины пещеры",
+          "target_id": "cave_depths",
+          "location": [120, 80, -10],
+          "radius": 15,
+          "target_count": 1
+        },
+        {
+          "id": "kill_skeletons",
+          "type": "kill",
+          "description": "Defeat the Skeletons (Optional)",
+          "description_ru": "Победите скелетов (опционально)",
+          "target_id": "skeleton",
+          "target_count": 3,
+          "optional": true
+        }
+      ],
+      "rewards": {
+        "experience": 250,
+        "gold": 40,
+        "items": [
+          {"id": "torch", "count": 5}
+        ]
+      },
+      "dialog_accept": "We need someone brave to check out that cave. Are you up for it?",
+      "dialog_progress": "Be careful in there. We don't know what lurks in the darkness.",
+      "dialog_complete": "Undead? This is troubling news. Thank you for the report."
+    },
+    {
+      "id": "undead_menace",
+      "name": "Undead Menace",
+      "name_ru": "Угроза нежити",
+      "description": "The cave is infested with undead. Clear them out and find the source of the necromantic energy.",
+      "description_ru": "Пещера кишит нежитью. Очистите её и найдите источник некромантической энергии.",
+      "level_requirement": 3,
+      "prerequisites": ["cave_exploration"],
+      "chain_id": "undead_chain",
+      "chain_order": 1,
+      "giver_npc_id": "guard_captain",
+      "turn_in_npc_id": "guard_captain",
+      "objectives": [
+        {
+          "id": "kill_skeletons_main",
+          "type": "kill",
+          "description": "Destroy Skeletons",
+          "description_ru": "Уничтожьте скелетов",
+          "target_id": "skeleton",
+          "target_count": 10
+        },
+        {
+          "id": "kill_zombies",
+          "type": "kill",
+          "description": "Destroy Zombies",
+          "description_ru": "Уничтожьте зомби",
+          "target_id": "zombie",
+          "target_count": 5
+        },
+        {
+          "id": "find_altar",
+          "type": "interact",
+          "description": "Find the Dark Altar",
+          "description_ru": "Найдите тёмный алтарь",
+          "target_id": "dark_altar",
+          "target_count": 1
+        }
+      ],
+      "rewards": {
+        "experience": 400,
+        "gold": 75,
+        "items": [
+          {"id": "silver_dagger", "count": 1}
+        ]
+      },
+      "dialog_accept": "We must stop this undead threat before it spreads. Go into that cave and end it!",
+      "dialog_progress": "Have you found the source of this evil yet?",
+      "dialog_complete": "A dark altar... This explains everything. We must investigate further."
+    },
+    {
+      "id": "herb_gathering",
+      "name": "Medicinal Herbs",
+      "name_ru": "Лекарственные травы",
+      "description": "The village healer needs herbs to prepare medicines. Gather them from the forest.",
+      "description_ru": "Деревенскому целителю нужны травы для лекарств. Соберите их в лесу.",
+      "level_requirement": 1,
+      "repeatable": true,
+      "giver_npc_id": "healer_elena",
+      "turn_in_npc_id": "healer_elena",
+      "objectives": [
+        {
+          "id": "collect_herbs",
+          "type": "collect",
+          "description": "Gather Healing Herbs",
+          "description_ru": "Соберите целебные травы",
+          "target_id": "healing_herb",
+          "target_count": 5
+        }
+      ],
+      "rewards": {
+        "experience": 50,
+        "gold": 15,
+        "items": [
+          {"id": "health_potion", "count": 1}
+        ]
+      },
+      "dialog_accept": "I always need more herbs for my potions. Can you help gather some?",
+      "dialog_progress": "Any luck finding those herbs?",
+      "dialog_complete": "Perfect! These will help many people. Come back anytime you find more."
+    },
+    {
+      "id": "escort_merchant",
+      "name": "Safe Passage",
+      "name_ru": "Безопасный путь",
+      "description": "Escort the traveling merchant safely to the next village.",
+      "description_ru": "Сопроводите путешествующего торговца до следующей деревни.",
+      "level_requirement": 2,
+      "giver_npc_id": "traveling_merchant",
+      "turn_in_npc_id": "village_elder",
+      "objectives": [
+        {
+          "id": "escort_merchant",
+          "type": "escort",
+          "description": "Escort the Merchant to Safety",
+          "description_ru": "Доведите торговца до безопасного места",
+          "target_id": "traveling_merchant",
+          "target_count": 1
+        },
+        {
+          "id": "defend_from_bandits",
+          "type": "kill",
+          "description": "Protect from Bandits",
+          "description_ru": "Защитите от бандитов",
+          "target_id": "bandit",
+          "target_count": 3
+        }
+      ],
+      "rewards": {
+        "experience": 200,
+        "gold": 100,
+        "reputation": {
+          "merchants_guild": 10
+        }
+      },
+      "dialog_accept": "The roads are dangerous these days. Will you protect me on my journey?",
+      "dialog_progress": "We must keep moving. It's not safe to linger.",
+      "dialog_complete": "Thank you for bringing the merchant safely. The guild will hear of your service."
+    }
+  ]
+}

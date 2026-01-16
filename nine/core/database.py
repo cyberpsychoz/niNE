@@ -104,6 +104,20 @@ class DatabaseManager:
                     print("Миграция: добавление колонки faction в game_characters...")
                     cursor.execute("ALTER TABLE game_characters ADD COLUMN faction TEXT DEFAULT 'neutral'")
 
+                # Миграция: добавление колонок для системы заклинаний
+                if char_columns and 'spells_known' not in char_columns:
+                    print("Миграция: добавление колонок для системы заклинаний...")
+                    cursor.execute("ALTER TABLE game_characters ADD COLUMN spells_known TEXT DEFAULT '[]'")
+                    cursor.execute("ALTER TABLE game_characters ADD COLUMN spells_prepared TEXT DEFAULT '[]'")
+                    cursor.execute("ALTER TABLE game_characters ADD COLUMN spell_slots_current TEXT DEFAULT '{}'")
+                    cursor.execute("ALTER TABLE game_characters ADD COLUMN spell_slots_max TEXT DEFAULT '{}'")
+
+                # Миграция: добавление hit dice для системы отдыха
+                if char_columns and 'hit_dice_current' not in char_columns:
+                    print("Миграция: добавление колонок hit dice...")
+                    cursor.execute("ALTER TABLE game_characters ADD COLUMN hit_dice_current INTEGER DEFAULT 1")
+                    cursor.execute("ALTER TABLE game_characters ADD COLUMN hit_dice_max INTEGER DEFAULT 1")
+
                 print("Миграция схемы завершена.")
 
         except sqlite3.Error as e:
@@ -269,6 +283,16 @@ class DatabaseManager:
                         equipment TEXT DEFAULT '{}',
                         gold INTEGER DEFAULT 0,
 
+                        -- Система заклинаний
+                        spells_known TEXT DEFAULT '[]',
+                        spells_prepared TEXT DEFAULT '[]',
+                        spell_slots_current TEXT DEFAULT '{}',
+                        spell_slots_max TEXT DEFAULT '{}',
+
+                        -- Система отдыха
+                        hit_dice_current INTEGER DEFAULT 1,
+                        hit_dice_max INTEGER DEFAULT 1,
+
                         -- Позиция в мире
                         pos_x REAL DEFAULT 0,
                         pos_y REAL DEFAULT 0,
@@ -334,12 +358,16 @@ class DatabaseManager:
             if row:
                 result = dict(row)
                 # Парсим JSON поля
-                for json_field in ['skills', 'proficiencies', 'class_features', 'personality', 'equipment']:
+                for json_field in ['skills', 'proficiencies', 'class_features', 'personality', 'equipment',
+                                   'spells_known', 'spells_prepared', 'spell_slots_current', 'spell_slots_max']:
                     if result.get(json_field):
                         try:
                             result[json_field] = json.loads(result[json_field])
                         except (json.JSONDecodeError, TypeError):
-                            result[json_field] = {} if json_field != 'class_features' else []
+                            if json_field in ('class_features', 'spells_known', 'spells_prepared'):
+                                result[json_field] = []
+                            else:
+                                result[json_field] = {}
                 # Конвертируем datetime в строки для JSON сериализации
                 for date_field in ['created_at', 'last_played']:
                     if result.get(date_field) and hasattr(result[date_field], 'isoformat'):
@@ -360,12 +388,16 @@ class DatabaseManager:
             row = cursor.fetchone()
             if row:
                 result = dict(row)
-                for json_field in ['skills', 'proficiencies', 'class_features', 'personality', 'equipment']:
+                for json_field in ['skills', 'proficiencies', 'class_features', 'personality', 'equipment',
+                                   'spells_known', 'spells_prepared', 'spell_slots_current', 'spell_slots_max']:
                     if result.get(json_field):
                         try:
                             result[json_field] = json.loads(result[json_field])
                         except (json.JSONDecodeError, TypeError):
-                            result[json_field] = {} if json_field != 'class_features' else []
+                            if json_field in ('class_features', 'spells_known', 'spells_prepared'):
+                                result[json_field] = []
+                            else:
+                                result[json_field] = {}
                 return result
             return None
         except sqlite3.Error as e:
@@ -452,7 +484,8 @@ class DatabaseManager:
         protected_fields = {'uuid', 'account_uuid', 'created_at'}
 
         # JSON поля требуют сериализации
-        json_fields = {'skills', 'proficiencies', 'class_features', 'personality', 'equipment'}
+        json_fields = {'skills', 'proficiencies', 'class_features', 'personality', 'equipment',
+                       'spells_known', 'spells_prepared', 'spell_slots_current', 'spell_slots_max'}
 
         # Формируем SQL запрос
         set_clauses = []

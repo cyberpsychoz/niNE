@@ -26,6 +26,12 @@
 | Боевая система | ✅ Интегрирована | Сервер и клиент работают |
 | NPC | ✅ Интегрирована | ECS-based AI, плагин `nine.npc` |
 | Аудио | ✅ Работает | AudioManager, плейлисты, шаги, боевые звуки |
+| DM Panel | ✅ Реализована | F2, вкладки: Players, Combat, Spawn, Audio, World |
+| Заклинания | ✅ Реализована | 35 заклинаний, слоты, концентрация |
+| Условия | ✅ Реализована | D&D 5e conditions (Blinded, Paralyzed и др.) |
+| Квесты | ✅ Реализована | Журнал (J), типы целей: kill, collect, talk, reach |
+| Отдых | ✅ Реализована | Short/Long rest, Hit Dice |
+| Living NPC | ✅ Реализована | Потребности, личность, отношения, память, расписания |
 
 **Инструкция для администратора:** см. [ADMIN_GUIDE.md](ADMIN_GUIDE.md)
 
@@ -1642,13 +1648,25 @@ nine/plugins/dnd/npc/
 
 ---
 
-### Фаза 2: Инструменты Игрового Мастера
+### Фаза 2: Инструменты Игрового Мастера — ✅ РЕАЛИЗОВАНО
 
-#### A. DM Mode (dnd_dm)
+#### A. DM Mode (dnd_dm) — ✅ РЕАЛИЗОВАНО
+
+> **Обновление (январь 2026):** DM Panel реализована в плагине `nine/plugins/dm_panel/`.
+
+**Плагин `nine/plugins/dm_panel/`:**
+- `sh_plugin.py` — метаданные плагина (load_order=60)
+- `cl_dm_panel.py` — главный UI модуль (клавиша F2)
+- `cl_tab_players.py` — вкладка "Игроки" (телепорт, хил, урон, предметы)
+- `cl_tab_combat.py` — вкладка "Бой" (управление боями, инициатива)
+- `cl_tab_spawn.py` — вкладка "Спавн NPC" (спавн по шаблонам)
+- `cl_tab_audio.py` — вкладка "Аудио" (плейлисты, эмбиент, громкость)
+- `cl_tab_world.py` — вкладка "Мир" (глобальные объявления)
+- `sv_dm_panel.py` — серверный обработчик команд DM
 
 **Цель:** Специальный режим для Игрового Мастера с невидимостью и управлением событиями
 
-**Плагины:**
+**Устаревшие плагины (заменены):**
 - `dnd_dm/sv_dm.py` — серверная логика DM прав
 - `dnd_dm/cl_dm_panel.py` — панель управления DM
 - `dnd_dm/cl_dm_tools.py` — инструменты (спавн НПС, телепорт игроков)
@@ -1869,14 +1887,24 @@ NPC система перенесена в Фазу 0 как критическ�
 
 ### Фаза 3: Расширенные механики D&D
 
-#### C. Система заклинаний (dnd_spells)
+#### C. Система заклинаний (dnd_spells) — ✅ РЕАЛИЗОВАНО
 
-**Цель:** Заклинания D&D с уровнями, слотами и эффектами
+> **Обновление (январь 2026):** Система заклинаний полностью реализована в плагине `nine/plugins/spells/`.
 
-**Плагины:**
-- `dnd_spells/sv_spells.py` — логика каста и эффектов
-- `dnd_spells/cl_spellbook.py` — UI книги заклинаний
-- `dnd_spells/data/spells.json` — база заклинаний
+**Плагин `nine/plugins/spells/`:**
+- `sh_plugin.py` — метаданные плагина (load_order=45, depends on combat)
+- `sh_spell_data.py` — Dataclass Spell, SpellEffect, SpellSlots, CharacterSpellcasting
+- `sh_spell_slots.py` — D&D 5e таблицы слотов для всех типов кастеров (full, half, third, warlock)
+- `data/spells.json` — 35 заклинаний от cantrips до 9 уровня
+- `cl_spellbook.py` — UI книги заклинаний (клавиша K)
+- `sv_spell_manager.py` — серверная логика с отслеживанием концентрации
+
+**Реализованные функции:**
+- Cantrips (бесплатные) и левельные заклинания (тратят слоты)
+- Концентрация — одно заклинание одновременно
+- Интеграция с боевой системой (урон, хил, эффекты)
+- Upcasting — каст заклинания слотом более высокого уровня
+- Таблицы слотов по классам и уровням
 
 **Реализация:**
 1. **База заклинаний (JSON):**
@@ -1947,13 +1975,26 @@ NPC система перенесена в Фазу 0 как критическ�
 
 ---
 
-#### E. Система условий и эффектов (dnd_conditions)
+#### E. Система условий и эффектов (dnd_conditions) — ✅ РЕАЛИЗОВАНО
 
-**Цель:** Статусные эффекты D&D (отравление, паралич, невидимость...)
+> **Обновление (январь 2026):** Система условий реализована в плагине `nine/plugins/conditions/`.
 
-**Плагины:**
-- `dnd_conditions/sv_conditions.py` — логика эффектов
-- `dnd_conditions/cl_status_ui.py` — индикаторы статусов
+**Плагин `nine/plugins/conditions/`:**
+- `sh_plugin.py` — метаданные плагина (load_order=44)
+- `sh_conditions.py` — все D&D 5e условия с эффектами (ConditionEffect dataclass)
+- `sv_condition_manager.py` — серверный менеджер условий, интеграция с боем
+- `cl_condition_display.py` — клиентский UI отображения активных условий
+
+**Реализованные условия D&D 5e:**
+- Blinded — Disadvantage на атаки, advantage против
+- Charmed — Не может атаковать источник
+- Frightened — Disadvantage пока видит источник
+- Grappled — Скорость 0
+- Incapacitated — Не может действовать
+- Paralyzed — Incapacitated + auto-fail STR/DEX saves
+- Poisoned — Disadvantage на атаки и проверки
+- Prone — Disadvantage на атаки, melee advantage против
+- Stunned — Incapacitated + auto-fail STR/DEX saves
 
 **Реализация:**
 1. **Базовые условия D&D:**
@@ -1976,14 +2017,22 @@ NPC система перенесена в Фазу 0 как критическ�
 
 ### Фаза 4: Интеграция и полировка
 
-#### F. Система квестов (dnd_quests)
+#### F. Система квестов (dnd_quests) — ✅ РЕАЛИЗОВАНО
 
-**Цель:** Квесты с целями, наградами и трекингом прогресса
+> **Обновление (январь 2026):** Система квестов реализована в плагине `nine/plugins/quests/`.
 
-**Плагины:**
-- `dnd_quests/sv_quests.py` — логика квестов
-- `dnd_quests/cl_quest_log.py` — UI журнала квестов (J)
-- `dnd_quests/data/quests.json` — JSON квестов
+**Плагин `nine/plugins/quests/`:**
+- `sh_plugin.py` — метаданные плагина (load_order=50)
+- `sh_quest_data.py` — Quest, QuestObjective, QuestReward, PlayerQuestState dataclasses
+- `data/quests.json` — 7 примерных квестов
+- `sv_quest_manager.py` — серверный менеджер квестов с трекингом прогресса
+- `cl_quest_log.py` — журнал квестов (клавиша J)
+
+**Типы целей:**
+- `kill` — убить N врагов определённого типа
+- `collect` — собрать N предметов
+- `talk` — поговорить с NPC
+- `reach_location` — достичь точки
 
 **Реализация:**
 1. **Структура квеста:**
@@ -2015,13 +2064,21 @@ NPC система перенесена в Фазу 0 как критическ�
 
 ---
 
-#### G. Система отдыха (dnd_rest)
+#### G. Система отдыха (dnd_rest) — ✅ РЕАЛИЗОВАНО
 
-**Цель:** Короткий и длительный отдых для восстановления
+> **Обновление (январь 2026):** Система отдыха реализована в плагине `nine/plugins/rest/`.
 
-**Плагины:**
-- `dnd_rest/sv_rest.py` — логика отдыха
-- `dnd_rest/cl_rest_ui.py` — UI отдыха
+**Плагин `nine/plugins/rest/`:**
+- `sh_plugin.py` — метаданные плагина (load_order=55, depends on spells)
+- `sh_rest_data.py` — RestType enum, HitDicePool, размеры Hit Die по классам
+- `sv_rest_manager.py` — серверная логика отдыха (short/long rest)
+- `cl_rest_ui.py` — UI диалога отдыха с кнопкой Spend Hit Die
+
+**Изменения БД:**
+```sql
+ALTER TABLE game_characters ADD COLUMN hit_dice_current INTEGER DEFAULT 1;
+ALTER TABLE game_characters ADD COLUMN hit_dice_max INTEGER DEFAULT 1;
+```
 
 **Реализация:**
 1. **Короткий отдых (1 час):**
@@ -2144,18 +2201,19 @@ nine/plugins/dnd/
 
 ### План разработки D&D режима
 
-| Этап | Плагины | Приоритет | Зависимости |
-|------|---------|-----------|-------------|
-| **0. NPC система (ECS)** | npc/, core/ecs.py, core/navmesh.py | **Критический** | Модификация ядра |
-| **1. Персонаж** | dnd_character, dnd_dice | Критический | — |
-| **2. Бой** | dnd_combat | Критический | 0, 1 |
-| **3. DM режим** | dnd_dm | Высокий | 0, 1, 2 |
-| **4. Аудио** | dnd_audio | Высокий | — |
-| **5. Инвентарь** | dnd_inventory | Высокий | 1 |
-| **6. Заклинания** | dnd_spells | Средний | 1, 2 |
-| **7. Условия** | dnd_conditions | Средний | 2 |
-| **8. Квесты** | dnd_quests | Низкий | 0 |
-| **9. Отдых** | dnd_rest | Низкий | 1 |
+| Этап | Плагины | Приоритет | Статус |
+|------|---------|-----------|--------|
+| **0. NPC система (ECS)** | npc/, core/ecs.py | **Критический** | ✅ Завершено |
+| **1. Персонаж** | dnd_character, dnd_dice | Критический | ✅ Завершено |
+| **2. Бой** | dnd_combat | Критический | ✅ Завершено |
+| **3. DM режим** | dm_panel/ | Высокий | ✅ Завершено |
+| **4. Аудио** | dnd_audio | Высокий | ✅ Завершено |
+| **5. Инвентарь** | dnd_inventory | Высокий | ✅ Завершено |
+| **6. Заклинания** | spells/ | Средний | ✅ Завершено |
+| **7. Условия** | conditions/ | Средний | ✅ Завершено |
+| **8. Квесты** | quests/ | Низкий | ✅ Завершено |
+| **9. Отдых** | rest/ | Низкий | ✅ Завершено |
+| **10. Living NPC** | living_npc/ | Средний | ✅ Завершено |
 
 ---
 
@@ -2182,3 +2240,461 @@ nine/plugins/dnd/
 - Заклинания, условия — можно добавлять постепенно
 - Квесты и отдых — низкий приоритет, DM может делать это вручную
 - NPC расписания — добавит жизни миру, но не обязательно сразу
+
+---
+
+## Living World NPC System (Вдохновлено RimWorld/Kenshi) — ✅ РЕАЛИЗОВАНО
+
+> **Обновление (январь 2026):** Система Living World NPC реализована в плагине `nine/plugins/living_npc/`.
+
+**Плагин `nine/plugins/living_npc/`:**
+- `sh_plugin.py` — метаданные плагина (load_order=70, depends on npc)
+- `sh_living_components.py` — ECS компоненты: NeedsComponent, PersonalityComponent, RelationshipsComponent, MemoryComponent, ScheduleComponent
+- `sv_living_systems.py` — серверные системы (NeedsSystem, ScheduleSystem, RelationshipSystem, MemorySystem)
+
+**Реализованные механики:**
+- **Потребности** — hunger, energy, social, safety, comfort с decay и критическими уровнями
+- **Личность** — черты характера (brave, kind, greedy и др.), числовые характеристики (chattiness, aggression, curiosity)
+- **Отношения** — disposition (-100 до +100), trust (0-100), familiarity, relationship levels (friend/hostile)
+- **Память** — воспоминания о событиях с важностью и decay со временем
+- **Расписания** — активности по часам с приоритетами и шансом отклонения
+
+> **Долгосрочная цель:** Создать систему, где каждый NPC "живёт своей жизнью" — имеет потребности, черты характера, отношения с другими персонажами и принимает автономные решения. Игроки могут наблюдать за развитием мира, даже не участвуя напрямую.
+
+### Философия дизайна
+
+- **Эмерджентный геймплей** — интересные истории возникают из взаимодействия простых систем
+- **Автономность NPC** — мир живёт и развивается без участия игрока
+- **Связи и последствия** — действия имеют долгосрочные эффекты на NPC и фракции
+- **Наблюдение как геймплей** — интересно просто смотреть, как живёт мир
+
+---
+
+### Система потребностей (Needs System)
+
+Каждый NPC имеет набор базовых потребностей, влияющих на поведение:
+
+```python
+@dataclass
+class NeedsComponent(Component):
+    """Потребности NPC (0-100, ниже = хуже)."""
+    hunger: float = 100.0       # Голод (падает со временем)
+    rest: float = 100.0         # Усталость (падает при активности)
+    social: float = 100.0       # Социализация (падает в одиночестве)
+    safety: float = 100.0       # Безопасность (падает при угрозах)
+    comfort: float = 100.0      # Комфорт (зависит от окружения)
+    purpose: float = 100.0      # Цель/смысл (падает при бездействии)
+
+    # Пороговые значения
+    CRITICAL = 20.0  # Критический уровень
+    LOW = 40.0       # Низкий уровень
+    NORMAL = 60.0    # Нормальный уровень
+```
+
+**Поведение при низких потребностях:**
+
+| Потребность | Низкий уровень | Критический уровень |
+|-------------|----------------|---------------------|
+| Hunger | Ищет еду, становится раздражительным | Крадёт еду, теряет здоровье |
+| Rest | Медленнее работает, ошибается | Засыпает где угодно |
+| Social | Ищет компанию, грустит | Депрессия, уход в себя |
+| Safety | Избегает опасных мест | Паника, бегство |
+| Comfort | Жалуется, снижается мораль | Ищет лучшее место жительства |
+| Purpose | Скучает, теряет мотивацию | Уходит искать приключения |
+
+---
+
+### Черты характера (Traits System)
+
+Черты влияют на скорость изменения потребностей и реакции на события:
+
+```python
+class TraitType(Enum):
+    # Социальные
+    EXTROVERT = auto()      # +50% к падению social при одиночестве, +20% к восстановлению
+    INTROVERT = auto()      # -30% к падению social, но медленнее восстанавливается
+    CHARISMATIC = auto()    # +30% к влиянию на других NPC
+    SOCIALLY_AWKWARD = auto()  # -20% к социальным взаимодействиям
+
+    # Рабочие
+    HARD_WORKER = auto()    # +25% к скорости работы, -10% rest
+    LAZY = auto()           # -25% к работе, +15% rest
+    PERFECTIONIST = auto()  # +качество работы, -скорость
+    SLOPPY = auto()         # +скорость, -качество
+
+    # Боевые
+    BRAVE = auto()          # +50% safety в опасности
+    COWARD = auto()         # -30% safety, бежит раньше
+    BLOODTHIRSTY = auto()   # +combat mood, любит насилие
+    PACIFIST = auto()       # -mood от насилия
+
+    # Моральные
+    KIND = auto()           # +social от помощи другим
+    CRUEL = auto()          # +mood от чужих страданий
+    HONEST = auto()         # Не лжёт, +trust от других
+    DECEITFUL = auto()      # Может лгать, манипулировать
+
+    # Особенности
+    NIGHT_OWL = auto()      # Активен ночью
+    EARLY_BIRD = auto()     # Активен утром
+    GLUTTON = auto()        # Ест больше, +hunger падение
+    ASCETIC = auto()        # Меньше потребностей в комфорте
+```
+
+**Генерация черт при создании NPC:**
+- 2-4 случайные черты
+- Некоторые черты взаимоисключающие (BRAVE vs COWARD)
+- Черты могут меняться от сильных событий
+
+---
+
+### Система отношений (Relationships)
+
+```python
+@dataclass
+class RelationshipComponent(Component):
+    """Отношения NPC с другими сущностями."""
+    relationships: Dict[str, Relationship] = field(default_factory=dict)
+
+@dataclass
+class Relationship:
+    target_id: str
+    opinion: int = 0          # -100 до +100
+    trust: int = 50           # 0 до 100
+    familiarity: int = 0      # 0 до 100 (насколько хорошо знают друг друга)
+    relationship_type: str = "acquaintance"  # friend, rival, lover, enemy, family
+
+    # История взаимодействий
+    memories: List[RelationshipMemory] = field(default_factory=list)
+
+@dataclass
+class RelationshipMemory:
+    event_type: str           # "helped", "insulted", "saved_life", "betrayed"
+    timestamp: float
+    impact: int               # Как сильно повлияло на отношения
+    description: str          # Для отображения игроку
+```
+
+**Типы событий и их влияние:**
+
+| Событие | Opinion | Trust | Примечание |
+|---------|---------|-------|------------|
+| Помощь в бою | +15 | +10 | "X спас мне жизнь" |
+| Поделился едой | +5 | +5 | |
+| Оскорбление | -10 | -5 | Зависит от черт |
+| Предательство | -50 | -80 | Долгая память |
+| Общий враг | +10 | +5 | Сближает |
+| Романтический жест | +20 | +10 | Если взаимно |
+| Отказ в помощи | -15 | -20 | |
+
+**Развитие отношений:**
+- При familiarity > 70 и opinion > 50 — могут стать друзьями
+- При opinion < -50 — становятся врагами
+- При high opinion + правильные черты — романтические отношения
+
+---
+
+### Распорядок дня (Daily Schedule)
+
+```python
+class ScheduleSystem(System):
+    """Управляет дневным циклом NPC."""
+
+    DEFAULT_SCHEDULE = {
+        # час: активность
+        6: Activity.WAKE_UP,
+        7: Activity.BREAKFAST,
+        8: Activity.WORK,
+        12: Activity.LUNCH,
+        13: Activity.WORK,
+        18: Activity.DINNER,
+        19: Activity.LEISURE,
+        22: Activity.SLEEP,
+    }
+
+    def get_current_activity(self, npc_id: str, hour: int) -> Activity:
+        """Определяет, чем должен заниматься NPC."""
+        npc = self.get_entity(npc_id)
+
+        # Проверяем срочные потребности
+        needs = npc.get_component(NeedsComponent)
+        if needs.hunger < needs.CRITICAL:
+            return Activity.FIND_FOOD
+        if needs.rest < needs.CRITICAL:
+            return Activity.SLEEP
+        if needs.safety < needs.LOW:
+            return Activity.SEEK_SAFETY
+
+        # Следуем расписанию с учётом черт
+        traits = npc.get_component(TraitsComponent)
+        schedule = self.get_schedule_for_npc(npc_id, traits)
+
+        return schedule.get(hour, Activity.IDLE)
+```
+
+---
+
+### Работа и профессии
+
+```python
+class Profession(Enum):
+    # Производство
+    FARMER = auto()         # Выращивает еду
+    BLACKSMITH = auto()     # Создаёт оружие и инструменты
+    CARPENTER = auto()      # Строит и чинит здания
+    COOK = auto()           # Готовит еду (повышает качество)
+    TAILOR = auto()         # Создаёт одежду
+
+    # Добыча
+    MINER = auto()          # Добывает руду
+    LUMBERJACK = auto()     # Рубит деревья
+    HUNTER = auto()         # Охотится на животных
+    GATHERER = auto()       # Собирает ресурсы
+
+    # Услуги
+    MERCHANT = auto()       # Торгует
+    HEALER = auto()         # Лечит раненых
+    GUARD = auto()          # Охраняет
+    INNKEEPER = auto()      # Управляет таверной
+
+    # Особые
+    ADVENTURER = auto()     # Ищет приключения
+    BEGGAR = auto()         # Просит милостыню
+    THIEF = auto()          # Крадёт
+    ENTERTAINER = auto()    # Развлекает (бард)
+
+@dataclass
+class ProfessionComponent(Component):
+    profession: Profession
+    skill_level: int = 1        # 1-100
+    workplace_id: Optional[str] = None
+    employer_id: Optional[str] = None
+    daily_wage: int = 5         # Золотых в день
+```
+
+---
+
+### AI Decision Making (Дерево решений)
+
+```python
+class NPCBrain:
+    """Мозг NPC — принимает решения на основе всех факторов."""
+
+    def decide_action(self, npc: Entity) -> Action:
+        needs = npc.get_component(NeedsComponent)
+        traits = npc.get_component(TraitsComponent)
+        relationships = npc.get_component(RelationshipComponent)
+        profession = npc.get_component(ProfessionComponent)
+
+        # 1. Срочные потребности (survival)
+        if needs.hunger < needs.CRITICAL:
+            return self._decide_food_action(npc)
+        if needs.safety < needs.LOW:
+            return self._decide_safety_action(npc)
+        if needs.rest < needs.CRITICAL:
+            return Action.SLEEP
+
+        # 2. Социальные потребности
+        if needs.social < needs.LOW:
+            return self._decide_social_action(npc, relationships)
+
+        # 3. Рабочее время?
+        if self.is_work_time() and profession:
+            return self._decide_work_action(npc, profession)
+
+        # 4. Досуг
+        return self._decide_leisure_action(npc, traits)
+
+    def _decide_food_action(self, npc: Entity) -> Action:
+        """Решает, как NPC будет добывать еду."""
+        inventory = npc.get_component(InventoryComponent)
+        traits = npc.get_component(TraitsComponent)
+
+        # Есть еда в инвентаре?
+        if inventory.has_food():
+            return Action.EAT
+
+        # Есть деньги? Идём в таверну
+        if inventory.gold >= 2:
+            return Action.GO_TO_TAVERN
+
+        # Есть работа? Идём работать за еду
+        profession = npc.get_component(ProfessionComponent)
+        if profession and profession.workplace_id:
+            return Action.WORK_FOR_FOOD
+
+        # Черты влияют на выбор
+        if TraitType.HONEST in traits.traits:
+            return Action.BEG  # Просить милостыню
+        elif TraitType.DECEITFUL in traits.traits:
+            return Action.STEAL_FOOD  # Украсть
+        else:
+            # 50/50
+            return random.choice([Action.BEG, Action.STEAL_FOOD])
+```
+
+---
+
+### События мира (World Events)
+
+Система случайных и триггерных событий:
+
+```python
+class WorldEvent:
+    """Глобальное событие, влияющее на мир."""
+
+    EVENTS = [
+        # Природные
+        {"id": "drought", "name": "Засуха", "effects": {"food_production": -50}},
+        {"id": "plague", "name": "Чума", "effects": {"health": -30, "fear": +40}},
+        {"id": "good_harvest", "name": "Урожайный год", "effects": {"food": +30}},
+
+        # Социальные
+        {"id": "bandit_attack", "name": "Налёт бандитов", "effects": {"safety": -40}},
+        {"id": "merchant_caravan", "name": "Торговый караван", "effects": {"trade": +20}},
+        {"id": "festival", "name": "Праздник", "effects": {"mood": +20, "social": +30}},
+
+        # Политические
+        {"id": "war_declaration", "name": "Объявление войны", "effects": {"safety": -60}},
+        {"id": "new_law", "name": "Новый закон", "effects": {"varies": True}},
+        {"id": "rebellion", "name": "Восстание", "effects": {"chaos": +50}},
+    ]
+```
+
+---
+
+### Память и история
+
+NPC помнят важные события и используют их в решениях:
+
+```python
+@dataclass
+class MemoryComponent(Component):
+    """Память NPC о событиях."""
+    memories: List[Memory] = field(default_factory=list)
+    max_memories: int = 50  # Лимит памяти
+
+@dataclass
+class Memory:
+    event_type: str
+    timestamp: float
+    location: Tuple[float, float, float]
+    participants: List[str]  # ID участников
+    emotional_impact: int    # -100 до +100
+    importance: int          # 1-10
+    description: str
+
+    def is_fading(self, current_time: float) -> bool:
+        """Память тускнеет со временем."""
+        age = current_time - self.timestamp
+        fade_threshold = self.importance * 86400  # дней в секундах
+        return age > fade_threshold
+```
+
+**Примеры воспоминаний:**
+- "Меня спас Рагнар в бою 3 дня назад" — влияет на отношение к Рагнару
+- "Меня ограбили у северных ворот" — избегает этого места
+- "Праздник урожая был весёлым" — положительная память о поселении
+
+---
+
+### Фракции и репутация
+
+```python
+@dataclass
+class FactionStanding:
+    faction_id: str
+    reputation: int = 0      # -100 до +100
+    rank: str = "outsider"   # outsider, member, trusted, leader
+
+    RANKS = {
+        "hostile": (-100, -50),
+        "unfriendly": (-50, -20),
+        "neutral": (-20, 20),
+        "friendly": (20, 50),
+        "allied": (50, 100),
+    }
+```
+
+**Влияние репутации:**
+- Торговцы фракции дают скидки/наценки
+- Охрана может атаковать или пропускать
+- Доступ к квестам и локациям фракции
+- NPC фракции помогают или мешают
+
+---
+
+### Реализация (Этапы)
+
+**Этап 1: Базовые потребности** — ✅ ЗАВЕРШЕНО
+- [x] NeedsComponent с hunger, energy, social, safety, comfort
+- [x] NeedsSystem для обновления потребностей (decay, критические уровни)
+- [x] Базовое поведение при критических потребностях (события npc_urgent_need)
+
+**Этап 2: Черты и личность** — ✅ ЗАВЕРШЕНО
+- [x] PersonalityComponent с traits (brave, kind, greedy и др.)
+- [x] Числовые характеристики (chattiness, aggression, curiosity, kindness, courage)
+- [x] Влияние черт на реакции (get_reaction_modifier)
+
+**Этап 3: Отношения** — ✅ ЗАВЕРШЕНО
+- [x] RelationshipsComponent с RelationshipData
+- [x] Disposition, trust, familiarity
+- [x] События, влияющие на отношения (атака, подарок, свидетель)
+
+**Этап 4: Память** — ✅ ЗАВЕРШЕНО
+- [x] MemoryComponent с Memory dataclass
+- [x] Запись воспоминаний с важностью
+- [x] Decay воспоминаний со временем
+
+**Этап 5: Расписания** — ✅ ЗАВЕРШЕНО
+- [x] ScheduleComponent с ScheduleEntry
+- [x] Активности по часам с приоритетами
+- [x] Шанс отклонения от расписания (deviation_chance)
+
+**Этап 6: Мировые события** — ⏳ В ПЛАНАХ
+- [ ] WorldEventSystem
+- [ ] Влияние событий на NPC
+- [ ] Цепочки последствий
+
+---
+
+### Технические заметки
+
+- **Производительность:** Обновлять потребности не каждый кадр, а раз в N секунд
+- **Сериализация:** Все компоненты должны сохраняться в БД
+- **Сетевая синхронизация:** Клиенту не нужны все детали — только видимое поведение
+- **Масштабирование:** Система должна работать с 100+ NPC
+
+---
+
+## Scene Optimizer (Оптимизация рендеринга)
+
+> **Добавлено:** январь 2026
+
+Для работы с большими картами (3000+ GeomNodes) добавлен `SceneOptimizer`:
+
+**Расположение:** `nine/core/scene_optimizer.py`
+
+**Возможности:**
+- **Flatten** — объединение геометрии для уменьшения draw calls
+- **Distance Culling** — скрытие объектов за пределами дистанции
+- **LOD System** — уровни детализации на разных дистанциях
+- **Spatial Partitioning** — зоны для группового culling
+
+**Использование в клиенте:**
+```python
+# При загрузке карты (client.py)
+opt_stats = self.scene_optimizer.optimize_map(self.map_model, aggressive=True)
+self.scene_optimizer.setup_distance_culling(
+    self.camera,
+    self.map_model,
+    cull_distance=400.0,
+    update_interval=0.15
+)
+```
+
+**Настройки LOD:**
+- High detail: 0-50m
+- Medium detail: 50-150m
+- Low detail: 150-300m
+- Culled: >400m
