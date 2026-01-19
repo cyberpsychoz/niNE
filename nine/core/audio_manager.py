@@ -87,6 +87,24 @@ class AudioManager:
         # Мастер-громкость
         self._master_volume = config.get("audio_master_volume", 100) / 100.0
 
+        # Создаём отдельные аудио менеджеры для разных каналов
+        # Это позволяет BGM, BGS и SFX играть независимо друг от друга
+        from panda3d.core import AudioManager as PandaAudioManager
+        self._bgm_manager = PandaAudioManager.createAudioManager()
+        self._bgs_manager = PandaAudioManager.createAudioManager()
+        self._sfx_manager = PandaAudioManager.createAudioManager()
+
+        # Настраиваем менеджеры
+        if self._bgm_manager:
+            self._bgm_manager.setActive(True)
+            self._bgm_manager.setConcurrentSoundLimit(2)  # Для кроссфейда
+        if self._bgs_manager:
+            self._bgs_manager.setActive(True)
+            self._bgs_manager.setConcurrentSoundLimit(2)
+        if self._sfx_manager:
+            self._sfx_manager.setActive(True)
+            self._sfx_manager.setConcurrentSoundLimit(16)  # Много одновременных SFX
+
         # Текущие звуки
         self._current_bgm: Optional[AudioSound] = None
         self._current_bgs: Optional[AudioSound] = None
@@ -102,7 +120,7 @@ class AudioManager:
         self._sfx_pool: List[AudioSound] = []
         self._max_sfx = 16  # Максимум одновременных SFX
 
-        # Кеш загруженных звуков
+        # Кеш загруженных звуков (по каналам)
         self._sound_cache: Dict[str, AudioSound] = {}
 
         # Callbacks
@@ -119,6 +137,12 @@ class AudioManager:
         """Инициализирует стандартные плейлисты."""
         # Плейлисты BGM
         self._playlists = {
+            "menu": Playlist(
+                name="menu",
+                tracks=["bgm/city_1.mp3"],
+                shuffle=False,
+                loop=True,
+            ),
             "adventure": Playlist(
                 name="adventure",
                 tracks=[
@@ -323,26 +347,44 @@ class AudioManager:
         """Возвращает полный путь к звуковому файлу."""
         return f"{self.SOUNDS_PATH}/{relative_path}"
 
-    def _load_sound(self, relative_path: str, positional: bool = False) -> Optional[AudioSound]:
+    def _load_sound_for_channel(self, relative_path: str, channel: AudioChannel) -> Optional[AudioSound]:
         """
-        Загружает звуковой файл.
+        Загружает звуковой файл для конкретного канала.
 
         Args:
             relative_path: Относительный путь от папки sounds
-            positional: True для 3D позиционного звука
+            channel: Канал аудио (BGM, BGS, SFX, UI)
         """
         full_path = self._get_full_path(relative_path)
 
-        # Проверяем кеш
-        cache_key = f"{full_path}_{positional}"
+        # Проверяем кеш (ключ включает канал, т.к. разные менеджеры)
+        cache_key = f"{full_path}_{channel.name}"
         if cache_key in self._sound_cache:
             return self._sound_cache[cache_key]
 
-        try:
-            if positional:
+        # Выбираем правильный аудио менеджер
+        if channel == AudioChannel.BGM:
+            manager = self._bgm_manager
+        elif channel == AudioChannel.BGS:
+            manager = self._bgs_manager
+        else:
+            manager = self._sfx_manager
+
+        if not manager:
+            # Fallback на стандартный loader
+            try:
                 sound = self.base.loader.loadSfx(full_path)
-            else:
-                sound = self.base.loader.loadMusic(full_path)
+                if sound:
+                    self._sound_cache[cache_key] = sound
+                    return sound
+            except Exception as e:
+                if self.logger:
+                    self.logger.warning(f"Failed to load sound: {full_path} - {e}")
+            return None
+
+        try:
+            from panda3d.core import Filename
+            sound = manager.getSound(Filename.fromOsSpecific(full_path))
 
             if sound:
                 self._sound_cache[cache_key] = sound
@@ -352,6 +394,13 @@ class AudioManager:
                 self.logger.warning(f"Failed to load sound: {full_path} - {e}")
 
         return None
+
+    def _load_sound(self, relative_path: str, positional: bool = False) -> Optional[AudioSound]:
+        """
+        Загружает звуковой файл (для обратной совместимости).
+        Использует SFX канал по умолчанию.
+        """
+        return self._load_sound_for_channel(relative_path, AudioChannel.SFX)
 
     # =========================================================================
     # BGM (Background Music)
@@ -397,8 +446,8 @@ class AudioManager:
         # Получаем следующий трек
         track_path = self._shuffled_tracks[self._playlist_index]
 
-        # Загружаем
-        new_bgm = self._load_sound(track_path)
+        # Загружаем через BGM канал
+        new_bgm = self._load_sound_for_channel(track_path, AudioChannel.BGM)
         if not new_bgm:
             # Пропускаем битый трек
             self._playlist_index = (self._playlist_index + 1) % len(self._shuffled_tracks)
@@ -414,7 +463,8 @@ class AudioManager:
         # Запускаем новый
         self._current_bgm = new_bgm
         self._current_bgm.setLoop(False)  # Мы сами управляем переключением
-        self._current_bgm.setVolume(0 if crossfade > 0 else self._get_channel_volume(AudioChannel.BGM))
+        initial_volume = 0 if crossfade > 0 else self._get_channel_volume(AudioChannel.BGM)
+        self._current_bgm.setVolume(initial_volume)
         self._current_bgm.play()
 
         if crossfade > 0:
@@ -434,7 +484,7 @@ class AudioManager:
         """
         self._current_playlist = None  # Сбрасываем плейлист
 
-        new_bgm = self._load_sound(track_path)
+        new_bgm = self._load_sound_for_channel(track_path, AudioChannel.BGM)
         if not new_bgm:
             return
 
@@ -496,7 +546,8 @@ class AudioManager:
                 self.logger.warning(f"Ambient not found: {ambient_name}")
             return
 
-        new_bgs = self._load_sound(ambient_path)
+        # Загружаем через BGS канал (отдельный от BGM)
+        new_bgs = self._load_sound_for_channel(ambient_path, AudioChannel.BGS)
         if not new_bgs:
             return
 
@@ -547,9 +598,22 @@ class AudioManager:
         else:
             path = sfx_name  # Прямой путь
 
-        # Загружаем
-        sound = self._load_sound(path)
-        if not sound:
+        # Для SFX создаём новый экземпляр звука каждый раз
+        # чтобы можно было воспроизводить несколько одинаковых звуков одновременно
+        full_path = self._get_full_path(path)
+
+        try:
+            if self._sfx_manager:
+                from panda3d.core import Filename
+                sound = self._sfx_manager.getSound(Filename.fromOsSpecific(full_path))
+            else:
+                sound = self.base.loader.loadSfx(full_path)
+
+            if not sound:
+                return None
+        except Exception as e:
+            if self.logger:
+                self.logger.warning(f"Failed to load SFX: {full_path} - {e}")
             return None
 
         # Настраиваем
@@ -568,7 +632,7 @@ class AudioManager:
         return sound
 
     def play_footstep(self, surface: str = "dirt", is_running: bool = False,
-                      has_chain_armor: bool = False) -> Optional[AudioSound]:
+                      has_chain_armor: bool = False, volume: float = 0.25) -> Optional[AudioSound]:
         """
         Воспроизводит звук шага.
 
@@ -576,27 +640,28 @@ class AudioManager:
             surface: Тип поверхности (dirt, stone, water, wood)
             is_running: True если бег
             has_chain_armor: True если персонаж в кольчуге
+            volume: Громкость (0.0 - 1.0)
         """
         surface = surface.lower()
         action = "run" if is_running else "walk"
         armor = "_chain" if has_chain_armor else ""
 
         sfx_name = f"footstep_{surface}{armor}_{action}"
-        return self.play_sfx(sfx_name, volume=0.6, pitch_variance=0.1)
+        return self.play_sfx(sfx_name, volume=volume, pitch_variance=0.1)
 
-    def play_jump(self, surface: str = "dirt", has_chain_armor: bool = False):
+    def play_jump(self, surface: str = "dirt", has_chain_armor: bool = False, volume: float = 0.3):
         """Воспроизводит звук прыжка."""
         surface = surface.lower()
         armor = "_chain" if has_chain_armor else ""
         sfx_name = f"footstep_{surface}{armor}_jump"
-        return self.play_sfx(sfx_name, volume=0.7)
+        return self.play_sfx(sfx_name, volume=volume)
 
-    def play_land(self, surface: str = "dirt", has_chain_armor: bool = False):
+    def play_land(self, surface: str = "dirt", has_chain_armor: bool = False, volume: float = 0.35):
         """Воспроизводит звук приземления."""
         surface = surface.lower()
         armor = "_chain" if has_chain_armor else ""
         sfx_name = f"footstep_{surface}{armor}_land"
-        return self.play_sfx(sfx_name, volume=0.8)
+        return self.play_sfx(sfx_name, volume=volume)
 
     # =========================================================================
     # UI Sounds
@@ -623,10 +688,21 @@ class AudioManager:
 
         # Выбираем случайный звук из вариантов
         path = random.choice(sounds)
+        full_path = self._get_full_path(path)
 
-        # Загружаем
-        sound = self._load_sound(path)
-        if not sound:
+        # UI звуки тоже используют SFX менеджер для мультиинстансинга
+        try:
+            if self._sfx_manager:
+                from panda3d.core import Filename
+                sound = self._sfx_manager.getSound(Filename.fromOsSpecific(full_path))
+            else:
+                sound = self.base.loader.loadSfx(full_path)
+
+            if not sound:
+                return None
+        except Exception as e:
+            if self.logger:
+                self.logger.warning(f"Failed to load UI sound: {full_path} - {e}")
             return None
 
         # Настраиваем громкость
@@ -794,6 +870,14 @@ class AudioManager:
         for sound in self._sound_cache.values():
             sound.stop()
         self._sound_cache.clear()
+
+        # Выключаем аудио менеджеры
+        if self._bgm_manager:
+            self._bgm_manager.shutdown()
+        if self._bgs_manager:
+            self._bgs_manager.shutdown()
+        if self._sfx_manager:
+            self._sfx_manager.shutdown()
 
         if hasattr(self.base, 'taskMgr'):
             self.base.taskMgr.remove("audio-manager-update")

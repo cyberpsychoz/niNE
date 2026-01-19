@@ -59,6 +59,15 @@ class DMPanelServerModule(PluginModule):
 
     def _get_player_role(self, client_id: int) -> str:
         """Получает роль игрока."""
+        # Dev-клиенты автоматически получают роль admin для тестирования
+        if hasattr(self.app, 'allow_dev_client') and self.app.allow_dev_client:
+            # Проверяем, это dev-клиент (нет в authenticated_clients)
+            if not hasattr(self.app, 'authenticated_clients'):
+                return "admin"
+            client_data = self.app.authenticated_clients.get(client_id)
+            if not client_data:
+                return "admin"
+
         # Получаем account_uuid из authenticated_clients (D&D плагин)
         if not hasattr(self.app, 'authenticated_clients'):
             return "player"
