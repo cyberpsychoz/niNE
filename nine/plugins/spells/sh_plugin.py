@@ -18,7 +18,7 @@ PLUGIN_INFO = PluginInfo(
     author="niNE Team",
     version="0.1.0",
     dependencies=["nine.combat"],
-    load_order=45,  # После combat, до dm_panel
+    load_order=52,  # После combat (50) и conditions (51)
     enabled=True,
 )
 

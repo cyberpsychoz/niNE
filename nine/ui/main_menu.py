@@ -347,6 +347,9 @@ class MainMenu(BaseUIComponent, DirectObject):
             frameColor=(0, 0, 0, 0),
         ))
 
+        # Запускаем музыку главного меню
+        self._start_menu_music()
+
     def _on_window_event(self, window):
         """Пересчитывает фон при изменении размера окна."""
         if self._is_animated and self._animated_bg:
@@ -395,6 +398,27 @@ class MainMenu(BaseUIComponent, DirectObject):
         except Exception:
             pass
 
+    def _start_menu_music(self):
+        """Запускает музыку главного меню."""
+        try:
+            if hasattr(self.base, 'audio_manager') and self.base.audio_manager:
+                self.base.audio_manager.play_bgm("menu", crossfade=1.0)
+            else:
+                # Создаём AudioManager если его ещё нет
+                from nine.core.audio_manager import AudioManager
+                self.base.audio_manager = AudioManager(self.base)
+                self.base.audio_manager.play_bgm("menu", crossfade=0)
+        except Exception as e:
+            print(f"[MainMenu] Failed to start menu music: {e}")
+
+    def _stop_menu_music(self, fadeout: float = 1.0):
+        """Останавливает музыку главного меню."""
+        try:
+            if hasattr(self.base, 'audio_manager') and self.base.audio_manager:
+                self.base.audio_manager.stop_bgm(fadeout=fadeout)
+        except Exception:
+            pass
+
     def show(self):
         """Показывает главное меню."""
         # Показываем все элементы
@@ -414,6 +438,9 @@ class MainMenu(BaseUIComponent, DirectObject):
                         self._animated_bg._animate_task, "gif_animate"
                     )
 
+        # Возобновляем музыку
+        self._start_menu_music()
+
     def hide(self):
         """Скрывает главное меню (без уничтожения)."""
         # Скрываем все элементы
@@ -430,6 +457,9 @@ class MainMenu(BaseUIComponent, DirectObject):
             if self._animated_bg._task:
                 self.base.taskMgr.remove(self._animated_bg._task)
                 self._animated_bg._task = None
+
+        # Останавливаем музыку меню
+        self._stop_menu_music(fadeout=0.5)
 
     def next_background(self):
         """Переключает на следующий фон."""
@@ -451,6 +481,8 @@ class MainMenu(BaseUIComponent, DirectObject):
     def destroy(self):
         """Уничтожает меню."""
         self.ignoreAll()
+        # Останавливаем музыку
+        self._stop_menu_music(fadeout=0.3)
         if self._animated_bg:
             self._animated_bg.destroy()
             self._animated_bg = None

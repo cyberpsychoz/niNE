@@ -158,6 +158,23 @@ CHAT_COMMANDS = {
         "usage": "/charsetfaction guards",
     },
 
+    # GM команды NPC
+    "spawnnpc": {
+        "description": "/spawnnpc <шаблон> [x y z] — заспавнить NPC",
+        "role": "admin",
+        "usage": "/spawnnpc goblin",
+    },
+    "listnpcs": {
+        "description": "/listnpcs — список активных NPC",
+        "role": "admin",
+        "usage": "/listnpcs",
+    },
+    "removenpc": {
+        "description": "/removenpc <id> — удалить NPC",
+        "role": "admin",
+        "usage": "/removenpc npc_goblin_1",
+    },
+
     # GM боевые команды
     "startcombat": {
         "description": "/startcombat [радиус] — начать бой с NPC",
@@ -188,6 +205,21 @@ CHAT_COMMANDS = {
         "description": "/setinit <id> <значение> — установить инициативу",
         "role": "admin",
         "usage": "/setinit player1 15",
+    },
+    "setrole": {
+        "description": "/setrole <player|dm|admin> — установить себе роль (только из admins.txt)",
+        "role": "all",
+        "usage": "/setrole admin",
+    },
+    "myrole": {
+        "description": "/myrole — показать свою текущую роль",
+        "role": "all",
+        "usage": "/myrole",
+    },
+    "whoami": {
+        "description": "/whoami — показать своё имя и ID",
+        "role": "all",
+        "usage": "/whoami",
     },
 
     # GM аудио команды
@@ -305,6 +337,34 @@ class ChatBroadcastModule(PluginModule):
                 return ParsedMessage(ChatType.COMMAND, "", command="charsetfaction", args=[faction])
 
         # =========================================================================
+        # GM/DM команды NPC
+        # =========================================================================
+
+        # /spawnnpc <template> [x y z] - заспавнить NPC
+        if message.lower().startswith("/spawnnpc "):
+            parts = message[10:].strip().split()
+            if parts:
+                template = parts[0]
+                coords = []
+                if len(parts) >= 4:
+                    try:
+                        coords = [float(parts[1]), float(parts[2]), float(parts[3])]
+                    except ValueError:
+                        pass
+                return ParsedMessage(ChatType.COMMAND, "", command="spawnnpc", args=[template] + coords)
+
+        # /listnpcs - список активных NPC
+        if message.lower().strip() == "/listnpcs":
+            return ParsedMessage(ChatType.COMMAND, "", command="listnpcs", args=[])
+
+        # /removenpc <entity_id> - удалить NPC
+        if message.lower().startswith("/removenpc "):
+            parts = message[11:].strip().split()
+            if parts:
+                entity_id = parts[0]
+                return ParsedMessage(ChatType.COMMAND, "", command="removenpc", args=[entity_id])
+
+        # =========================================================================
         # GM/DM боевые команды
         # =========================================================================
 
@@ -386,6 +446,21 @@ class ChatBroadcastModule(PluginModule):
         # /help - показать список команд
         if message.lower().strip() == "/help":
             return ParsedMessage(ChatType.COMMAND, "", command="help", args=[])
+
+        # /setrole <role> - установить роль
+        if message.lower().startswith("/setrole "):
+            parts = message[9:].strip().split()
+            if parts:
+                role = parts[0]
+                return ParsedMessage(ChatType.COMMAND, "", command="setrole", args=[role])
+
+        # /myrole - показать свою роль
+        if message.lower().strip() == "/myrole":
+            return ParsedMessage(ChatType.COMMAND, "", command="myrole", args=[])
+
+        # /whoami - показать своё имя и ID
+        if message.lower().strip() == "/whoami":
+            return ParsedMessage(ChatType.COMMAND, "", command="whoami", args=[])
 
         # Проверка на неизвестную команду (начинается с /, но не распознана)
         if message.startswith("/"):
@@ -602,6 +677,45 @@ class ChatBroadcastModule(PluginModule):
                 self._send_system_message(client_id, "Ошибка при изменении фракции")
 
         # =========================================================================
+        # GM/DM команды NPC
+        # =========================================================================
+
+        elif command == "spawnnpc":
+            # /spawnnpc <template> [x y z] - заспавнить NPC
+            if not self._is_admin(client_id):
+                self._send_system_message(client_id, "Недостаточно прав для этой команды")
+                return
+
+            if len(args) < 1:
+                self._send_system_message(client_id, "Использование: /spawnnpc <шаблон> [x y z]")
+                return
+
+            template = args[0]
+            coords = args[1:4] if len(args) >= 4 else None
+            self._handle_spawnnpc(client_id, player_name, template, coords)
+
+        elif command == "listnpcs":
+            # /listnpcs - список активных NPC
+            if not self._is_admin(client_id):
+                self._send_system_message(client_id, "Недостаточно прав для этой команды")
+                return
+
+            self._handle_listnpcs(client_id, player_name)
+
+        elif command == "removenpc":
+            # /removenpc <entity_id> - удалить NPC
+            if not self._is_admin(client_id):
+                self._send_system_message(client_id, "Недостаточно прав для этой команды")
+                return
+
+            if len(args) < 1:
+                self._send_system_message(client_id, "Использование: /removenpc <entity_id>")
+                return
+
+            entity_id = args[0]
+            self._handle_removenpc(client_id, player_name, entity_id)
+
+        # =========================================================================
         # GM/DM боевые команды
         # =========================================================================
 
@@ -665,6 +779,22 @@ class ChatBroadcastModule(PluginModule):
             value = args[1]
             self._handle_setinit(client_id, player_name, entity_id, value)
 
+        elif command == "setrole":
+            # /setrole <role> - установить роль (только для тех кто в admins.txt)
+            if not args:
+                self._send_system_message(client_id, "Использование: /setrole <player|dm|admin>")
+                return
+            self._handle_setrole(client_id, player_name, args[0])
+
+        elif command == "myrole":
+            # /myrole - показать текущую роль
+            role = self._get_player_role(client_id)
+            self._send_system_message(client_id, f"Ваша роль: {role}")
+
+        elif command == "whoami":
+            # /whoami - показать своё имя и ID
+            self._send_system_message(client_id, f"Имя: {player_name}, Client ID: {client_id}")
+
         # =========================================================================
         # GM/DM аудио команды
         # =========================================================================
@@ -725,6 +855,28 @@ class ChatBroadcastModule(PluginModule):
 
     def _get_player_role(self, client_id: int) -> str:
         """Получает роль игрока по client_id."""
+        # Получаем имя игрока для проверки admins.txt
+        player_name = self._get_player_name_by_id(client_id)
+
+        # Проверяем admins.txt - если игрок там, он автоматически admin
+        if player_name and self._is_in_admins_file(player_name):
+            return "admin"
+
+        # Dev-клиенты автоматически получают роль admin для тестирования
+        if hasattr(self.app, 'allow_dev_client') and self.app.allow_dev_client:
+            # Проверяем, это dev-клиент (нет в authenticated_clients)
+            is_dev_client = True
+            if hasattr(self.app, 'plugin_manager'):
+                dnd_plugin = self.app.plugin_manager.get_plugin("nine.dnd")
+                if dnd_plugin:
+                    for module in dnd_plugin.modules:
+                        if hasattr(module, 'authenticated_clients'):
+                            if client_id in module.authenticated_clients:
+                                is_dev_client = False
+                            break
+            if is_dev_client:
+                return "admin"
+
         if not hasattr(self.app, 'db'):
             return "player"
 
@@ -739,10 +891,66 @@ class ChatBroadcastModule(PluginModule):
                             return self.app.db.get_player_role(account_uuid)
         return "player"
 
+    def _get_player_name_by_id(self, client_id: int) -> str:
+        """Получает имя игрока по client_id."""
+        if hasattr(self.app, 'world') and hasattr(self.app.world, 'players'):
+            player = self.app.world.players.get(client_id)
+            if player:
+                return player.name
+        return ""
+
     def _is_admin(self, client_id: int) -> bool:
         """Проверяет, является ли игрок администратором или DM."""
         role = self._get_player_role(client_id)
         return role in ("admin", "dm")
+
+    def _is_in_admins_file(self, player_name: str) -> bool:
+        """Проверяет, есть ли игрок в файле admins.txt."""
+        import os
+        admins_file = "admins.txt"
+        if not os.path.exists(admins_file):
+            return False
+        try:
+            with open(admins_file, 'r', encoding='utf-8') as f:
+                admins = [line.strip().lower() for line in f if line.strip() and not line.startswith('#')]
+            return player_name.lower() in admins
+        except Exception:
+            return False
+
+    def _handle_setrole(self, client_id: int, player_name: str, role: str):
+        """Устанавливает роль игроку."""
+        role = role.lower()
+        valid_roles = ("player", "dm", "admin")
+
+        if role not in valid_roles:
+            self._send_system_message(client_id, f"Недопустимая роль. Доступные: {', '.join(valid_roles)}")
+            return
+
+        # Проверяем, есть ли игрок в admins.txt
+        if not self._is_in_admins_file(player_name):
+            self._send_system_message(client_id, "Вы не в списке администраторов (admins.txt)")
+            return
+
+        # Получаем account_uuid
+        account_uuid = None
+        if hasattr(self.app, 'plugin_manager'):
+            dnd_plugin = self.app.plugin_manager.get_plugin("nine.dnd")
+            if dnd_plugin:
+                for module in dnd_plugin.modules:
+                    if hasattr(module, 'authenticated_clients'):
+                        account_uuid = module.authenticated_clients.get(client_id)
+                        break
+
+        if account_uuid and hasattr(self.app, 'db'):
+            success = self.app.db.set_player_role(account_uuid, role)
+            if success:
+                self._send_system_message(client_id, f"Ваша роль изменена на: {role}")
+                self.logger.info(f"Player {player_name} set their role to {role}")
+            else:
+                self._send_system_message(client_id, "Ошибка изменения роли")
+        else:
+            # Для dev-клиентов роль устанавливается автоматически
+            self._send_system_message(client_id, f"Dev-клиент: роль автоматически admin")
 
     def _get_active_character(self, client_id: int) -> Optional[str]:
         """Получает UUID активного персонажа клиента."""
@@ -790,6 +998,77 @@ class ChatBroadcastModule(PluginModule):
                 state = player.get_state()
                 return state.get("pos", [0, 0, 0])
         return None
+
+    # =========================================================================
+    # Обработчики команд NPC
+    # =========================================================================
+
+    def _handle_spawnnpc(self, client_id: int, player_name: str, template: str, coords=None):
+        """Обрабатывает /spawnnpc - спавнит NPC."""
+        # Получаем позицию игрока если координаты не указаны
+        if coords is None:
+            coords = self._get_player_position(client_id)
+            if not coords:
+                self._send_system_message(client_id, "Не удалось определить позицию")
+                return
+
+        # Отправляем событие в NPC плагин
+        self.event_manager.post("npc_spawn_request", {
+            "template": template,
+            "position": coords,
+            "spawner_id": client_id,
+        })
+        self._send_system_message(client_id, f"Спавн NPC '{template}' на позиции {coords}")
+        self.logger.info(f"{player_name} spawned NPC {template} at {coords}")
+
+    def _handle_listnpcs(self, client_id: int, player_name: str):
+        """Обрабатывает /listnpcs - показывает список активных NPC."""
+        if not hasattr(self.app, 'plugin_manager'):
+            self._send_system_message(client_id, "Plugin manager не найден")
+            return
+
+        npc_plugin = self.app.plugin_manager.get_plugin("nine.npc")
+        if not npc_plugin:
+            self._send_system_message(client_id, "NPC плагин не загружен")
+            return
+
+        # Получаем список NPC
+        npcs = []
+        for module in npc_plugin.modules:
+            if hasattr(module, 'get_all_npcs'):
+                npcs = module.get_all_npcs()
+                break
+
+        if not npcs:
+            self._send_system_message(client_id, "Нет активных NPC")
+            return
+
+        # Формируем список
+        lines = ["=== Активные NPC ==="]
+        for npc in npcs[:20]:  # Максимум 20
+            npc_id = npc.get("entity_id", "unknown")
+            template = npc.get("template", "unknown")
+            pos = npc.get("position", [0, 0, 0])
+            lines.append(f"{npc_id}: {template} @ ({pos[0]:.1f}, {pos[1]:.1f}, {pos[2]:.1f})")
+
+        if len(npcs) > 20:
+            lines.append(f"... и ещё {len(npcs) - 20} NPC")
+
+        self._send_system_message(client_id, "\n".join(lines))
+
+    def _handle_removenpc(self, client_id: int, player_name: str, entity_id: str):
+        """Обрабатывает /removenpc - удаляет NPC."""
+        # Отправляем событие в NPC плагин
+        self.event_manager.post("npc_remove_request", {
+            "entity_id": entity_id,
+            "remover_id": client_id,
+        })
+        self._send_system_message(client_id, f"Удаление NPC '{entity_id}'")
+        self.logger.info(f"{player_name} removed NPC {entity_id}")
+
+    # =========================================================================
+    # Обработчики боевых команд
+    # =========================================================================
 
     def _handle_startcombat(self, client_id: int, player_name: str, radius: float):
         """Обрабатывает /startcombat - начинает бой с враждебными NPC в радиусе."""
