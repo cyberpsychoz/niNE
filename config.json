@@ -12,8 +12,11 @@
     "invert_mouse_y": true,
     "third_person_camera": true,
     "fov": 70,
-    "audio_master_volume": 100,
-    "audio_bgm_volume": 70,
-    "audio_sfx_volume": 80,
-    "audio_ambient_volume": 60
+    "audio_master_volume": 65,
+    "audio_bgm_volume": 69,
+    "audio_sfx_volume": 21,
+    "audio_ambient_volume": 74,
+    "audio_ui_volume": 70,
+    "ui_sound_pack": "fantasy",
+    "ui_sounds_enabled": true
 }

@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 
 from nine.core.plugins import PluginModule
-from .sh_spell_slots import (
+from nine.plugins.spells.sh_spell_slots import (
     get_spell_slots_for_class,
     get_spellcasting_ability,
     calculate_spell_save_dc,

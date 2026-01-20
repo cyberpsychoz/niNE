@@ -14,12 +14,21 @@ from direct.showbase.DirectObject import DirectObject
 from panda3d.core import TextNode
 
 from nine.core.plugins import PluginModule
+from nine.core.game_state import GameState
 
 
 class QuestLogClientModule(PluginModule, DirectObject):
     """
     Клиентский модуль журнала квестов.
     """
+
+    # Русские переводы статусов
+    STATUS_NAMES = {
+        "active": "В процессе",
+        "completed": "Готов к сдаче",
+        "available": "Доступен",
+        "turned_in": "Завершён",
+    }
 
     def on_load(self):
         # UI элементы
@@ -41,6 +50,7 @@ class QuestLogClientModule(PluginModule, DirectObject):
         self.event_manager.subscribe("quest_objective_progress", self._on_objective_progress)
         self.event_manager.subscribe("quest_ready_to_turn_in", self._on_ready_to_turn_in)
         self.event_manager.subscribe("game_state_changed", self._on_game_state_changed)
+        self.event_manager.subscribe("close_other_ui", self._on_close_other_ui)
 
         self.logger.info("Quest Log клиентский модуль загружен (J)")
 
@@ -52,6 +62,7 @@ class QuestLogClientModule(PluginModule, DirectObject):
         self.event_manager.unsubscribe("quest_objective_progress", self._on_objective_progress)
         self.event_manager.unsubscribe("quest_ready_to_turn_in", self._on_ready_to_turn_in)
         self.event_manager.unsubscribe("game_state_changed", self._on_game_state_changed)
+        self.event_manager.unsubscribe("close_other_ui", self._on_close_other_ui)
 
         if self._main_frame:
             self._main_frame.destroy()
@@ -59,21 +70,50 @@ class QuestLogClientModule(PluginModule, DirectObject):
 
         self.logger.info("Quest Log клиентский модуль выгружен")
 
+    def _on_close_other_ui(self, data: dict):
+        """Закрывает окно если оно не исключено."""
+        exclude = data.get("exclude", "")
+        if exclude != "quest_log" and self._is_visible:
+            self.hide_quest_log()
+
+    # =========================================================================
+    # Game State Check
+    # =========================================================================
+
+    def _is_in_game(self) -> bool:
+        """Проверяет, находится ли игрок в игре."""
+        if hasattr(self.app, 'game_state'):
+            return self.app.game_state == GameState.IN_GAME
+        if hasattr(self.app, 'ui') and hasattr(self.app.ui, 'game_state'):
+            return self.app.ui.game_state == GameState.IN_GAME
+        return False
+
     # =========================================================================
     # Toggle & Visibility
     # =========================================================================
 
     def toggle_quest_log(self):
-        """Переключает видимость журнала квестов."""
-        if self._is_visible:
-            self.hide_quest_log()
-        else:
-            self.show_quest_log()
+        """Открывает лист персонажа на вкладке квестов."""
+        if not self._is_in_game():
+            return
+
+        # Не открываем если чат активен
+        if hasattr(self.app, 'is_chat_active') and self.app.is_chat_active():
+            return
+
+        # Открываем лист персонажа на вкладке квестов
+        self.event_manager.post("open_character_sheet_tab", {"tab": "quests"})
 
     def show_quest_log(self):
         """Показывает журнал квестов."""
+        if not self._is_in_game():
+            return
+
         if self._is_visible:
             return
+
+        # Закрываем другие окна
+        self.event_manager.post("close_other_ui", {"exclude": "quest_log"})
 
         if not self._main_frame:
             self._create_ui()
@@ -112,7 +152,7 @@ class QuestLogClientModule(PluginModule, DirectObject):
         # Заголовок
         DirectLabel(
             parent=self._main_frame,
-            text="Quest Log",
+            text="Журнал квестов",
             text_scale=0.055,
             text_fg=(0.9, 0.8, 0.5, 1),
             text_align=TextNode.ACenter,
@@ -153,10 +193,10 @@ class QuestLogClientModule(PluginModule, DirectObject):
         )
 
         filters = [
-            ("Active", "active", -0.5),
-            ("Available", "available", -0.25),
-            ("Completed", "completed", 0.05),
-            ("All", "all", 0.3),
+            ("Активные", "active", -0.5),
+            ("Доступные", "available", -0.25),
+            ("Завершённые", "completed", 0.05),
+            ("Все", "all", 0.3),
         ]
 
         self._filter_buttons: Dict[str, DirectButton] = {}
@@ -202,7 +242,7 @@ class QuestLogClientModule(PluginModule, DirectObject):
         # Название
         self._detail_name = DirectLabel(
             parent=details_frame,
-            text="Select a quest",
+            text="Выберите квест",
             text_scale=0.04,
             text_fg=(0.9, 0.8, 0.5, 1),
             text_align=TextNode.ALeft,
@@ -365,13 +405,8 @@ class QuestLogClientModule(PluginModule, DirectObject):
 
         # Статус
         status = quest.get("status", "active")
-        status_text = {
-            "active": "In Progress",
-            "completed": "Ready to Turn In",
-            "available": "Available",
-            "turned_in": "Completed",
-        }.get(status, status)
-        self._detail_status["text"] = f"Status: {status_text}"
+        status_text = self.STATUS_NAMES.get(status, status)
+        self._detail_status["text"] = f"Статус: {status_text}"
 
         if status == "completed":
             self._detail_status["text_fg"] = (0.5, 1.0, 0.5, 1)
@@ -386,7 +421,7 @@ class QuestLogClientModule(PluginModule, DirectObject):
 
         # Цели
         objectives = quest.get("objectives", [])
-        self._objectives_label["text"] = "Objectives:" if objectives else ""
+        self._objectives_label["text"] = "Цели:" if objectives else ""
 
         # Очищаем старые метки целей
         for label in self._objective_labels:
@@ -404,7 +439,7 @@ class QuestLogClientModule(PluginModule, DirectObject):
 
             # Определяем прогресс
             if current >= target:
-                progress = "[DONE]"
+                progress = "[ГОТОВО]"
                 color = (0.5, 1.0, 0.5, 1)
             else:
                 progress = f"[{current}/{target}]"
@@ -412,7 +447,7 @@ class QuestLogClientModule(PluginModule, DirectObject):
 
             text = f"{progress} {obj_desc}"
             if optional:
-                text += " (optional)"
+                text += " (опционально)"
 
             label = DirectLabel(
                 parent=canvas,
@@ -434,15 +469,15 @@ class QuestLogClientModule(PluginModule, DirectObject):
         # Награды
         rewards = quest.get("rewards", {})
         if rewards:
-            self._rewards_label["text"] = "Rewards:"
+            self._rewards_label["text"] = "Награды:"
             reward_parts = []
             if rewards.get("experience"):
-                reward_parts.append(f"{rewards['experience']} XP")
+                reward_parts.append(f"{rewards['experience']} опыта")
             if rewards.get("gold"):
-                reward_parts.append(f"{rewards['gold']} Gold")
+                reward_parts.append(f"{rewards['gold']} золота")
             if rewards.get("items"):
                 for item in rewards["items"]:
-                    reward_parts.append(f"{item.get('count', 1)}x {item.get('id', 'item')}")
+                    reward_parts.append(f"{item.get('count', 1)}x {item.get('id', 'предмет')}")
             self._rewards_text["text"] = ", ".join(reward_parts)
         else:
             self._rewards_label["text"] = ""
@@ -450,7 +485,7 @@ class QuestLogClientModule(PluginModule, DirectObject):
 
         # Кнопка действия
         if status == "active":
-            self._action_button["text"] = "Abandon Quest"
+            self._action_button["text"] = "Отказаться"
             self._action_button["frameColor"] = (0.5, 0.3, 0.3, 0.9)
             self._action_button["command"] = self._abandon_quest
             self._action_button["state"] = DGG.NORMAL
@@ -546,6 +581,14 @@ class QuestLogClientModule(PluginModule, DirectObject):
     def _on_game_state_changed(self, data: dict):
         """Изменение состояния игры."""
         state = data.get("state", "")
+        new_state = data.get("new_state")
+
+        # Закрываем при выходе из игры
         if state == "disconnected" and self._is_visible:
+            self.hide_quest_log()
+            self._quests.clear()
+
+        # Также проверяем new_state
+        if new_state and new_state != GameState.IN_GAME and self._is_visible:
             self.hide_quest_log()
             self._quests.clear()

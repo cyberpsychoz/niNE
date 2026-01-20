@@ -1,7 +1,7 @@
 """
 Клиентский модуль книги заклинаний.
 
-Открывается по клавише K.
+Открывается по клавише K (только в игре).
 """
 
 import json
@@ -16,12 +16,25 @@ from direct.showbase.DirectObject import DirectObject
 from panda3d.core import TextNode
 
 from nine.core.plugins import PluginModule
+from nine.core.game_state import GameState
 
 
 class SpellbookClientModule(PluginModule, DirectObject):
     """
     Клиентский модуль книги заклинаний.
     """
+
+    # Названия школ магии на русском
+    SCHOOL_NAMES = {
+        "abjuration": "Ограждение",
+        "conjuration": "Вызов",
+        "divination": "Прорицание",
+        "enchantment": "Очарование",
+        "evocation": "Воплощение",
+        "illusion": "Иллюзия",
+        "necromancy": "Некромантия",
+        "transmutation": "Преобразование",
+    }
 
     def on_load(self):
         # UI элементы
@@ -38,7 +51,7 @@ class SpellbookClientModule(PluginModule, DirectObject):
 
         # UI состояние
         self._selected_spell: Optional[str] = None
-        self._current_filter: str = "all"  # all, cantrips, prepared
+        self._current_filter: str = "all"
 
         # Загружаем данные заклинаний
         self._load_spells_data()
@@ -51,8 +64,9 @@ class SpellbookClientModule(PluginModule, DirectObject):
         self.event_manager.subscribe("spellcasting_update", self._on_spellcasting_update)
         self.event_manager.subscribe("spell_cast_result", self._on_spell_cast_result)
         self.event_manager.subscribe("game_state_changed", self._on_game_state_changed)
+        self.event_manager.subscribe("close_other_ui", self._on_close_other_ui)
 
-        self.logger.info("Spellbook клиентский модуль загружен (K)")
+        self.logger.info("Книга заклинаний загружена (K)")
 
     def on_unload(self):
         self.ignore_all()
@@ -60,12 +74,19 @@ class SpellbookClientModule(PluginModule, DirectObject):
         self.event_manager.unsubscribe("spellcasting_update", self._on_spellcasting_update)
         self.event_manager.unsubscribe("spell_cast_result", self._on_spell_cast_result)
         self.event_manager.unsubscribe("game_state_changed", self._on_game_state_changed)
+        self.event_manager.unsubscribe("close_other_ui", self._on_close_other_ui)
 
         if self._main_frame:
             self._main_frame.destroy()
             self._main_frame = None
 
-        self.logger.info("Spellbook клиентский модуль выгружен")
+        self.logger.info("Книга заклинаний выгружена")
+
+    def _on_close_other_ui(self, data: dict):
+        """Закрывает окно если оно не исключено."""
+        exclude = data.get("exclude", "")
+        if exclude != "spellbook" and self._is_visible:
+            self.hide_spellbook()
 
     # =========================================================================
     # Data Loading
@@ -90,16 +111,33 @@ class SpellbookClientModule(PluginModule, DirectObject):
     # Toggle & Visibility
     # =========================================================================
 
+    def _is_in_game(self) -> bool:
+        """Проверяет, находится ли игрок в игре."""
+        if hasattr(self.app, 'game_state'):
+            return self.app.game_state == GameState.IN_GAME
+        if hasattr(self.app, 'ui') and hasattr(self.app.ui, 'game_state'):
+            return self.app.ui.game_state == GameState.IN_GAME
+        return False
+
     def toggle_spellbook(self):
-        """Переключает видимость книги заклинаний."""
-        if self._is_visible:
-            self.hide_spellbook()
-        else:
-            self.show_spellbook()
+        """Открывает лист персонажа на вкладке заклинаний."""
+        # Проверяем, что мы в игре
+        if not self._is_in_game():
+            return
+
+        # Проверяем, что чат не активен
+        if hasattr(self.app, 'is_chat_active') and self.app.is_chat_active():
+            return
+
+        # Открываем лист персонажа на вкладке заклинаний
+        self.event_manager.post("open_character_sheet_tab", {"tab": "spells"})
 
     def show_spellbook(self):
         """Показывает книгу заклинаний."""
         if self._is_visible:
+            return
+
+        if not self._is_in_game():
             return
 
         if not self._main_frame:
@@ -128,7 +166,6 @@ class SpellbookClientModule(PluginModule, DirectObject):
 
     def _create_ui(self):
         """Создаёт UI книги заклинаний."""
-        # Основной фрейм
         self._main_frame = DirectFrame(
             frameColor=(0.1, 0.1, 0.15, 0.95),
             frameSize=(-0.8, 0.8, -0.7, 0.7),
@@ -138,7 +175,7 @@ class SpellbookClientModule(PluginModule, DirectObject):
         # Заголовок
         DirectLabel(
             parent=self._main_frame,
-            text="Spellbook",
+            text="Книга заклинаний",
             text_scale=0.06,
             text_fg=(0.9, 0.8, 0.5, 1),
             text_align=TextNode.ACenter,
@@ -158,16 +195,16 @@ class SpellbookClientModule(PluginModule, DirectObject):
             command=self.hide_spellbook,
         )
 
-        # Слоты заклинаний (верхняя панель)
+        # Слоты заклинаний
         self._create_slots_panel()
 
         # Фильтры
         self._create_filters()
 
-        # Список заклинаний (левая часть)
+        # Список заклинаний
         self._create_spell_list()
 
-        # Детали заклинания (правая часть)
+        # Детали заклинания
         self._create_spell_details()
 
         self._main_frame.hide()
@@ -183,7 +220,7 @@ class SpellbookClientModule(PluginModule, DirectObject):
 
         DirectLabel(
             parent=slots_frame,
-            text="Spell Slots:",
+            text="Ячейки:",
             text_scale=0.035,
             text_fg=(0.7, 0.7, 0.7, 1),
             text_align=TextNode.ALeft,
@@ -191,13 +228,12 @@ class SpellbookClientModule(PluginModule, DirectObject):
             frameColor=(0, 0, 0, 0),
         )
 
-        # Контейнер для слотов
         self._slots_labels: Dict[int, DirectLabel] = {}
         x_start = -0.45
         for level in range(1, 10):
             label = DirectLabel(
                 parent=slots_frame,
-                text=f"L{level}: 0/0",
+                text=f"{level}: 0/0",
                 text_scale=0.03,
                 text_fg=(0.6, 0.6, 0.8, 1),
                 text_align=TextNode.ACenter,
@@ -216,9 +252,9 @@ class SpellbookClientModule(PluginModule, DirectObject):
         )
 
         filters = [
-            ("All", "all", -0.55),
-            ("Cantrips", "cantrips", -0.35),
-            ("Prepared", "prepared", -0.1),
+            ("Все", "all", -0.55),
+            ("Заговоры", "cantrips", -0.35),
+            ("Подготовл.", "prepared", -0.1),
         ]
 
         self._filter_buttons: Dict[str, DirectButton] = {}
@@ -264,7 +300,7 @@ class SpellbookClientModule(PluginModule, DirectObject):
         # Название
         self._detail_name = DirectLabel(
             parent=details_frame,
-            text="Select a spell",
+            text="Выберите заклинание",
             text_scale=0.045,
             text_fg=(0.9, 0.8, 0.5, 1),
             text_align=TextNode.ALeft,
@@ -327,7 +363,7 @@ class SpellbookClientModule(PluginModule, DirectObject):
             frameColor=(0, 0, 0, 0),
         )
 
-        # Описание (прокручиваемое)
+        # Описание
         self._detail_desc_frame = DirectScrolledFrame(
             parent=details_frame,
             frameColor=(0.08, 0.08, 0.1, 0.8),
@@ -352,7 +388,7 @@ class SpellbookClientModule(PluginModule, DirectObject):
         # Кнопка каста
         self._cast_button = DirectButton(
             parent=details_frame,
-            text="Cast Spell",
+            text="Сотворить",
             text_scale=0.04,
             text_fg=(1, 1, 1, 1),
             frameColor=(0.2, 0.5, 0.3, 0.9),
@@ -365,11 +401,11 @@ class SpellbookClientModule(PluginModule, DirectObject):
         # Кнопка подготовки
         self._prepare_button = DirectButton(
             parent=details_frame,
-            text="Prepare",
+            text="Подготовить",
             text_scale=0.035,
             text_fg=(1, 1, 1, 1),
             frameColor=(0.3, 0.3, 0.5, 0.9),
-            frameSize=(-0.1, 0.1, -0.035, 0.04),
+            frameSize=(-0.12, 0.12, -0.035, 0.04),
             pos=(-0.2, 0, -0.55),
             command=self._on_prepare_click,
             state=DGG.DISABLED,
@@ -381,42 +417,33 @@ class SpellbookClientModule(PluginModule, DirectObject):
 
     def _refresh_spell_list(self):
         """Обновляет список заклинаний."""
-        # Очищаем старые кнопки
         for btn in self._spell_buttons:
             btn.destroy()
         self._spell_buttons.clear()
 
-        # Фильтруем заклинания
         filtered_spells = self._get_filtered_spells()
-
-        # Сортируем по уровню, затем по имени
         filtered_spells.sort(key=lambda s: (s.get("level", 0), s.get("name", "")))
 
-        # Создаём кнопки
         canvas = self._spell_list_frame.getCanvas()
         y_pos = -0.04
 
         for spell in filtered_spells:
             spell_id = spell["id"]
             level = spell.get("level", 0)
-            name = spell.get("name", spell_id)
+            name = spell.get("name_ru", spell.get("name", spell_id))
 
-            # Определяем цвет по уровню
             if level == 0:
-                color = (0.5, 0.7, 0.5, 1)  # Cantrip - зелёный
+                color = (0.5, 0.7, 0.5, 1)
             elif level <= 3:
-                color = (0.6, 0.6, 0.9, 1)  # 1-3 - синий
+                color = (0.6, 0.6, 0.9, 1)
             elif level <= 6:
-                color = (0.8, 0.6, 0.8, 1)  # 4-6 - фиолетовый
+                color = (0.8, 0.6, 0.8, 1)
             else:
-                color = (0.9, 0.7, 0.4, 1)  # 7-9 - оранжевый
+                color = (0.9, 0.7, 0.4, 1)
 
-            # Индикатор подготовки
             prefix = ""
             if spell_id in self._prepared_spells:
                 prefix = "* "
-            elif level == 0:
-                prefix = ""
 
             btn = DirectButton(
                 parent=canvas,
@@ -433,7 +460,6 @@ class SpellbookClientModule(PluginModule, DirectObject):
             self._spell_buttons.append(btn)
             y_pos -= 0.06
 
-        # Обновляем размер canvas
         canvas_height = max(2.0, abs(y_pos) + 0.1)
         self._spell_list_frame["canvasSize"] = (-0.38, 0.0, -canvas_height, 0.0)
 
@@ -442,7 +468,6 @@ class SpellbookClientModule(PluginModule, DirectObject):
         result = []
 
         for spell_id, spell in self._spells_data.items():
-            # Проверяем, знает ли персонаж это заклинание
             if spell_id not in self._known_spells:
                 continue
 
@@ -474,13 +499,13 @@ class SpellbookClientModule(PluginModule, DirectObject):
 
             if maximum > 0:
                 if current > 0:
-                    color = (0.5, 0.8, 0.5, 1)  # Зелёный
+                    color = (0.5, 0.8, 0.5, 1)
                 else:
-                    color = (0.8, 0.4, 0.4, 1)  # Красный
-                label["text"] = f"L{level}: {current}/{maximum}"
+                    color = (0.8, 0.4, 0.4, 1)
+                label["text"] = f"{level}: {current}/{maximum}"
             else:
-                color = (0.4, 0.4, 0.4, 1)  # Серый
-                label["text"] = f"L{level}: -"
+                color = (0.4, 0.4, 0.4, 1)
+                label["text"] = f"{level}: -"
 
             label["text_fg"] = color
 
@@ -491,54 +516,54 @@ class SpellbookClientModule(PluginModule, DirectObject):
             return
 
         # Название
-        name = spell.get("name", spell_id)
-        name_ru = spell.get("name_ru", "")
-        if name_ru:
-            self._detail_name["text"] = f"{name}\n({name_ru})"
-        else:
-            self._detail_name["text"] = name
+        name = spell.get("name_ru", spell.get("name", spell_id))
+        self._detail_name["text"] = name
 
         # Уровень и школа
         level = spell.get("level", 0)
-        school = spell.get("school", "unknown").capitalize()
+        school_en = spell.get("school", "unknown").lower()
+        school = self.SCHOOL_NAMES.get(school_en, school_en.capitalize())
+
         if level == 0:
-            level_text = f"Cantrip - {school}"
+            level_text = f"Заговор - {school}"
         else:
-            level_text = f"Level {level} {school}"
+            level_text = f"{level} уровень, {school}"
         if spell.get("ritual"):
-            level_text += " (Ritual)"
+            level_text += " (Ритуал)"
         if spell.get("concentration"):
-            level_text += " [Concentration]"
+            level_text += " [Концентрация]"
         self._detail_level["text"] = level_text
 
         # Время каста
-        self._detail_casting["text"] = f"Casting Time: {spell.get('casting_time', 'Unknown')}"
+        casting_time = spell.get('casting_time', 'Неизвестно')
+        self._detail_casting["text"] = f"Время: {casting_time}"
 
         # Дальность
         range_ft = spell.get("range_ft", 0)
         if range_ft == 0:
-            range_text = "Self"
+            range_text = "На себя"
         elif range_ft == -1:
-            range_text = "Touch"
+            range_text = "Касание"
         else:
-            range_text = f"{range_ft} ft."
-        self._detail_range["text"] = f"Range: {range_text}"
+            range_text = f"{range_ft} фт."
+        self._detail_range["text"] = f"Дистанция: {range_text}"
 
         # Компоненты
         components = spell.get("components", [])
         comp_text = ", ".join(components)
         if spell.get("material"):
             comp_text += f" ({spell['material']})"
-        self._detail_components["text"] = f"Components: {comp_text}"
+        self._detail_components["text"] = f"Компоненты: {comp_text}"
 
         # Длительность
-        self._detail_duration["text"] = f"Duration: {spell.get('duration', 'Unknown')}"
+        duration = spell.get('duration', 'Неизвестно')
+        self._detail_duration["text"] = f"Длительность: {duration}"
 
         # Описание
-        desc = spell.get("description", "")
-        higher = spell.get("higher_levels", "")
+        desc = spell.get("description_ru", spell.get("description", ""))
+        higher = spell.get("higher_levels_ru", spell.get("higher_levels", ""))
         if higher:
-            desc += f"\n\nAt Higher Levels: {higher}"
+            desc += f"\n\nНа более высоких уровнях: {higher}"
         self._detail_description["text"] = desc
 
         # Обновляем размер canvas описания
@@ -554,13 +579,10 @@ class SpellbookClientModule(PluginModule, DirectObject):
         spell_id = spell["id"]
         level = spell.get("level", 0)
 
-        # Кнопка каста
         can_cast = False
         if level == 0:
-            # Cantrip всегда можно кастовать
             can_cast = True
         else:
-            # Проверяем наличие слота
             for slot_level in range(level, 10):
                 if self._spell_slots.get(slot_level, 0) > 0:
                     can_cast = True
@@ -573,14 +595,13 @@ class SpellbookClientModule(PluginModule, DirectObject):
             self._cast_button["state"] = DGG.DISABLED
             self._cast_button["frameColor"] = (0.3, 0.3, 0.3, 0.5)
 
-        # Кнопка подготовки (только для не-cantrip)
         if level > 0:
             self._prepare_button.show()
             if spell_id in self._prepared_spells:
-                self._prepare_button["text"] = "Unprepare"
+                self._prepare_button["text"] = "Отменить"
                 self._prepare_button["frameColor"] = (0.5, 0.3, 0.3, 0.9)
             else:
-                self._prepare_button["text"] = "Prepare"
+                self._prepare_button["text"] = "Подготовить"
                 self._prepare_button["frameColor"] = (0.3, 0.3, 0.5, 0.9)
             self._prepare_button["state"] = DGG.NORMAL
         else:
@@ -610,10 +631,9 @@ class SpellbookClientModule(PluginModule, DirectObject):
         if not spell:
             return
 
-        # Отправляем запрос на каст
         self.event_manager.post("cast_spell_request", {
             "spell_id": self._selected_spell,
-            "slot_level": spell.get("level", 0),  # Можно добавить выбор слота
+            "slot_level": spell.get("level", 0),
         })
 
     def _on_prepare_click(self):
@@ -626,12 +646,10 @@ class SpellbookClientModule(PluginModule, DirectObject):
             return
 
         if self._selected_spell in self._prepared_spells:
-            # Убираем из подготовленных
             self.event_manager.post("unprepare_spell_request", {
                 "spell_id": self._selected_spell,
             })
         else:
-            # Добавляем в подготовленные
             self.event_manager.post("prepare_spell_request", {
                 "spell_id": self._selected_spell,
             })
@@ -639,22 +657,20 @@ class SpellbookClientModule(PluginModule, DirectObject):
     def _on_character_update(self, data: dict):
         """Обновление данных персонажа."""
         char_data = data.get("character", {})
+        spellcasting = char_data.get("spellcasting") or {}
 
-        # Обновляем класс для определения известных заклинаний
-        char_class = char_data.get("class", "").lower()
+        if spellcasting:
+            self._known_spells = spellcasting.get("spells_known", [])
+            self._prepared_spells = spellcasting.get("spells_prepared", [])
+            self._spell_slots = spellcasting.get("spell_slots_current", {})
+            self._spell_slots_max = spellcasting.get("spell_slots_max", {})
+            self._spellcasting_ability = spellcasting.get("ability", "INT")
 
-        # Получаем данные заклинательства
-        spellcasting = char_data.get("spellcasting", {})
-
-        self._known_spells = spellcasting.get("spells_known", [])
-        self._prepared_spells = spellcasting.get("spells_prepared", [])
-        self._spell_slots = spellcasting.get("spell_slots_current", {})
-        self._spell_slots_max = spellcasting.get("spell_slots_max", {})
-        self._spellcasting_ability = spellcasting.get("ability", "INT")
-
-        # Конвертируем ключи слотов в int
-        self._spell_slots = {int(k): v for k, v in self._spell_slots.items()}
-        self._spell_slots_max = {int(k): v for k, v in self._spell_slots_max.items()}
+            # Конвертируем ключи слотов в int
+            if self._spell_slots:
+                self._spell_slots = {int(k): v for k, v in self._spell_slots.items()}
+            if self._spell_slots_max:
+                self._spell_slots_max = {int(k): v for k, v in self._spell_slots_max.items()}
 
         if self._is_visible:
             self._update_slots_display()
@@ -667,9 +683,10 @@ class SpellbookClientModule(PluginModule, DirectObject):
         self._spell_slots = data.get("spell_slots_current", self._spell_slots)
         self._spell_slots_max = data.get("spell_slots_max", self._spell_slots_max)
 
-        # Конвертируем ключи
-        self._spell_slots = {int(k): v for k, v in self._spell_slots.items()}
-        self._spell_slots_max = {int(k): v for k, v in self._spell_slots_max.items()}
+        if self._spell_slots:
+            self._spell_slots = {int(k): v for k, v in self._spell_slots.items()}
+        if self._spell_slots_max:
+            self._spell_slots_max = {int(k): v for k, v in self._spell_slots_max.items()}
 
         if self._is_visible:
             self._update_slots_display()
@@ -681,22 +698,18 @@ class SpellbookClientModule(PluginModule, DirectObject):
         """Результат каста заклинания."""
         success = data.get("success", False)
         spell_id = data.get("spell_id", "")
-        message = data.get("message", "")
 
         if success:
-            self.logger.info(f"Spell cast: {spell_id}")
-            # Обновляем слоты
+            self.logger.info(f"Заклинание сотворено: {spell_id}")
             if "spell_slots_current" in data:
                 self._spell_slots = {int(k): v for k, v in data["spell_slots_current"].items()}
                 if self._is_visible:
                     self._update_slots_display()
                     if self._selected_spell:
                         self._update_action_buttons(self._spells_data.get(self._selected_spell, {}))
-        else:
-            self.logger.warning(f"Spell cast failed: {message}")
 
     def _on_game_state_changed(self, data: dict):
         """Обработчик изменения состояния игры."""
-        state = data.get("state", "")
-        if state == "disconnected" and self._is_visible:
+        new_state = data.get("new_state")
+        if new_state != GameState.IN_GAME and self._is_visible:
             self.hide_spellbook()

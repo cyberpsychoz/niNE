@@ -11,7 +11,7 @@ from typing import Dict, List, Optional, Set
 from dataclasses import dataclass, field
 
 from nine.core.plugins import PluginModule
-from .sh_conditions import get_condition, get_combined_effects, CONDITIONS
+from nine.plugins.conditions.sh_conditions import get_condition, get_combined_effects, CONDITIONS
 
 
 @dataclass
