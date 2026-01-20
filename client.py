@@ -23,6 +23,7 @@ from nine.core.camera_controller import CameraController
 from nine.core.events import EventManager
 from nine.core.plugins import PluginManager
 from nine.core.network import send_message, read_messages
+from nine.core.scene_optimizer import SceneOptimizer, LODSettings
 from nine.ui.manager import UIManager
 
 # Audio enabled - using OpenAL (default)
@@ -100,6 +101,17 @@ class GameClient(ShowBase):
         self.event_manager.subscribe("client_item_use", self.send_item_use_packet)
         self.event_manager.subscribe("client_item_drop", self.send_item_drop_packet)
 
+        # --- Scene Optimizer ---
+        self.scene_optimizer = SceneOptimizer(
+            self,
+            LODSettings(
+                high_distance=50.0,
+                medium_distance=150.0,
+                low_distance=300.0,
+                cull_distance=400.0
+            )
+        )
+
         # --- Final Initializations ---
         self.plugin_manager.load_plugins()
         self.map_model = None
@@ -154,7 +166,7 @@ class GameClient(ShowBase):
         return client_uuid
 
     def _load_map(self, model_path: str):
-        """Загружает модель карты."""
+        """Загружает модель карты и применяет оптимизации."""
         from panda3d.core import CardMaker
 
         # Удаляем старую карту если есть
@@ -167,6 +179,24 @@ class GameClient(ShowBase):
             self.map_model.reparentTo(self.render)
             self.map_model.setPos(0, 0, 0)
             self.logger.info(f"Map loaded: {model_path}")
+
+            # Оптимизация карты для повышения производительности
+            if self.scene_optimizer:
+                opt_stats = self.scene_optimizer.optimize_map(self.map_model, aggressive=True)
+                self.logger.info(
+                    f"Map optimized: {opt_stats.get('geoms_before', 0)} -> "
+                    f"{opt_stats.get('geoms_after', 0)} geoms "
+                    f"({opt_stats.get('reduction_percent', 0):.1f}% reduction)"
+                )
+
+                # Включаем distance culling для больших карт
+                self.scene_optimizer.setup_distance_culling(
+                    self.camera,
+                    self.map_model,
+                    cull_distance=400.0,
+                    update_interval=0.15
+                )
+
         except Exception as e:
             self.logger.error(f"Failed to load map {model_path}: {e}")
             # Fallback: simple ground plane
@@ -666,6 +696,10 @@ class GameClient(ShowBase):
         if self.camera_controller:
             self.camera_controller.destroy()
             self.camera_controller = None
+
+        # Cleanup scene optimizer culling
+        if self.scene_optimizer:
+            self.scene_optimizer.cleanup()
 
         self.player_id = -1
         self.is_connected = False

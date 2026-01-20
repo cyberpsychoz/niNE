@@ -88,15 +88,18 @@ class SpellEffect:
 @dataclass
 class Spell:
     """Заклинание D&D 5e."""
+    # Обязательные поля (без дефолтов)
     id: str
     name: str
     level: int  # 0 = cantrip
     school: str
     casting_time: str  # "1 action", "1 bonus action", "1 reaction", etc.
     range_ft: int  # 0 = self, -1 = touch
+    duration: str  # "Instantaneous", "Concentration, up to 1 minute", etc.
+
+    # Опциональные поля (с дефолтами)
     components: List[str] = field(default_factory=list)  # ["V", "S", "M"]
     material: Optional[str] = None  # Описание материального компонента
-    duration: str  # "Instantaneous", "Concentration, up to 1 minute", etc.
     concentration: bool = False
     ritual: bool = False
     description: str = ""

@@ -185,6 +185,13 @@ class CharacterServerModule(PluginModule):
             "character": character
         })
 
+        # Также отправляем событие для загрузки character sheet
+        self.event_manager.post("character_selected", {
+            "uuid": client_id,  # uuid игрока = client_id
+            "character_uuid": character_uuid,
+            "name": character.get("character_name", "Player")
+        })
+
         self.logger.info(f"[DND] Client {client_id} selected character '{character.get('character_name')}'")
 
     def on_character_create(self, data: dict):

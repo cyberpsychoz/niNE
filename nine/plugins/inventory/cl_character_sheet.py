@@ -5,7 +5,10 @@
 - Инвентарь (с drag & drop)
 - Экипировка (слоты на манекене)
 - Описание (редактируемое)
-- Характеристики (статы D&D)
+- Статы (характеристики + спасброски)
+- Навыки (18 навыков D&D)
+- Способности (расовые/классовые/предыстории)
+- Заклинания (для магов)
 
 Открывается на клавишу I.
 """
@@ -21,6 +24,7 @@ from panda3d.core import TextNode
 
 from nine.core.plugins import PluginModule
 from nine.core.game_state import GameState
+from nine.ui.bg1_button import BG1Button, BG1ButtonSmall
 
 from nine.plugins.inventory.entities.equipment.sh_equipment_slots import EquipmentSlot, SLOT_INFO
 
@@ -29,7 +33,8 @@ class CharacterSheetClientModule(PluginModule, DirectObject):
     """
     Клиентский модуль листа персонажа.
 
-    Объединяет инвентарь, экипировку, описание и статы в одном UI.
+    Объединяет инвентарь, экипировку, описание, статы, навыки,
+    способности и заклинания в одном UI.
     """
 
     # Цвета редкости
@@ -42,6 +47,47 @@ class CharacterSheetClientModule(PluginModule, DirectObject):
         "artifact": (0.9, 0.3, 0.3, 1),
     }
 
+    # Названия навыков на русском
+    SKILL_NAMES = {
+        "Athletics": "Атлетика",
+        "Acrobatics": "Акробатика",
+        "Sleight of Hand": "Ловкость рук",
+        "Stealth": "Скрытность",
+        "Arcana": "Магия",
+        "History": "История",
+        "Investigation": "Анализ",
+        "Nature": "Природа",
+        "Religion": "Религия",
+        "Animal Handling": "Уход за животными",
+        "Insight": "Проницательность",
+        "Medicine": "Медицина",
+        "Perception": "Внимательность",
+        "Survival": "Выживание",
+        "Deception": "Обман",
+        "Intimidation": "Запугивание",
+        "Performance": "Выступление",
+        "Persuasion": "Убеждение",
+    }
+
+    # Названия характеристик на русском
+    ABILITY_NAMES = {
+        "strength": "СИЛ",
+        "dexterity": "ЛОВ",
+        "constitution": "ТЕЛ",
+        "intelligence": "ИНТ",
+        "wisdom": "МДР",
+        "charisma": "ХАР",
+    }
+
+    ABILITY_FULL_NAMES = {
+        "strength": "Сила",
+        "dexterity": "Ловкость",
+        "constitution": "Телосложение",
+        "intelligence": "Интеллект",
+        "wisdom": "Мудрость",
+        "charisma": "Харизма",
+    }
+
     def __init__(self, context):
         PluginModule.__init__(self, context)
         DirectObject.__init__(self)
@@ -49,7 +95,7 @@ class CharacterSheetClientModule(PluginModule, DirectObject):
     def on_load(self):
         # Состояние UI
         self.is_open = False
-        self.current_tab = "inventory"  # inventory, equipment, description, stats
+        self.current_tab = "inventory"
 
         # Данные
         self.inventory_items: List[dict] = []
@@ -57,9 +103,12 @@ class CharacterSheetClientModule(PluginModule, DirectObject):
         self.character_data: dict = {}
         self.max_slots = 20
 
+        # Данные квестов
+        self.quests_data: List[dict] = []
+
         # Drag & drop
         self.dragging_item: Optional[dict] = None
-        self.dragging_from: Optional[str] = None  # "inventory:0" или "equipment:chest"
+        self.dragging_from: Optional[str] = None
         self.drag_frame: Optional[DirectFrame] = None
 
         # UI элементы
@@ -75,6 +124,9 @@ class CharacterSheetClientModule(PluginModule, DirectObject):
         self.event_manager.subscribe("equipment_update", self.on_equipment_update)
         self.event_manager.subscribe("character_sheet", self.on_character_sheet_update)
         self.event_manager.subscribe("game_state_changed", self._on_game_state_changed)
+        self.event_manager.subscribe("close_other_ui", self._on_close_other_ui)
+        self.event_manager.subscribe("open_character_sheet_tab", self._on_open_to_tab)
+        self.event_manager.subscribe("quest_list", self._on_quest_list_update)
 
         # Клавиши
         self.accept("i", self.toggle_character_sheet)
@@ -87,9 +139,34 @@ class CharacterSheetClientModule(PluginModule, DirectObject):
         self.event_manager.unsubscribe("equipment_update", self.on_equipment_update)
         self.event_manager.unsubscribe("character_sheet", self.on_character_sheet_update)
         self.event_manager.unsubscribe("game_state_changed", self._on_game_state_changed)
+        self.event_manager.unsubscribe("close_other_ui", self._on_close_other_ui)
+        self.event_manager.unsubscribe("open_character_sheet_tab", self._on_open_to_tab)
+        self.event_manager.unsubscribe("quest_list", self._on_quest_list_update)
         self.ignoreAll()
         self._destroy_ui()
         self.logger.info("Клиентский модуль листа персонажа выгружен")
+
+    def _on_close_other_ui(self, data: dict):
+        """Закрывает окно если оно не исключено."""
+        exclude = data.get("exclude", "")
+        if exclude != "character_sheet" and self.is_open:
+            self.close_character_sheet()
+
+    def _on_open_to_tab(self, data: dict):
+        """Открывает лист персонажа на определённую вкладку."""
+        tab = data.get("tab", "inventory")
+        if not self.is_open:
+            self.open_character_sheet(tab=tab)
+        else:
+            # Если уже открыт, переключаем на нужную вкладку
+            if tab != self.current_tab:
+                self._switch_tab(tab)
+
+    def _on_quest_list_update(self, data: dict):
+        """Обновление списка квестов."""
+        self.quests_data = data.get("quests", [])
+        if self.is_open and self.current_tab == "quests":
+            self._refresh_content()
 
     def _on_game_state_changed(self, data: dict):
         """Закрываем UI при смене состояния."""
@@ -121,9 +198,8 @@ class CharacterSheetClientModule(PluginModule, DirectObject):
         self.character_data = data.get("character", {})
 
         if self.is_open:
-            if self.current_tab == "description":
-                self._refresh_content()
-            elif self.current_tab == "stats":
+            # Обновляем текущую вкладку если она зависит от данных персонажа
+            if self.current_tab in ("description", "stats", "skills", "abilities", "spells", "quests"):
                 self._refresh_content()
 
     # =========================================================================
@@ -141,13 +217,20 @@ class CharacterSheetClientModule(PluginModule, DirectObject):
         else:
             self.open_character_sheet()
 
-    def open_character_sheet(self):
-        """Открывает лист персонажа."""
+    def open_character_sheet(self, tab: str = None):
+        """Открывает лист персонажа на указанную вкладку."""
         if self.is_open:
             return
 
         if hasattr(self.app, 'is_chat_active') and self.app.is_chat_active():
             return
+
+        # Закрываем другие окна
+        self.event_manager.post("close_other_ui", {"exclude": "character_sheet"})
+
+        # Устанавливаем вкладку если указана
+        if tab is not None:
+            self.current_tab = tab
 
         self.is_open = True
 
@@ -156,7 +239,7 @@ class CharacterSheetClientModule(PluginModule, DirectObject):
             self.app.camera_controller.stop()
 
         self._create_ui()
-        self.logger.debug("Лист персонажа открыт")
+        self.logger.debug(f"Лист персонажа открыт (вкладка: {self.current_tab})")
 
     def close_character_sheet(self):
         """Закрывает лист персонажа."""
@@ -182,34 +265,42 @@ class CharacterSheetClientModule(PluginModule, DirectObject):
     # =========================================================================
 
     def _create_ui(self):
-        """Создаёт основной UI."""
-        # Главный фрейм
+        """Создаёт основной UI (увеличен x1.5)."""
+        # Главный фрейм (увеличенный для новых вкладок)
         self.main_frame = DirectFrame(
             frameColor=(0.08, 0.08, 0.12, 0.98),
-            frameSize=(-0.7, 0.7, -0.7, 0.6),
+            frameSize=(-1.1, 1.1, -0.85, 0.75),
             pos=(0, 0, 0),
             parent=self.app.aspect2d,
         )
 
         # Заголовок
         name = self.character_data.get("name", "Персонаж")
+        char_class = self.character_data.get("class", "")
+        race = self.character_data.get("race", "")
+        level = self.character_data.get("stats", {}).get("level", 1)
+
+        title = f"{name}"
+        if race and char_class:
+            title += f" — {race} {char_class} {level} ур."
+
         DirectLabel(
-            text=f"Лист персонажа: {name}",
-            text_scale=0.05,
+            text=title,
+            text_scale=0.07,
             text_fg=(1, 1, 1, 1),
             frameColor=(0, 0, 0, 0),
-            pos=(0, 0, 0.52),
+            pos=(0, 0, 0.65),
             parent=self.main_frame,
         )
 
         # Кнопка закрытия
         DirectButton(
             text="X",
-            text_scale=0.04,
+            text_scale=0.06,
             text_fg=(1, 1, 1, 1),
             frameColor=(0.6, 0.2, 0.2, 1),
-            frameSize=(-0.03, 0.03, -0.025, 0.03),
-            pos=(0.64, 0, 0.53),
+            frameSize=(-0.04, 0.04, -0.035, 0.04),
+            pos=(1.02, 0, 0.67),
             parent=self.main_frame,
             command=self.close_character_sheet,
         )
@@ -220,7 +311,7 @@ class CharacterSheetClientModule(PluginModule, DirectObject):
         # Область контента
         self.content_frame = DirectFrame(
             frameColor=(0.1, 0.1, 0.14, 1),
-            frameSize=(-0.65, 0.65, -0.65, 0.38),
+            frameSize=(-1.05, 1.05, -0.78, 0.48),
             pos=(0, 0, 0),
             parent=self.main_frame,
         )
@@ -232,28 +323,34 @@ class CharacterSheetClientModule(PluginModule, DirectObject):
         self.accept("mouse1", self._on_mouse_click)
 
     def _create_tabs(self):
-        """Создаёт панель вкладок."""
+        """Создаёт панель вкладок (увеличены)."""
         tabs = [
             ("inventory", "Инвентарь"),
             ("equipment", "Экипировка"),
             ("description", "Описание"),
-            ("stats", "Характеристики"),
+            ("stats", "Статы"),
+            ("skills", "Навыки"),
+            ("abilities", "Способности"),
+            ("quests", "Квесты"),
+            ("spells", "Заклинания"),
         ]
 
-        start_x = -0.5
+        tab_width = 0.24
+        start_x = -0.88
+
         for i, (tab_id, tab_name) in enumerate(tabs):
-            x = start_x + i * 0.25
+            x = start_x + i * (tab_width + 0.01)
 
             is_active = tab_id == self.current_tab
             color = (0.3, 0.4, 0.5, 1) if is_active else (0.2, 0.2, 0.25, 1)
 
             btn = DirectButton(
                 text=tab_name,
-                text_scale=0.035,
+                text_scale=0.04,
                 text_fg=(1, 1, 1, 1),
                 frameColor=color,
-                frameSize=(-0.12, 0.12, -0.025, 0.035),
-                pos=(x, 0, 0.43),
+                frameSize=(-tab_width/2, tab_width/2, -0.035, 0.04),
+                pos=(x, 0, 0.54),
                 parent=self.main_frame,
                 command=self._switch_tab,
                 extraArgs=[tab_id],
@@ -295,6 +392,14 @@ class CharacterSheetClientModule(PluginModule, DirectObject):
             self._create_description_content()
         elif self.current_tab == "stats":
             self._create_stats_content()
+        elif self.current_tab == "skills":
+            self._create_skills_content()
+        elif self.current_tab == "abilities":
+            self._create_abilities_content()
+        elif self.current_tab == "quests":
+            self._create_quests_content()
+        elif self.current_tab == "spells":
+            self._create_spells_content()
 
     # =========================================================================
     # Inventory Tab
@@ -308,7 +413,7 @@ class CharacterSheetClientModule(PluginModule, DirectObject):
         slot_size = 0.12
         padding = 0.02
         start_x = -0.5
-        start_y = 0.28
+        start_y = 0.32
 
         for row in range(rows):
             for col in range(cols):
@@ -415,28 +520,19 @@ class CharacterSheetClientModule(PluginModule, DirectObject):
 
     def _create_equipment_content(self):
         """Создаёт содержимое вкладки экипировки."""
-        # Схема расположения слотов (как манекен)
-        #
-        #         HEAD
-        #   AMULET  CHEST  CLOAK
-        #   RING_1  HANDS  RING_2
-        #     OFF   BELT   MAIN
-        #          LEGS
-        #          FEET
-
         slot_positions = {
-            EquipmentSlot.HEAD.value: (0, 0.28),
-            EquipmentSlot.CHEST.value: (0, 0.12),
-            EquipmentSlot.AMULET.value: (-0.18, 0.12),
-            EquipmentSlot.CLOAK.value: (0.18, 0.12),
-            EquipmentSlot.HANDS.value: (0, -0.04),
-            EquipmentSlot.RING_1.value: (-0.18, -0.04),
-            EquipmentSlot.RING_2.value: (0.18, -0.04),
-            EquipmentSlot.OFF_HAND.value: (-0.18, -0.20),
-            EquipmentSlot.BELT.value: (0, -0.20),
-            EquipmentSlot.MAIN_HAND.value: (0.18, -0.20),
-            EquipmentSlot.LEGS.value: (0, -0.36),
-            EquipmentSlot.FEET.value: (0, -0.52),
+            EquipmentSlot.HEAD.value: (0, 0.32),
+            EquipmentSlot.CHEST.value: (0, 0.16),
+            EquipmentSlot.AMULET.value: (-0.18, 0.16),
+            EquipmentSlot.CLOAK.value: (0.18, 0.16),
+            EquipmentSlot.HANDS.value: (0, 0.0),
+            EquipmentSlot.RING_1.value: (-0.18, 0.0),
+            EquipmentSlot.RING_2.value: (0.18, 0.0),
+            EquipmentSlot.OFF_HAND.value: (-0.18, -0.16),
+            EquipmentSlot.BELT.value: (0, -0.16),
+            EquipmentSlot.MAIN_HAND.value: (0.18, -0.16),
+            EquipmentSlot.LEGS.value: (0, -0.32),
+            EquipmentSlot.FEET.value: (0, -0.48),
         }
 
         slot_size = 0.12
@@ -521,39 +617,43 @@ class CharacterSheetClientModule(PluginModule, DirectObject):
         stats = self.character_data.get("stats", {})
 
         # Панель справа
-        panel_x = 0.45
+        panel_x = 0.5
 
         DirectLabel(
-            text="Характеристики",
+            text="Боевые статы",
             text_scale=0.035,
             text_fg=(0.8, 0.8, 0.8, 1),
             frameColor=(0, 0, 0, 0),
-            pos=(panel_x, 0, 0.28),
+            pos=(panel_x, 0, 0.32),
             parent=self.content_frame,
         )
 
         # AC
-        ac = 10 + stats.get("dex_mod", 0)  # Базовый расчёт
+        ac = stats.get("armor_class", 10)
         DirectLabel(
-            text=f"AC: {ac}",
+            text=f"КД: {ac}",
             text_scale=0.03,
             text_fg=(0.7, 0.9, 0.7, 1),
             text_align=TextNode.ALeft,
             frameColor=(0, 0, 0, 0),
-            pos=(panel_x - 0.1, 0, 0.18),
+            pos=(panel_x - 0.12, 0, 0.22),
             parent=self.content_frame,
         )
 
         # HP
         hp = stats.get("current_hp", 10)
         max_hp = stats.get("max_hp", 10)
+        temp_hp = stats.get("temp_hp", 0)
+        hp_text = f"HP: {hp}/{max_hp}"
+        if temp_hp > 0:
+            hp_text += f" (+{temp_hp})"
         DirectLabel(
-            text=f"HP: {hp}/{max_hp}",
+            text=hp_text,
             text_scale=0.03,
             text_fg=(0.9, 0.4, 0.4, 1),
             text_align=TextNode.ALeft,
             frameColor=(0, 0, 0, 0),
-            pos=(panel_x - 0.1, 0, 0.10),
+            pos=(panel_x - 0.12, 0, 0.14),
             parent=self.content_frame,
         )
 
@@ -565,7 +665,21 @@ class CharacterSheetClientModule(PluginModule, DirectObject):
             text_fg=(0.7, 0.7, 0.9, 1),
             text_align=TextNode.ALeft,
             frameColor=(0, 0, 0, 0),
-            pos=(panel_x - 0.1, 0, 0.02),
+            pos=(panel_x - 0.12, 0, 0.06),
+            parent=self.content_frame,
+        )
+
+        # Hit Dice
+        hit_dice_current = stats.get("hit_dice_current", 1)
+        hit_dice_max = stats.get("hit_dice_max", 1)
+        hit_die = stats.get("hit_die", "d8")
+        DirectLabel(
+            text=f"Кости хитов: {hit_dice_current}/{hit_dice_max}{hit_die}",
+            text_scale=0.022,
+            text_fg=(0.6, 0.6, 0.8, 1),
+            text_align=TextNode.ALeft,
+            frameColor=(0, 0, 0, 0),
+            pos=(panel_x - 0.12, 0, -0.02),
             parent=self.content_frame,
         )
 
@@ -586,7 +700,6 @@ class CharacterSheetClientModule(PluginModule, DirectObject):
 
     def _on_equipment_right_click(self, slot_value: str, event):
         """ПКМ по слоту экипировки."""
-        # TODO: Контекстное меню
         pass
 
     # =========================================================================
@@ -603,7 +716,7 @@ class CharacterSheetClientModule(PluginModule, DirectObject):
             text_scale=0.04,
             text_fg=(0.9, 0.9, 0.9, 1),
             frameColor=(0, 0, 0, 0),
-            pos=(0, 0, 0.3),
+            pos=(0, 0, 0.34),
             parent=self.content_frame,
         )
 
@@ -612,73 +725,97 @@ class CharacterSheetClientModule(PluginModule, DirectObject):
             text_scale=0.025,
             text_fg=(0.6, 0.6, 0.6, 1),
             frameColor=(0, 0, 0, 0),
-            pos=(0, 0, 0.24),
+            pos=(0, 0, 0.28),
             parent=self.content_frame,
         )
 
-        # Поля описания
-        fields = [
-            ("appearance", "Внешность", desc.get("appearance", "")),
-            ("age", "Возраст", desc.get("age", "")),
-            ("build", "Телосложение", desc.get("build", "")),
-            ("features", "Особые приметы", desc.get("features", "")),
-            ("demeanor", "Манера поведения", desc.get("demeanor", "")),
-        ]
-
-        y = 0.15
-        for field_id, field_name, field_value in fields:
-            self._create_description_field(field_id, field_name, field_value, y)
-            y -= 0.18
-
-    def _create_description_field(self, field_id: str, label: str, value: str, y: float):
-        """Создаёт поле описания с редактированием."""
         # Метка
         DirectLabel(
-            text=f"{label}:",
+            text="Описание:",
             text_scale=0.028,
             text_fg=(0.8, 0.8, 0.8, 1),
             text_align=TextNode.ALeft,
             frameColor=(0, 0, 0, 0),
-            pos=(-0.55, 0, y),
+            pos=(-0.7, 0, 0.18),
             parent=self.content_frame,
         )
 
-        # Поле ввода
-        entry = DirectEntry(
-            text=value,
-            scale=0.035,
-            width=28,
-            pos=(-0.55, 0, y - 0.05),
-            parent=self.content_frame,
+        # Получаем текст описания - либо из нового поля, либо собираем из старых
+        description_text = desc.get("text", "")
+        if not description_text:
+            # Собираем из старых полей для совместимости
+            parts = []
+            if desc.get("appearance"):
+                parts.append(desc.get("appearance"))
+            if desc.get("age"):
+                parts.append(f"Возраст: {desc.get('age')}")
+            if desc.get("build"):
+                parts.append(f"Телосложение: {desc.get('build')}")
+            if desc.get("features"):
+                parts.append(f"Особые приметы: {desc.get('features')}")
+            if desc.get("demeanor"):
+                parts.append(f"Манера поведения: {desc.get('demeanor')}")
+            description_text = "\n".join(parts)
+
+        # Фрейм для многострочного текста
+        from direct.gui.DirectGui import DirectScrolledFrame
+
+        # Скроллящаяся рамка для текстового поля
+        scroll_frame = DirectScrolledFrame(
             frameColor=(0.15, 0.15, 0.18, 1),
+            frameSize=(-0.72, 0.72, -0.55, 0.1),
+            canvasSize=(-0.7, 0.65, -1.5, 0.08),
+            scrollBarWidth=0.025,
+            pos=(0, 0, 0),
+            parent=self.content_frame,
+        )
+
+        canvas = scroll_frame.getCanvas()
+
+        # Многострочное поле ввода
+        self._description_entry = DirectEntry(
+            text=description_text,
+            scale=0.03,
+            width=45,
+            numLines=20,
+            pos=(-0.68, 0, 0.05),
+            parent=canvas,
+            frameColor=(0.12, 0.12, 0.15, 1),
             text_fg=(1, 1, 1, 1),
             focusInCommand=self._on_entry_focus_in,
-            focusOutCommand=self._on_entry_focus_out,
-            command=self._on_description_changed,
-            extraArgs=[field_id],
+            focusOutCommand=self._on_description_focus_out,
         )
 
-        # Сохраняем ссылку для обработки
-        entry.setPythonTag("field_id", field_id)
+        # Кнопка сохранения в стиле BG1
+        BG1ButtonSmall.create(
+            parent=self.content_frame,
+            text="Сохранить",
+            command=self._save_description,
+            pos=(0, 0, -0.62),
+        )
+
+    def _on_description_focus_out(self):
+        """Выход из поля описания."""
+        self._on_entry_focus_out()
+
+    def _save_description(self):
+        """Сохраняет описание персонажа."""
+        if hasattr(self, '_description_entry') and self._description_entry:
+            text = self._description_entry.get()
+            self.event_manager.post("client_update_description", {
+                "field": "text",
+                "value": text,
+            })
 
     def _on_entry_focus_in(self):
         """Вход в поле ввода."""
-        # Отключаем горячие клавиши
         self.ignore("i")
         self.ignore("escape")
 
     def _on_entry_focus_out(self):
         """Выход из поля ввода."""
-        # Включаем горячие клавиши обратно
         self.accept("i", self.toggle_character_sheet)
         self.accept("escape", self.on_escape)
-
-    def _on_description_changed(self, text: str, field_id: str):
-        """Изменение описания."""
-        self.event_manager.post("client_update_description", {
-            "field": field_id,
-            "value": text,
-        })
 
     # =========================================================================
     # Stats Tab
@@ -687,93 +824,64 @@ class CharacterSheetClientModule(PluginModule, DirectObject):
     def _create_stats_content(self):
         """Создаёт содержимое вкладки характеристик."""
         stats = self.character_data.get("stats", {})
-        char_class = self.character_data.get("class", "Обыватель")
-        race = self.character_data.get("race", "Человек")
-        level = stats.get("level", 1)
+        abilities_data = self.character_data.get("abilities", {})
+        saving_throws = self.character_data.get("saving_throws", {})
 
-        # Заголовок
+        # Основные характеристики (6 штук в ряд)
         DirectLabel(
-            text=f"{race} {char_class}, {level} уровень",
-            text_scale=0.04,
-            text_fg=(0.9, 0.9, 0.9, 1),
+            text="Характеристики",
+            text_scale=0.035,
+            text_fg=(0.9, 0.8, 0.6, 1),
             frameColor=(0, 0, 0, 0),
-            pos=(0, 0, 0.3),
+            pos=(-0.5, 0, 0.34),
             parent=self.content_frame,
         )
 
-        # Основные характеристики
-        abilities = [
-            ("СИЛ", stats.get("strength", 10), stats.get("str_mod", 0)),
-            ("ЛОВ", stats.get("dexterity", 10), stats.get("dex_mod", 0)),
-            ("ТЕЛ", stats.get("constitution", 10), stats.get("con_mod", 0)),
-            ("ИНТ", stats.get("intelligence", 10), stats.get("int_mod", 0)),
-            ("МДР", stats.get("wisdom", 10), stats.get("wis_mod", 0)),
-            ("ХАР", stats.get("charisma", 10), stats.get("cha_mod", 0)),
-        ]
+        abilities_order = ["strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma"]
+        x_start = -0.6
+        for i, ability in enumerate(abilities_order):
+            data = abilities_data.get(ability, {"value": 10, "modifier": 0})
+            value = data.get("value", 10)
+            mod = data.get("modifier", 0)
+            name = self.ABILITY_NAMES.get(ability, ability[:3].upper())
+            x = x_start + i * 0.2
+            self._create_ability_display(name, value, mod, x, 0.22)
 
-        x_start = -0.5
-        for i, (name, value, mod) in enumerate(abilities):
-            x = x_start + i * 0.17
-            self._create_ability_display(name, value, mod, x, 0.18)
+        # Спасброски
+        DirectLabel(
+            text="Спасброски",
+            text_scale=0.035,
+            text_fg=(0.9, 0.8, 0.6, 1),
+            frameColor=(0, 0, 0, 0),
+            pos=(-0.5, 0, 0.02),
+            parent=self.content_frame,
+        )
 
-        # Производные статы
-        y = 0.0
-        prof_bonus = stats.get("proficiency_bonus", 2)
-        hp = stats.get("current_hp", 10)
-        max_hp = stats.get("max_hp", 10)
-        speed = stats.get("base_speed", 30)
+        y = -0.08
+        col = 0
+        for ability in abilities_order:
+            save_data = saving_throws.get(ability, {"modifier": 0, "proficient": False})
+            mod = save_data.get("modifier", 0)
+            prof = save_data.get("proficient", False)
+            name = self.ABILITY_FULL_NAMES.get(ability, ability)
 
-        derived = [
-            ("Бонус мастерства", f"+{prof_bonus}"),
-            ("Здоровье", f"{hp}/{max_hp}"),
-            ("Скорость", f"{speed} фт."),
-        ]
+            x = -0.6 + col * 0.45
+            self._create_save_display(name, mod, prof, x, y)
 
-        for label, value in derived:
-            DirectLabel(
-                text=f"{label}: {value}",
-                text_scale=0.03,
-                text_fg=(0.8, 0.8, 0.8, 1),
-                text_align=TextNode.ALeft,
-                frameColor=(0, 0, 0, 0),
-                pos=(-0.55, 0, y),
-                parent=self.content_frame,
-            )
-            y -= 0.06
+            col += 1
+            if col >= 3:
+                col = 0
+                y -= 0.08
 
-        # Владения
-        proficiencies = stats.get("proficiencies", [])
-        if proficiencies:
-            y -= 0.05
-            DirectLabel(
-                text="Владения:",
-                text_scale=0.028,
-                text_fg=(0.7, 0.7, 0.7, 1),
-                text_align=TextNode.ALeft,
-                frameColor=(0, 0, 0, 0),
-                pos=(-0.55, 0, y),
-                parent=self.content_frame,
-            )
-
-            y -= 0.04
-            prof_text = ", ".join(proficiencies[:5])  # Ограничиваем
-            DirectLabel(
-                text=prof_text,
-                text_scale=0.022,
-                text_fg=(0.6, 0.6, 0.6, 1),
-                text_align=TextNode.ALeft,
-                text_wordwrap=30,
-                frameColor=(0, 0, 0, 0),
-                pos=(-0.55, 0, y),
-                parent=self.content_frame,
-            )
+        # Производные статы справа
+        self._create_derived_stats(stats)
 
     def _create_ability_display(self, name: str, value: int, mod: int, x: float, y: float):
         """Создаёт отображение характеристики."""
         # Фон
         DirectFrame(
             frameColor=(0.15, 0.15, 0.2, 1),
-            frameSize=(-0.07, 0.07, -0.08, 0.06),
+            frameSize=(-0.08, 0.08, -0.1, 0.06),
             pos=(x, 0, y),
             parent=self.content_frame,
         )
@@ -791,10 +899,10 @@ class CharacterSheetClientModule(PluginModule, DirectObject):
         # Значение
         DirectLabel(
             text=str(value),
-            text_scale=0.04,
+            text_scale=0.045,
             text_fg=(1, 1, 1, 1),
             frameColor=(0, 0, 0, 0),
-            pos=(x, 0, y - 0.01),
+            pos=(x, 0, y - 0.015),
             parent=self.content_frame,
         )
 
@@ -803,12 +911,685 @@ class CharacterSheetClientModule(PluginModule, DirectObject):
         mod_color = (0.5, 0.9, 0.5, 1) if mod >= 0 else (0.9, 0.5, 0.5, 1)
         DirectLabel(
             text=mod_str,
-            text_scale=0.025,
+            text_scale=0.028,
             text_fg=mod_color,
             frameColor=(0, 0, 0, 0),
-            pos=(x, 0, y - 0.055),
+            pos=(x, 0, y - 0.07),
             parent=self.content_frame,
         )
+
+    def _create_save_display(self, name: str, mod: int, proficient: bool, x: float, y: float):
+        """Создаёт отображение спасброска."""
+        # Кружок владения
+        prof_color = (0.3, 0.8, 0.3, 1) if proficient else (0.3, 0.3, 0.35, 1)
+        DirectFrame(
+            frameColor=prof_color,
+            frameSize=(-0.012, 0.012, -0.012, 0.012),
+            pos=(x, 0, y),
+            parent=self.content_frame,
+        )
+
+        # Модификатор
+        mod_str = f"+{mod}" if mod >= 0 else str(mod)
+        DirectLabel(
+            text=mod_str,
+            text_scale=0.025,
+            text_fg=(0.9, 0.9, 0.9, 1),
+            text_align=TextNode.ALeft,
+            frameColor=(0, 0, 0, 0),
+            pos=(x + 0.03, 0, y - 0.008),
+            parent=self.content_frame,
+        )
+
+        # Название
+        DirectLabel(
+            text=name,
+            text_scale=0.022,
+            text_fg=(0.7, 0.7, 0.7, 1),
+            text_align=TextNode.ALeft,
+            frameColor=(0, 0, 0, 0),
+            pos=(x + 0.08, 0, y - 0.008),
+            parent=self.content_frame,
+        )
+
+    def _create_derived_stats(self, stats: dict):
+        """Создаёт панель производных статов под спасбросками."""
+        # Заголовок под спасбросками
+        DirectLabel(
+            text="Производные характеристики",
+            text_scale=0.03,
+            text_fg=(0.9, 0.8, 0.6, 1),
+            text_align=TextNode.ALeft,
+            frameColor=(0, 0, 0, 0),
+            pos=(-0.6, 0, -0.28),
+            parent=self.content_frame,
+        )
+
+        prof_bonus = stats.get("proficiency_bonus", 2)
+        hp = stats.get("current_hp", 10)
+        max_hp = stats.get("max_hp", 10)
+        temp_hp = stats.get("temp_hp", 0)
+        speed = stats.get("base_speed", 30)
+        ac = stats.get("armor_class", 10)
+        initiative = stats.get("initiative", 0)
+        passive_perception = stats.get("passive_perception", 10)
+
+        # Левая колонка
+        left_col = [
+            ("Бонус мастерства", f"+{prof_bonus}"),
+            ("Класс доспеха", str(ac)),
+            ("Инициатива", f"+{initiative}" if initiative >= 0 else str(initiative)),
+        ]
+
+        # Правая колонка
+        right_col = [
+            ("Здоровье", f"{hp}/{max_hp}" + (f" (+{temp_hp})" if temp_hp > 0 else "")),
+            ("Скорость", f"{speed} фт."),
+            ("Пассивное восприятие", str(passive_perception)),
+        ]
+
+        y = -0.36
+        for label, value in left_col:
+            DirectLabel(
+                text=f"{label}: {value}",
+                text_scale=0.024,
+                text_fg=(0.8, 0.8, 0.8, 1),
+                text_align=TextNode.ALeft,
+                frameColor=(0, 0, 0, 0),
+                pos=(-0.6, 0, y),
+                parent=self.content_frame,
+            )
+            y -= 0.055
+
+        y = -0.36
+        for label, value in right_col:
+            DirectLabel(
+                text=f"{label}: {value}",
+                text_scale=0.024,
+                text_fg=(0.8, 0.8, 0.8, 1),
+                text_align=TextNode.ALeft,
+                frameColor=(0, 0, 0, 0),
+                pos=(0.1, 0, y),
+                parent=self.content_frame,
+            )
+            y -= 0.055
+
+    # =========================================================================
+    # Skills Tab
+    # =========================================================================
+
+    def _create_skills_content(self):
+        """Создаёт содержимое вкладки навыков."""
+        skills_data = self.character_data.get("skills", {})
+
+        DirectLabel(
+            text="Навыки",
+            text_scale=0.04,
+            text_fg=(0.9, 0.8, 0.6, 1),
+            frameColor=(0, 0, 0, 0),
+            pos=(0, 0, 0.34),
+            parent=self.content_frame,
+        )
+
+        # Навыки по колонкам (2 колонки по 9 навыков)
+        skills_list = list(self.SKILL_NAMES.keys())
+        y_start = 0.22
+        row_height = 0.065
+
+        for i, skill_en in enumerate(skills_list):
+            skill_ru = self.SKILL_NAMES[skill_en]
+            skill_data = skills_data.get(skill_en, {"modifier": 0, "proficient": False})
+            mod = skill_data.get("modifier", 0)
+            prof = skill_data.get("proficient", False)
+            ability = skill_data.get("ability", "")
+
+            col = i // 9
+            row = i % 9
+            x = -0.55 + col * 0.75
+            y = y_start - row * row_height
+
+            self._create_skill_display(skill_ru, ability, mod, prof, x, y)
+
+    def _create_skill_display(self, name: str, ability: str, mod: int, proficient: bool, x: float, y: float):
+        """Создаёт отображение навыка."""
+        # Кружок владения
+        prof_color = (0.3, 0.8, 0.3, 1) if proficient else (0.3, 0.3, 0.35, 1)
+        DirectFrame(
+            frameColor=prof_color,
+            frameSize=(-0.012, 0.012, -0.012, 0.012),
+            pos=(x, 0, y),
+            parent=self.content_frame,
+        )
+
+        # Модификатор
+        mod_str = f"+{mod}" if mod >= 0 else str(mod)
+        DirectLabel(
+            text=mod_str,
+            text_scale=0.028,
+            text_fg=(0.9, 0.9, 0.9, 1),
+            text_align=TextNode.ALeft,
+            frameColor=(0, 0, 0, 0),
+            pos=(x + 0.03, 0, y - 0.008),
+            parent=self.content_frame,
+        )
+
+        # Название навыка
+        DirectLabel(
+            text=name,
+            text_scale=0.024,
+            text_fg=(0.8, 0.8, 0.8, 1),
+            text_align=TextNode.ALeft,
+            frameColor=(0, 0, 0, 0),
+            pos=(x + 0.09, 0, y - 0.008),
+            parent=self.content_frame,
+        )
+
+        # Связанная характеристика (маленьким шрифтом)
+        if ability:
+            ability_short = self.ABILITY_NAMES.get(ability, ability[:3].upper())
+            DirectLabel(
+                text=f"({ability_short})",
+                text_scale=0.018,
+                text_fg=(0.5, 0.5, 0.5, 1),
+                text_align=TextNode.ALeft,
+                frameColor=(0, 0, 0, 0),
+                pos=(x + 0.35, 0, y - 0.008),
+                parent=self.content_frame,
+            )
+
+    # =========================================================================
+    # Abilities Tab (Features)
+    # =========================================================================
+
+    def _create_abilities_content(self):
+        """Создаёт содержимое вкладки способностей."""
+        features = self.character_data.get("features", {})
+        racial = features.get("racial", [])
+        class_features = features.get("class", [])
+        background = features.get("background", [])
+
+        # Скроллящийся фрейм
+        scroll_frame = DirectScrolledFrame(
+            frameColor=(0.1, 0.1, 0.14, 0),
+            frameSize=(-0.75, 0.75, -0.65, 0.35),
+            canvasSize=(-0.7, 0.7, -2.0, 0.3),
+            scrollBarWidth=0.03,
+            verticalScroll_frameColor=(0.3, 0.3, 0.35, 1),
+            verticalScroll_thumb_frameColor=(0.5, 0.5, 0.55, 1),
+            pos=(0, 0, 0),
+            parent=self.content_frame,
+        )
+
+        canvas = scroll_frame.getCanvas()
+        y = 0.25
+
+        # Расовые способности
+        if racial:
+            y = self._create_feature_section(canvas, "Расовые особенности", racial, y)
+
+        # Классовые способности
+        if class_features:
+            y = self._create_feature_section(canvas, "Классовые способности", class_features, y)
+
+        # Способности предыстории
+        if background:
+            y = self._create_feature_section(canvas, "Предыстория", background, y)
+
+        # Владения
+        proficiencies = self.character_data.get("proficiencies", {})
+        if proficiencies:
+            y = self._create_proficiencies_section(canvas, proficiencies, y)
+
+        # Обновляем размер canvas
+        scroll_frame["canvasSize"] = (-0.7, 0.7, y - 0.1, 0.3)
+
+    def _create_feature_section(self, parent, title: str, features: list, y: float) -> float:
+        """Создаёт секцию способностей."""
+        # Заголовок секции
+        DirectLabel(
+            text=title,
+            text_scale=0.035,
+            text_fg=(0.9, 0.8, 0.6, 1),
+            text_align=TextNode.ALeft,
+            frameColor=(0, 0, 0, 0),
+            pos=(-0.65, 0, y),
+            parent=parent,
+        )
+        y -= 0.06
+
+        for feature in features:
+            name = feature.get("name", "Неизвестно")
+            description = feature.get("description", "")
+
+            # Название способности
+            DirectLabel(
+                text=f"• {name}",
+                text_scale=0.028,
+                text_fg=(0.8, 0.9, 0.8, 1),
+                text_align=TextNode.ALeft,
+                frameColor=(0, 0, 0, 0),
+                pos=(-0.6, 0, y),
+                parent=parent,
+            )
+            y -= 0.04
+
+            # Описание
+            if description:
+                DirectLabel(
+                    text=description,
+                    text_scale=0.022,
+                    text_fg=(0.6, 0.6, 0.6, 1),
+                    text_align=TextNode.ALeft,
+                    text_wordwrap=50,
+                    frameColor=(0, 0, 0, 0),
+                    pos=(-0.55, 0, y),
+                    parent=parent,
+                )
+                # Приблизительная высота текста
+                lines = len(description) // 50 + 1
+                y -= 0.03 * lines + 0.02
+
+        y -= 0.04
+        return y
+
+    def _create_proficiencies_section(self, parent, proficiencies: dict, y: float) -> float:
+        """Создаёт секцию владений."""
+        DirectLabel(
+            text="Владения",
+            text_scale=0.035,
+            text_fg=(0.9, 0.8, 0.6, 1),
+            text_align=TextNode.ALeft,
+            frameColor=(0, 0, 0, 0),
+            pos=(-0.65, 0, y),
+            parent=parent,
+        )
+        y -= 0.06
+
+        categories = [
+            ("armor", "Доспехи"),
+            ("weapons", "Оружие"),
+            ("tools", "Инструменты"),
+            ("languages", "Языки"),
+        ]
+
+        for key, label in categories:
+            items = proficiencies.get(key, [])
+            if items:
+                items_text = ", ".join(items)
+                DirectLabel(
+                    text=f"{label}: {items_text}",
+                    text_scale=0.022,
+                    text_fg=(0.7, 0.7, 0.7, 1),
+                    text_align=TextNode.ALeft,
+                    text_wordwrap=55,
+                    frameColor=(0, 0, 0, 0),
+                    pos=(-0.6, 0, y),
+                    parent=parent,
+                )
+                lines = len(items_text) // 55 + 1
+                y -= 0.03 * lines + 0.02
+
+        return y
+
+    # =========================================================================
+    # Quests Tab
+    # =========================================================================
+
+    def _create_quests_content(self):
+        """Создаёт содержимое вкладки квестов."""
+        DirectLabel(
+            text="Журнал квестов",
+            text_scale=0.04,
+            text_fg=(0.9, 0.8, 0.6, 1),
+            frameColor=(0, 0, 0, 0),
+            pos=(0, 0, 0.34),
+            parent=self.content_frame,
+        )
+
+        # Фильтр по статусам
+        filter_y = 0.26
+        filters = [
+            ("active", "В процессе"),
+            ("completed", "Готов к сдаче"),
+            ("available", "Доступен"),
+        ]
+
+        # Скроллящийся список квестов
+        scroll_frame = DirectScrolledFrame(
+            frameColor=(0.12, 0.12, 0.15, 1),
+            frameSize=(-0.75, 0.75, -0.65, 0.2),
+            canvasSize=(-0.7, 0.7, -2.0, 0.15),
+            scrollBarWidth=0.03,
+            verticalScroll_frameColor=(0.3, 0.3, 0.35, 1),
+            verticalScroll_thumb_frameColor=(0.5, 0.5, 0.55, 1),
+            pos=(0, 0, 0),
+            parent=self.content_frame,
+        )
+
+        canvas = scroll_frame.getCanvas()
+        y = 0.1
+
+        if not self.quests_data:
+            DirectLabel(
+                text="У вас нет квестов",
+                text_scale=0.03,
+                text_fg=(0.5, 0.5, 0.5, 1),
+                frameColor=(0, 0, 0, 0),
+                pos=(0, 0, -0.3),
+                parent=canvas,
+            )
+        else:
+            # Группируем квесты по статусу
+            active_quests = [q for q in self.quests_data if q.get("status") == "active"]
+            completed_quests = [q for q in self.quests_data if q.get("status") == "completed"]
+            available_quests = [q for q in self.quests_data if q.get("status") == "available"]
+
+            # Активные квесты
+            if active_quests:
+                DirectLabel(
+                    text="В процессе",
+                    text_scale=0.032,
+                    text_fg=(0.8, 0.9, 0.8, 1),
+                    text_align=TextNode.ALeft,
+                    frameColor=(0, 0, 0, 0),
+                    pos=(-0.65, 0, y),
+                    parent=canvas,
+                )
+                y -= 0.05
+
+                for quest in active_quests:
+                    y = self._create_quest_entry(canvas, quest, y)
+                y -= 0.05
+
+            # Готов к сдаче
+            if completed_quests:
+                DirectLabel(
+                    text="Готов к сдаче",
+                    text_scale=0.032,
+                    text_fg=(0.9, 0.9, 0.6, 1),
+                    text_align=TextNode.ALeft,
+                    frameColor=(0, 0, 0, 0),
+                    pos=(-0.65, 0, y),
+                    parent=canvas,
+                )
+                y -= 0.05
+
+                for quest in completed_quests:
+                    y = self._create_quest_entry(canvas, quest, y)
+                y -= 0.05
+
+            # Доступные квесты
+            if available_quests:
+                DirectLabel(
+                    text="Доступен",
+                    text_scale=0.032,
+                    text_fg=(0.7, 0.7, 0.9, 1),
+                    text_align=TextNode.ALeft,
+                    frameColor=(0, 0, 0, 0),
+                    pos=(-0.65, 0, y),
+                    parent=canvas,
+                )
+                y -= 0.05
+
+                for quest in available_quests:
+                    y = self._create_quest_entry(canvas, quest, y)
+                y -= 0.05
+
+        scroll_frame["canvasSize"] = (-0.7, 0.7, y - 0.1, 0.15)
+
+    def _create_quest_entry(self, parent, quest: dict, y: float) -> float:
+        """Создаёт запись квеста."""
+        quest_name = quest.get("name", "Неизвестный квест")
+        quest_desc = quest.get("description", "")
+        objectives = quest.get("objectives", [])
+
+        # Название квеста
+        DirectLabel(
+            text=f"• {quest_name}",
+            text_scale=0.028,
+            text_fg=(0.9, 0.9, 0.9, 1),
+            text_align=TextNode.ALeft,
+            frameColor=(0, 0, 0, 0),
+            pos=(-0.6, 0, y),
+            parent=parent,
+        )
+        y -= 0.04
+
+        # Описание
+        if quest_desc:
+            DirectLabel(
+                text=quest_desc,
+                text_scale=0.02,
+                text_fg=(0.6, 0.6, 0.6, 1),
+                text_align=TextNode.ALeft,
+                text_wordwrap=55,
+                frameColor=(0, 0, 0, 0),
+                pos=(-0.55, 0, y),
+                parent=parent,
+            )
+            lines = len(quest_desc) // 55 + 1
+            y -= 0.025 * lines + 0.01
+
+        # Цели
+        if objectives:
+            for obj in objectives:
+                obj_desc = obj.get("description", "")
+                current = obj.get("current", 0)
+                target = obj.get("target", 1)
+                completed = obj.get("completed", False)
+
+                status_color = (0.5, 0.9, 0.5, 1) if completed else (0.7, 0.7, 0.7, 1)
+                status_mark = "✓" if completed else "○"
+
+                DirectLabel(
+                    text=f"  {status_mark} {obj_desc} ({current}/{target})",
+                    text_scale=0.022,
+                    text_fg=status_color,
+                    text_align=TextNode.ALeft,
+                    frameColor=(0, 0, 0, 0),
+                    pos=(-0.52, 0, y),
+                    parent=parent,
+                )
+                y -= 0.035
+
+        y -= 0.02
+        return y
+
+    # =========================================================================
+    # Spells Tab
+    # =========================================================================
+
+    def _create_spells_content(self):
+        """Создаёт содержимое вкладки заклинаний."""
+        spellcasting = self.character_data.get("spellcasting")
+
+        # Проверяем наличие spellcasting данных
+        # Сервер присылает None для не-заклинателей или объект с данными
+        if not spellcasting:
+            DirectLabel(
+                text="Нет способности к магии",
+                text_scale=0.04,
+                text_fg=(0.5, 0.5, 0.5, 1),
+                frameColor=(0, 0, 0, 0),
+                pos=(0, 0, 0.1),
+                parent=self.content_frame,
+            )
+            DirectLabel(
+                text="Этот персонаж не умеет творить заклинания.",
+                text_scale=0.025,
+                text_fg=(0.4, 0.4, 0.4, 1),
+                frameColor=(0, 0, 0, 0),
+                pos=(0, 0, 0.0),
+                parent=self.content_frame,
+            )
+            return
+
+        # Базовая магическая характеристика
+        ability = spellcasting.get("ability", spellcasting.get("spellcasting_ability", ""))
+        ability_name = self.ABILITY_FULL_NAMES.get(ability, ability)
+        spell_save_dc = spellcasting.get("spell_save_dc", 10)
+        spell_attack = spellcasting.get("spell_attack", spellcasting.get("spell_attack_bonus", 0))
+
+        DirectLabel(
+            text="Заклинания",
+            text_scale=0.04,
+            text_fg=(0.9, 0.8, 0.6, 1),
+            frameColor=(0, 0, 0, 0),
+            pos=(0, 0, 0.34),
+            parent=self.content_frame,
+        )
+
+        # Магические статы
+        DirectLabel(
+            text=f"Базовая характеристика: {ability_name}",
+            text_scale=0.025,
+            text_fg=(0.7, 0.7, 0.7, 1),
+            text_align=TextNode.ALeft,
+            frameColor=(0, 0, 0, 0),
+            pos=(-0.7, 0, 0.26),
+            parent=self.content_frame,
+        )
+
+        DirectLabel(
+            text=f"Сложность спасброска: {spell_save_dc}",
+            text_scale=0.025,
+            text_fg=(0.7, 0.7, 0.7, 1),
+            text_align=TextNode.ALeft,
+            frameColor=(0, 0, 0, 0),
+            pos=(-0.7, 0, 0.20),
+            parent=self.content_frame,
+        )
+
+        atk_str = f"+{spell_attack}" if spell_attack >= 0 else str(spell_attack)
+        DirectLabel(
+            text=f"Бонус атаки заклинанием: {atk_str}",
+            text_scale=0.025,
+            text_fg=(0.7, 0.7, 0.7, 1),
+            text_align=TextNode.ALeft,
+            frameColor=(0, 0, 0, 0),
+            pos=(-0.7, 0, 0.14),
+            parent=self.content_frame,
+        )
+
+        # Ячейки заклинаний
+        slots_current = spellcasting.get("spell_slots_current", spellcasting.get("slots_current", {}))
+        slots_max = spellcasting.get("spell_slots_max", spellcasting.get("slots_max", {}))
+
+        if slots_max:
+            DirectLabel(
+                text="Ячейки заклинаний",
+                text_scale=0.03,
+                text_fg=(0.8, 0.8, 0.8, 1),
+                text_align=TextNode.ALeft,
+                frameColor=(0, 0, 0, 0),
+                pos=(-0.7, 0, 0.04),
+                parent=self.content_frame,
+            )
+
+            x = -0.65
+            for level in range(1, 10):
+                level_str = str(level)
+                max_slots = slots_max.get(level_str, 0)
+                if max_slots > 0:
+                    current = slots_current.get(level_str, 0)
+                    self._create_spell_slot_display(level, current, max_slots, x, -0.06)
+                    x += 0.15
+
+        # Известные/подготовленные заклинания
+        spells_known = spellcasting.get("spells_known", [])
+        spells_prepared = spellcasting.get("spells_prepared", [])
+
+        # Скроллящийся список заклинаний
+        scroll_frame = DirectScrolledFrame(
+            frameColor=(0.12, 0.12, 0.15, 1),
+            frameSize=(-0.75, 0.75, -0.65, -0.18),
+            canvasSize=(-0.7, 0.7, -1.5, 0),
+            scrollBarWidth=0.03,
+            verticalScroll_frameColor=(0.3, 0.3, 0.35, 1),
+            verticalScroll_thumb_frameColor=(0.5, 0.5, 0.55, 1),
+            pos=(0, 0, 0),
+            parent=self.content_frame,
+        )
+
+        canvas = scroll_frame.getCanvas()
+        y = -0.05
+
+        if spells_prepared:
+            DirectLabel(
+                text="Подготовленные заклинания",
+                text_scale=0.028,
+                text_fg=(0.8, 0.9, 0.8, 1),
+                text_align=TextNode.ALeft,
+                frameColor=(0, 0, 0, 0),
+                pos=(-0.65, 0, y),
+                parent=canvas,
+            )
+            y -= 0.05
+
+            for spell in spells_prepared:
+                spell_name = spell if isinstance(spell, str) else spell.get("name", "???")
+                DirectLabel(
+                    text=f"• {spell_name}",
+                    text_scale=0.024,
+                    text_fg=(0.7, 0.9, 0.7, 1),
+                    text_align=TextNode.ALeft,
+                    frameColor=(0, 0, 0, 0),
+                    pos=(-0.6, 0, y),
+                    parent=canvas,
+                )
+                y -= 0.04
+
+            y -= 0.03
+
+        if spells_known:
+            DirectLabel(
+                text="Известные заклинания",
+                text_scale=0.028,
+                text_fg=(0.8, 0.8, 0.9, 1),
+                text_align=TextNode.ALeft,
+                frameColor=(0, 0, 0, 0),
+                pos=(-0.65, 0, y),
+                parent=canvas,
+            )
+            y -= 0.05
+
+            for spell in spells_known:
+                spell_name = spell if isinstance(spell, str) else spell.get("name", "???")
+                DirectLabel(
+                    text=f"• {spell_name}",
+                    text_scale=0.024,
+                    text_fg=(0.7, 0.7, 0.9, 1),
+                    text_align=TextNode.ALeft,
+                    frameColor=(0, 0, 0, 0),
+                    pos=(-0.6, 0, y),
+                    parent=canvas,
+                )
+                y -= 0.04
+
+        scroll_frame["canvasSize"] = (-0.7, 0.7, y - 0.1, 0)
+
+    def _create_spell_slot_display(self, level: int, current: int, max_slots: int, x: float, y: float):
+        """Создаёт отображение ячеек заклинаний."""
+        # Уровень
+        DirectLabel(
+            text=str(level),
+            text_scale=0.025,
+            text_fg=(0.7, 0.7, 0.7, 1),
+            frameColor=(0, 0, 0, 0),
+            pos=(x + 0.03, 0, y + 0.03),
+            parent=self.content_frame,
+        )
+
+        # Индикаторы ячеек
+        for i in range(max_slots):
+            filled = i < current
+            color = (0.4, 0.7, 0.9, 1) if filled else (0.2, 0.2, 0.25, 1)
+            DirectFrame(
+                frameColor=color,
+                frameSize=(-0.012, 0.012, -0.012, 0.012),
+                pos=(x + i * 0.025, 0, y),
+                parent=self.content_frame,
+            )
 
     # =========================================================================
     # Tooltip

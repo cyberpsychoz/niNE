@@ -13,7 +13,7 @@ from typing import Dict, List, Optional
 from datetime import datetime
 
 from nine.core.plugins import PluginModule
-from .sh_quest_data import Quest, QuestObjective, QuestReward, PlayerQuestState, QuestStatus
+from nine.plugins.quests.sh_quest_data import Quest, QuestObjective, QuestReward, PlayerQuestState, QuestStatus
 
 
 class QuestManagerServerModule(PluginModule):

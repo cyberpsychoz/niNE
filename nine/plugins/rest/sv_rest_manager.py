@@ -10,7 +10,7 @@ import random
 from typing import Dict, Optional
 
 from nine.core.plugins import PluginModule
-from .sh_rest_data import RestType, RestResult, get_hit_die
+from nine.plugins.rest.sh_rest_data import RestType, RestResult, get_hit_die
 
 
 class RestManagerServerModule(PluginModule):

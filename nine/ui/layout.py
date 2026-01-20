@@ -35,12 +35,15 @@ from typing import List, Optional, Tuple, Union, Callable
 from dataclasses import dataclass
 from enum import Enum
 
-from direct.gui.DirectGui import DirectFrame, DirectButton, DirectLabel, DGG
+from direct.gui.DirectGui import DirectFrame, DirectButton, DirectLabel, DirectEntry, DGG
 from direct.interval.IntervalGlobal import (
     LerpPosInterval, LerpColorScaleInterval, LerpScaleInterval,
     Sequence, Parallel, Func, Wait
 )
-from panda3d.core import NodePath
+from panda3d.core import NodePath, TextNode, TransparencyAttrib
+
+from .ui_config import ui
+from .bg1_button import BG1Button, BG1ButtonSmall
 
 
 class Align(Enum):
@@ -594,66 +597,66 @@ class StyleSheet:
         return DirectFrame(**merged)
 
 
-# Предустановленные стили для D&D тематики
+# Предустановленные стили для D&D тематики (используют UIConfig)
 DEFAULT_STYLES = StyleSheet()
 
 # Кнопки
 DEFAULT_STYLES.define("btn-primary", {
-    "frameColor": (0.2, 0.5, 0.3, 1),
-    "text_fg": (1, 1, 1, 1),
-    "text_scale": 0.04,
+    "frameColor": ui.colors.btn_accent_normal,
+    "text_fg": ui.colors.text_primary,
+    "text_scale": ui.font.label,
     "frameSize": (-0.15, 0.15, -0.04, 0.045),
 })
 
 DEFAULT_STYLES.define("btn-secondary", {
-    "frameColor": (0.3, 0.3, 0.4, 1),
-    "text_fg": (0.9, 0.9, 0.9, 1),
-    "text_scale": 0.035,
+    "frameColor": ui.colors.btn_normal,
+    "text_fg": ui.colors.text_primary,
+    "text_scale": ui.font.body,
     "frameSize": (-0.12, 0.12, -0.035, 0.04),
 })
 
 DEFAULT_STYLES.define("btn-danger", {
-    "frameColor": (0.5, 0.2, 0.2, 1),
-    "text_fg": (1, 1, 1, 1),
-    "text_scale": 0.04,
+    "frameColor": ui.colors.error,
+    "text_fg": ui.colors.text_primary,
+    "text_scale": ui.font.label,
     "frameSize": (-0.15, 0.15, -0.04, 0.045),
 })
 
 # Панели
 DEFAULT_STYLES.define("panel", {
-    "frameColor": (0.1, 0.1, 0.15, 0.95),
+    "frameColor": ui.colors.bg_medium,
 })
 
 DEFAULT_STYLES.define("panel-dark", {
-    "frameColor": (0.05, 0.05, 0.08, 0.98),
+    "frameColor": ui.colors.bg_dark,
 })
 
 DEFAULT_STYLES.define("panel-transparent", {
-    "frameColor": (0, 0, 0, 0.5),
+    "frameColor": ui.colors.bg_overlay,
 })
 
 # Тексты
 DEFAULT_STYLES.define("title", {
-    "text_fg": (0.9, 0.8, 0.5, 1),
-    "text_scale": 0.06,
+    "text_fg": ui.colors.gold,
+    "text_scale": ui.font.title,
     "frameColor": (0, 0, 0, 0),
 })
 
 DEFAULT_STYLES.define("subtitle", {
-    "text_fg": (0.7, 0.7, 0.8, 1),
-    "text_scale": 0.04,
+    "text_fg": ui.colors.text_secondary,
+    "text_scale": ui.font.subtitle,
     "frameColor": (0, 0, 0, 0),
 })
 
 DEFAULT_STYLES.define("text", {
-    "text_fg": (0.8, 0.8, 0.8, 1),
-    "text_scale": 0.03,
+    "text_fg": ui.colors.text_primary,
+    "text_scale": ui.font.body,
     "frameColor": (0, 0, 0, 0),
 })
 
 DEFAULT_STYLES.define("text-muted", {
-    "text_fg": (0.5, 0.5, 0.5, 1),
-    "text_scale": 0.025,
+    "text_fg": ui.colors.text_hint,
+    "text_scale": ui.font.small,
     "frameColor": (0, 0, 0, 0),
 })
 
@@ -696,3 +699,606 @@ def responsive_pos(
         y = -1.0 + base_y if base_y > 0 else -1.0 - base_y
 
     return (x, 0, y)
+
+
+# =============================================================================
+# Declarative UI Builder
+# =============================================================================
+
+class UIBuilder:
+    """
+    Declarative UI builder for creating layouts.
+
+    Usage:
+        builder = UIBuilder(parent=base.aspect2d)
+
+        panel = builder.panel(
+            width=ui.panel.settings_width,
+            height=ui.panel.settings_height,
+            bg=ui.colors.bg_medium
+        )
+
+        with panel:
+            panel.label("НАСТРОЙКИ", style="title")
+            panel.spacer(ui.spacing.md)
+
+            with panel.row(spacing=ui.spacing.sm, justify="center") as tabs:
+                tabs.button("Общие", small=True)
+                tabs.button("Звук", small=True)
+
+            panel.spacer(ui.spacing.lg)
+
+            with panel.column(spacing=ui.spacing.sm) as content:
+                with content.row(justify="space-between"):
+                    content.label("Громкость:")
+                    content.label("80%")
+
+            panel.spacer(ui.spacing.lg)
+
+            with panel.row(spacing=ui.spacing.md, justify="center"):
+                panel.button("Назад", small=True)
+                panel.button("Сохранить", small=True)
+
+        panel.build()
+    """
+
+    def __init__(self, parent=None):
+        self.parent = parent
+        self._root = None
+
+    def panel(
+        self,
+        width: float = None,
+        height: float = None,
+        bg: Tuple = None,
+        padding: float = None,
+        pos: Tuple = (0, 0, 0)
+    ) -> "PanelBuilder":
+        """Create a panel builder."""
+        return PanelBuilder(
+            parent=self.parent,
+            width=width or ui.panel.settings_width,
+            height=height,
+            bg=bg or ui.colors.bg_medium,
+            padding=padding or ui.spacing.panel_padding,
+            pos=pos
+        )
+
+
+class PanelBuilder:
+    """Builder for creating panel layouts."""
+
+    def __init__(
+        self,
+        parent=None,
+        width: float = 1.0,
+        height: float = None,
+        bg: Tuple = None,
+        padding: float = None,
+        pos: Tuple = (0, 0, 0)
+    ):
+        self.parent = parent
+        self.width = width
+        self.height = height
+        self.bg = bg or ui.colors.bg_medium
+        self.padding = padding or ui.spacing.panel_padding
+        self.pos = pos
+
+        self._children: List[dict] = []
+        self._gui_elements: List = []
+        self._frame = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
+
+    def label(
+        self,
+        text: str,
+        style: str = "body",
+        align: int = TextNode.ACenter,
+        color: Tuple = None
+    ) -> "PanelBuilder":
+        """Add a label."""
+        self._children.append({
+            "type": "label",
+            "text": text,
+            "style": style,
+            "align": align,
+            "color": color
+        })
+        return self
+
+    def button(
+        self,
+        text: str,
+        command: Callable = None,
+        small: bool = False,
+        accent: bool = False
+    ) -> "PanelBuilder":
+        """Add a BG1 button."""
+        self._children.append({
+            "type": "button",
+            "text": text,
+            "command": command,
+            "small": small,
+            "accent": accent
+        })
+        return self
+
+    def entry(
+        self,
+        initial_text: str = "",
+        width: float = 0.5,
+        obscured: bool = False,
+        name: str = None
+    ) -> "PanelBuilder":
+        """Add a text entry field."""
+        self._children.append({
+            "type": "entry",
+            "initial_text": initial_text,
+            "width": width,
+            "obscured": obscured,
+            "name": name
+        })
+        return self
+
+    def spacer(self, height: float = None) -> "PanelBuilder":
+        """Add vertical space."""
+        self._children.append({
+            "type": "spacer",
+            "height": height or ui.spacing.md
+        })
+        return self
+
+    def row(
+        self,
+        spacing: float = None,
+        justify: str = "center"
+    ) -> "RowBuilder":
+        """Add a horizontal row container."""
+        row = RowBuilder(
+            spacing=spacing or ui.spacing.sm,
+            justify=justify
+        )
+        self._children.append({
+            "type": "row",
+            "builder": row
+        })
+        return row
+
+    def column(
+        self,
+        spacing: float = None,
+        align: str = "center"
+    ) -> "ColumnBuilder":
+        """Add a vertical column container."""
+        col = ColumnBuilder(
+            spacing=spacing or ui.spacing.sm,
+            align=align
+        )
+        self._children.append({
+            "type": "column",
+            "builder": col
+        })
+        return col
+
+    def build(self) -> DirectFrame:
+        """Build the panel and all children."""
+        # Calculate height if not specified
+        if self.height is None:
+            self.height = self._calculate_height()
+
+        half_w = self.width / 2
+        half_h = self.height / 2
+
+        # Create main frame
+        self._frame = DirectFrame(
+            parent=self.parent,
+            frameSize=(-half_w, half_w, -half_h, half_h),
+            frameColor=self.bg,
+            pos=self.pos
+        )
+        self._frame.setTransparency(TransparencyAttrib.M_alpha)
+
+        # Layout children from top to bottom
+        current_y = half_h - self.padding
+
+        for child in self._children:
+            current_y = self._build_child(child, current_y)
+
+        return self._frame
+
+    def _calculate_height(self) -> float:
+        """Calculate panel height from children."""
+        height = self.padding * 2  # Top and bottom padding
+
+        for child in self._children:
+            if child["type"] == "label":
+                scale = self._get_style_scale(child["style"])
+                height += scale * 1.8
+            elif child["type"] == "button":
+                if child["small"]:
+                    height += ui.button.small_scale * ui.button.small_height * 2.5
+                else:
+                    height += ui.button.scale * ui.button.height * 2.5
+            elif child["type"] == "entry":
+                height += ui.font.entry * 3
+            elif child["type"] == "spacer":
+                height += child["height"]
+            elif child["type"] == "row":
+                height += child["builder"]._calculate_height()
+            elif child["type"] == "column":
+                height += child["builder"]._calculate_height()
+
+        return height
+
+    def _get_style_scale(self, style: str) -> float:
+        """Get font scale for a style."""
+        scales = {
+            "title": ui.font.title,
+            "subtitle": ui.font.subtitle,
+            "heading": ui.font.heading,
+            "label": ui.font.label,
+            "body": ui.font.body,
+            "small": ui.font.small,
+        }
+        return scales.get(style, ui.font.body)
+
+    def _build_child(self, child: dict, y: float) -> float:
+        """Build a single child element. Returns new y position."""
+        child_type = child["type"]
+
+        if child_type == "label":
+            scale = self._get_style_scale(child["style"])
+            color = child["color"] or self._get_style_color(child["style"])
+
+            elem = DirectLabel(
+                parent=self._frame,
+                text=child["text"],
+                text_scale=scale,
+                text_fg=color,
+                text_align=child["align"],
+                frameColor=(0, 0, 0, 0),
+                pos=(0, 0, y - scale * 0.5)
+            )
+            self._gui_elements.append(elem)
+            return y - scale * 1.8
+
+        elif child_type == "button":
+            ButtonClass = BG1ButtonSmall if child["small"] else BG1Button
+            btn_scale = ui.button.small_scale if child["small"] else ui.button.scale
+            btn_height = ui.button.small_height if child["small"] else ui.button.height
+
+            elem = ButtonClass.create(
+                parent=self._frame,
+                text=child["text"],
+                command=child["command"],
+                pos=(0, 0, y - btn_scale * btn_height)
+            )
+            self._gui_elements.append(elem)
+            return y - btn_scale * btn_height * 2.5
+
+        elif child_type == "entry":
+            entry_width = child["width"] / ui.font.entry
+
+            elem = DirectEntry(
+                parent=self._frame,
+                scale=ui.font.entry,
+                pos=(-child["width"] / 2, 0, y - ui.font.entry),
+                initialText=child["initial_text"],
+                width=entry_width,
+                numLines=1,
+                obscured=child["obscured"],
+                frameColor=ui.colors.entry_bg,
+                text_fg=ui.colors.text_primary,
+            )
+            self._gui_elements.append(elem)
+
+            if child["name"]:
+                setattr(self, f"entry_{child['name']}", elem)
+
+            return y - ui.font.entry * 3
+
+        elif child_type == "spacer":
+            return y - child["height"]
+
+        elif child_type == "row":
+            row_height = child["builder"]._calculate_height()
+            child["builder"]._build(self._frame, y - row_height / 2, self.width - self.padding * 2)
+            self._gui_elements.extend(child["builder"]._gui_elements)
+            return y - row_height
+
+        elif child_type == "column":
+            col_height = child["builder"]._calculate_height()
+            child["builder"]._build(self._frame, y, self.width - self.padding * 2)
+            self._gui_elements.extend(child["builder"]._gui_elements)
+            return y - col_height
+
+        return y
+
+    def _get_style_color(self, style: str) -> Tuple:
+        """Get text color for a style."""
+        colors = {
+            "title": ui.colors.gold,
+            "subtitle": ui.colors.text_secondary,
+            "heading": ui.colors.text_primary,
+            "label": ui.colors.text_secondary,
+            "body": ui.colors.text_primary,
+            "small": ui.colors.text_hint,
+        }
+        return colors.get(style, ui.colors.text_primary)
+
+    def destroy(self):
+        """Destroy all elements."""
+        for elem in self._gui_elements:
+            if hasattr(elem, 'destroy'):
+                elem.destroy()
+        if self._frame:
+            self._frame.destroy()
+        self._gui_elements.clear()
+
+    def get_frame(self) -> DirectFrame:
+        """Get the main frame."""
+        return self._frame
+
+
+class RowBuilder:
+    """Builder for horizontal row layouts."""
+
+    def __init__(self, spacing: float = None, justify: str = "center"):
+        self.spacing = spacing or ui.spacing.sm
+        self.justify = justify
+        self._children: List[dict] = []
+        self._gui_elements: List = []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
+
+    def label(self, text: str, style: str = "body", color: Tuple = None) -> "RowBuilder":
+        self._children.append({
+            "type": "label",
+            "text": text,
+            "style": style,
+            "color": color
+        })
+        return self
+
+    def button(self, text: str, command: Callable = None, small: bool = False) -> "RowBuilder":
+        self._children.append({
+            "type": "button",
+            "text": text,
+            "command": command,
+            "small": small
+        })
+        return self
+
+    def spacer(self, width: float = None) -> "RowBuilder":
+        self._children.append({
+            "type": "spacer",
+            "width": width or ui.spacing.md
+        })
+        return self
+
+    def _calculate_height(self) -> float:
+        """Calculate row height from children."""
+        max_height = ui.spacing.md
+
+        for child in self._children:
+            if child["type"] == "label":
+                scale = self._get_style_scale(child["style"])
+                max_height = max(max_height, scale * 1.5)
+            elif child["type"] == "button":
+                if child["small"]:
+                    max_height = max(max_height, ui.button.small_scale * ui.button.small_height * 2.2)
+                else:
+                    max_height = max(max_height, ui.button.scale * ui.button.height * 2.2)
+
+        return max_height
+
+    def _get_style_scale(self, style: str) -> float:
+        scales = {
+            "title": ui.font.title,
+            "subtitle": ui.font.subtitle,
+            "heading": ui.font.heading,
+            "label": ui.font.label,
+            "body": ui.font.body,
+            "small": ui.font.small,
+        }
+        return scales.get(style, ui.font.body)
+
+    def _build(self, parent, y: float, available_width: float):
+        """Build the row."""
+        # Calculate total width of children
+        total_width = 0
+        widths = []
+
+        for child in self._children:
+            if child["type"] == "label":
+                w = len(child["text"]) * self._get_style_scale(child["style"]) * 0.5
+                widths.append(w)
+            elif child["type"] == "button":
+                if child["small"]:
+                    w = ui.button.small_scale * ui.button.small_width * 2
+                else:
+                    w = ui.button.scale * ui.button.width * 2
+                widths.append(w)
+            elif child["type"] == "spacer":
+                widths.append(child["width"])
+            else:
+                widths.append(0.1)
+            total_width += widths[-1]
+
+        total_width += self.spacing * (len(self._children) - 1)
+
+        # Starting X based on justify
+        if self.justify == "center":
+            x = -total_width / 2
+        elif self.justify == "start":
+            x = -available_width / 2
+        elif self.justify == "end":
+            x = available_width / 2 - total_width
+        elif self.justify == "space-between" and len(self._children) > 1:
+            x = -available_width / 2
+            self.spacing = (available_width - total_width + self.spacing * (len(self._children) - 1)) / (len(self._children) - 1)
+        else:
+            x = -total_width / 2
+
+        # Build children
+        for i, child in enumerate(self._children):
+            if child["type"] == "label":
+                scale = self._get_style_scale(child["style"])
+                color = child.get("color") or ui.colors.text_primary
+
+                elem = DirectLabel(
+                    parent=parent,
+                    text=child["text"],
+                    text_scale=scale,
+                    text_fg=color,
+                    text_align=TextNode.ALeft,
+                    frameColor=(0, 0, 0, 0),
+                    pos=(x, 0, y)
+                )
+                self._gui_elements.append(elem)
+
+            elif child["type"] == "button":
+                ButtonClass = BG1ButtonSmall if child["small"] else BG1Button
+
+                elem = ButtonClass.create(
+                    parent=parent,
+                    text=child["text"],
+                    command=child["command"],
+                    pos=(x + widths[i] / 2, 0, y)
+                )
+                self._gui_elements.append(elem)
+
+            x += widths[i] + self.spacing
+
+
+class ColumnBuilder:
+    """Builder for vertical column layouts."""
+
+    def __init__(self, spacing: float = None, align: str = "center"):
+        self.spacing = spacing or ui.spacing.sm
+        self.align = align
+        self._children: List[dict] = []
+        self._gui_elements: List = []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
+
+    def label(self, text: str, style: str = "body", color: Tuple = None) -> "ColumnBuilder":
+        self._children.append({
+            "type": "label",
+            "text": text,
+            "style": style,
+            "color": color
+        })
+        return self
+
+    def button(self, text: str, command: Callable = None, small: bool = False) -> "ColumnBuilder":
+        self._children.append({
+            "type": "button",
+            "text": text,
+            "command": command,
+            "small": small
+        })
+        return self
+
+    def row(self, spacing: float = None, justify: str = "center") -> RowBuilder:
+        row = RowBuilder(spacing=spacing, justify=justify)
+        self._children.append({
+            "type": "row",
+            "builder": row
+        })
+        return row
+
+    def spacer(self, height: float = None) -> "ColumnBuilder":
+        self._children.append({
+            "type": "spacer",
+            "height": height or ui.spacing.sm
+        })
+        return self
+
+    def _calculate_height(self) -> float:
+        height = 0
+        for child in self._children:
+            if child["type"] == "label":
+                scale = self._get_style_scale(child["style"])
+                height += scale * 1.5
+            elif child["type"] == "button":
+                if child["small"]:
+                    height += ui.button.small_scale * ui.button.small_height * 2.2
+                else:
+                    height += ui.button.scale * ui.button.height * 2.2
+            elif child["type"] == "spacer":
+                height += child["height"]
+            elif child["type"] == "row":
+                height += child["builder"]._calculate_height()
+            height += self.spacing
+        return height
+
+    def _get_style_scale(self, style: str) -> float:
+        scales = {
+            "title": ui.font.title,
+            "subtitle": ui.font.subtitle,
+            "heading": ui.font.heading,
+            "label": ui.font.label,
+            "body": ui.font.body,
+            "small": ui.font.small,
+        }
+        return scales.get(style, ui.font.body)
+
+    def _build(self, parent, y: float, available_width: float):
+        """Build the column."""
+        current_y = y
+
+        for child in self._children:
+            if child["type"] == "label":
+                scale = self._get_style_scale(child["style"])
+                color = child.get("color") or ui.colors.text_primary
+
+                elem = DirectLabel(
+                    parent=parent,
+                    text=child["text"],
+                    text_scale=scale,
+                    text_fg=color,
+                    text_align=TextNode.ACenter if self.align == "center" else TextNode.ALeft,
+                    frameColor=(0, 0, 0, 0),
+                    pos=(0, 0, current_y - scale * 0.5)
+                )
+                self._gui_elements.append(elem)
+                current_y -= scale * 1.5
+
+            elif child["type"] == "button":
+                ButtonClass = BG1ButtonSmall if child["small"] else BG1Button
+                btn_scale = ui.button.small_scale if child["small"] else ui.button.scale
+                btn_height = ui.button.small_height if child["small"] else ui.button.height
+
+                elem = ButtonClass.create(
+                    parent=parent,
+                    text=child["text"],
+                    command=child["command"],
+                    pos=(0, 0, current_y - btn_scale * btn_height)
+                )
+                self._gui_elements.append(elem)
+                current_y -= btn_scale * btn_height * 2.2
+
+            elif child["type"] == "spacer":
+                current_y -= child["height"]
+
+            elif child["type"] == "row":
+                row_height = child["builder"]._calculate_height()
+                child["builder"]._build(parent, current_y - row_height / 2, available_width)
+                self._gui_elements.extend(child["builder"]._gui_elements)
+                current_y -= row_height
+
+            current_y -= self.spacing

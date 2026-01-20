@@ -1,14 +1,15 @@
 # nine/ui/login_menu.py
 """
 Меню входа/подключения.
-Минималистичный тёмный дизайн.
+Использует блочную систему layout.
 """
 
-from direct.gui.DirectGui import DirectFrame, DirectEntry, DirectLabel, DirectButton, DGG
-from panda3d.core import TextNode, TransparencyAttrib
+from direct.gui.DirectGui import DirectFrame
+from panda3d.core import TransparencyAttrib
 
 from .base_component import BaseUIComponent
-from .theme import NineTheme
+from .blocks import Block
+from .ui_config import ui
 
 
 class LoginMenu(BaseUIComponent):
@@ -16,153 +17,83 @@ class LoginMenu(BaseUIComponent):
 
     def __init__(self, ui_manager, default_ip: str, default_name: str):
         super().__init__(ui_manager)
-        self._create_window(default_ip, default_name)
+        self._default_ip = default_ip
+        self._default_name = default_name
+        self._block = None
+        self._create_window()
 
-    def _create_window(self, default_ip, default_name):
+    def _create_window(self):
         """Создает элементы меню входа."""
-        # Полупрозрачный тёмный фон
-        bg = self._add_element('background', DirectFrame(
+        # Тёмный фон
+        bg = DirectFrame(
             parent=self.base.render2d,
             frameSize=(-2, 2, -2, 2),
-            frameColor=NineTheme.BG_DARK,
-        ))
+            frameColor=ui.colors.bg_dark,
+        )
         bg.setTransparency(TransparencyAttrib.M_alpha)
+        self._add_element('background', bg)
 
-        # Центральная панель
-        panel_width = 1.0
-        panel_height = 1.0
-        panel = self._add_element('panel', DirectFrame(
+        # Блок формы входа
+        self._block = Block(
             parent=self.base.aspect2d,
-            frameSize=(-panel_width/2, panel_width/2, -panel_height/2, panel_height/2),
-            frameColor=NineTheme.BG_MEDIUM,
-            pos=(0, 0, 0),
-        ))
-        panel.setTransparency(TransparencyAttrib.M_alpha)
+            width=1.2,
+            padding=ui.spacing.panel_padding,
+            bg_color=ui.colors.bg_medium,
+            pos=(0, 0, 0)
+        )
 
-        # Заголовок (центрирован)
-        self._add_element('title', DirectLabel(
-            parent=panel,
-            text="ПОДКЛЮЧЕНИЕ",
-            scale=NineTheme.TITLE_SCALE,
-            pos=(0, 0, panel_height/2 - 0.10),
-            text_fg=NineTheme.TEXT_PRIMARY,
-            text_align=TextNode.ACenter,
-            frameColor=(0, 0, 0, 0),
-        ))
+        # Заголовок
+        self._block.label("ПОДКЛЮЧЕНИЕ", style="title", align="center")
+        self._block.spacer(ui.spacing.lg)
 
-        # Поля ввода
-        field_x = -panel_width/2 + 0.1
-        field_width = (panel_width - 0.16) / NineTheme.ENTRY_SCALE
+        # IP сервера
+        self._block.label("IP Сервера:", style="label")
+        self._block.spacer(ui.spacing.xs)
+        row_ip = self._block.row()
+        row_ip.entry(name="ip", initial=self._default_ip, width=20, focus=True)
 
-        # IP Сервера
-        self._add_element('ip_label', DirectLabel(
-            parent=panel,
-            text="IP Сервера:",
-            scale=NineTheme.LABEL_SCALE,
-            pos=(field_x, 0, 0.2),
-            text_fg=NineTheme.TEXT_SECONDARY,
-            text_align=TextNode.ALeft,
-            frameColor=(0, 0, 0, 0),
-        ))
-        self._add_element('ip_entry', DirectEntry(
-            parent=panel,
-            scale=NineTheme.ENTRY_SCALE,
-            pos=(field_x, 0, 0.10),
-            initialText=default_ip,
-            numLines=1,
-            focus=1,
-            text_align=TextNode.ALeft,
-            width=field_width,
-            frameColor=NineTheme.ENTRY_BG,
-            text_fg=NineTheme.TEXT_PRIMARY,
-            cursorKeys=True,
-        ))
+        self._block.spacer(ui.spacing.md)
 
         # Имя персонажа
-        self._add_element('name_label', DirectLabel(
-            parent=panel,
-            text="Имя персонажа:",
-            scale=NineTheme.LABEL_SCALE,
-            pos=(field_x, 0, 0.02),
-            text_fg=NineTheme.TEXT_SECONDARY,
-            text_align=TextNode.ALeft,
-            frameColor=(0, 0, 0, 0),
-        ))
-        self._add_element('name_entry', DirectEntry(
-            parent=panel,
-            scale=NineTheme.ENTRY_SCALE,
-            pos=(field_x, 0, -0.07),
-            initialText=default_name,
-            numLines=1,
-            text_align=TextNode.ALeft,
-            width=field_width,
-            frameColor=NineTheme.ENTRY_BG,
-            text_fg=NineTheme.TEXT_PRIMARY,
-            cursorKeys=True,
-        ))
+        self._block.label("Имя персонажа:", style="label")
+        self._block.spacer(ui.spacing.xs)
+        row_name = self._block.row()
+        row_name.entry(name="name", initial=self._default_name, width=20)
+
+        self._block.spacer(ui.spacing.md)
 
         # Пароль
-        self._add_element('password_label', DirectLabel(
-            parent=panel,
-            text="Пароль:",
-            scale=NineTheme.LABEL_SCALE,
-            pos=(field_x, 0, -0.15),
-            text_fg=NineTheme.TEXT_SECONDARY,
-            text_align=TextNode.ALeft,
-            frameColor=(0, 0, 0, 0),
-        ))
-        self._add_element('password_entry', DirectEntry(
-            parent=panel,
-            scale=NineTheme.ENTRY_SCALE,
-            pos=(field_x, 0, -0.24),
-            initialText="",
-            numLines=1,
-            text_align=TextNode.ALeft,
-            width=field_width,
-            obscured=True,
-            frameColor=NineTheme.ENTRY_BG,
-            text_fg=NineTheme.TEXT_PRIMARY,
-            cursorKeys=True,
-        ))
+        self._block.label("Пароль:", style="label")
+        self._block.spacer(ui.spacing.xs)
+        row_pass = self._block.row()
+        row_pass.entry(name="password", initial="", width=20, obscured=True)
+
+        self._block.spacer(ui.spacing.lg)
 
         # Кнопки
-        btn_y = -panel_height/2 + 0.12
-        btn_spacing = 0.28
+        btn_row = self._block.row(gap=ui.spacing.lg, justify="center")
+        btn_row.button("Войти", command=self.ui_manager.callbacks.get("attempt_login"), small=True)
+        btn_row.button("Назад", command=self.ui_manager.callbacks.get("close_login_menu"), small=True)
 
-        # Кнопка "Войти" (акцентная) - с звуками
-        self._create_button(
-            name='login_button',
-            text="Войти",
-            command=self.ui_manager.callbacks.get("attempt_login"),
-            parent=panel,
-            pos=(-btn_spacing/2 - 0.08, 0, btn_y),
-            accent=True,
-            text_align=TextNode.ACenter,
-            pressEffect=True,
-            relief=DGG.FLAT,
-            frameSize=(-2.5, 2.5, -0.8, 1.1),
-        )
+        self._block.spacer(ui.spacing.sm)
 
-        # Кнопка "Назад" - с звуками
-        self._create_button(
-            name='back_button',
-            text="Назад",
-            command=self.ui_manager.callbacks.get("close_login_menu"),
-            parent=panel,
-            pos=(btn_spacing/2, 0, btn_y),
-            text_align=TextNode.ACenter,
-            pressEffect=True,
-            relief=DGG.FLAT,
-            frameSize=(-2.5, 2.5, -0.8, 1.1),
-        )
+        # Строим
+        frame = self._block.build()
+        self._add_element('panel', frame)
 
-        # Звук открытия меню
         self._play_open_sound()
+
+    def destroy(self):
+        """Уничтожает меню."""
+        if self._block:
+            self._block.destroy()
+            self._block = None
+        super().destroy()
 
     def get_credentials(self) -> dict:
         """Возвращает словарь с данными для входа."""
         return {
-            "ip": self._elements['ip_entry'].get() if 'ip_entry' in self._elements else "",
-            "name": self._elements['name_entry'].get() if 'name_entry' in self._elements else "",
-            "password": self._elements['password_entry'].get() if 'password_entry' in self._elements else ""
+            "ip": self._block.get("ip") if self._block else "",
+            "name": self._block.get("name") if self._block else "",
+            "password": self._block.get("password") if self._block else ""
         }

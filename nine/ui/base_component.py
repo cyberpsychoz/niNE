@@ -14,6 +14,7 @@ from panda3d.core import NodePath
 from direct.gui.DirectGui import DirectButton, DGG
 
 from .theme import NineTheme
+from .bg1_button import BG1Button, BG1ButtonSmall, BG1Panel
 from nine.core.config import config
 
 
@@ -268,3 +269,49 @@ class BaseUIComponent:
     def _on_menu_btn_exit(self, btn, event):
         """Exit hover для кнопки меню."""
         btn['text_fg'] = NineTheme.TEXT_SECONDARY
+
+    # =========================================================================
+    # BG1 Style кнопки
+    # =========================================================================
+
+    def _create_bg1_button(self, name: str, text: str, command=None,
+                           parent=None, pos=(0, 0, 0), small: bool = False,
+                           click_sound: bool = True) -> DirectButton:
+        """
+        Создает кнопку в стиле Baldur's Gate 1.
+
+        Args:
+            name: Уникальное имя элемента
+            text: Текст кнопки
+            command: Функция при нажатии
+            parent: Родительский узел
+            pos: Позиция (x, y, z)
+            small: Использовать маленькую кнопку
+            click_sound: Воспроизводить звук при клике
+
+        Returns:
+            DirectButton объект
+        """
+        if parent is None:
+            parent = self.base.aspect2d
+
+        # Обёртка команды для звука клика
+        def command_with_sound():
+            if click_sound:
+                self._play_click_sound()
+            if command:
+                command()
+
+        # Создаём кнопку через BG1Button
+        ButtonClass = BG1ButtonSmall if small else BG1Button
+        btn = ButtonClass.create(
+            parent=parent,
+            text=text,
+            command=command_with_sound,
+            pos=pos,
+            font=self.ui_manager.font,
+            sound_callback=self._play_hover_sound if self._ui_sounds_enabled else None,
+        )
+
+        self._add_element(name, btn)
+        return btn

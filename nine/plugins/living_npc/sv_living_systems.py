@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any
 
 from nine.core.plugins import PluginModule
-from .sh_living_components import (
+from nine.plugins.living_npc.sh_living_components import (
     NeedsComponent, PersonalityComponent, RelationshipsComponent,
     MemoryComponent, ScheduleComponent, Memory, ScheduleEntry,
     Activity, MemoryType
