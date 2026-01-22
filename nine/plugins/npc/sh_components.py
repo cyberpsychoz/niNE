@@ -101,35 +101,38 @@ class ModelComponent(Component):
 @dataclass
 class AIComponent(Component):
     """
-    AI поведение NPC.
+    AI behavior for NPC.
     """
     behavior: AIBehavior = AIBehavior.IDLE
     state: AIState = AIState.IDLE
 
-    # Параметры агрессии
-    aggro_radius: float = 10.0     # Радиус обнаружения врагов
-    leash_radius: float = 30.0     # Максимальное расстояние преследования
-    attack_range: float = 2.0      # Дистанция атаки
+    # Aggression parameters
+    aggro_radius: float = 10.0     # Enemy detection radius
+    leash_radius: float = 30.0     # Maximum pursuit distance
+    attack_range: float = 2.0      # Attack distance
 
-    # Патрулирование
+    # Patrolling
     patrol_points: List[tuple] = field(default_factory=list)  # [(x, y, z), ...]
     current_patrol_index: int = 0
-    patrol_wait_time: float = 2.0  # Время ожидания на точке
+    patrol_wait_time: float = 2.0  # Wait time at each point
     patrol_timer: float = 0.0
 
-    # Преследование
-    target_entity_id: Optional[str] = None  # ID цели (игрок/NPC)
+    # Pursuit
+    target_entity_id: Optional[str] = None  # Target ID (player/NPC)
     last_known_target_pos: Optional[tuple] = None
 
-    # Wander (случайное блуждание)
+    # Wander (random wandering)
     wander_radius: float = 5.0
     wander_center: Optional[tuple] = None
     wander_timer: float = 0.0
-    wander_interval: float = 5.0   # Интервал выбора новой точки
+    wander_interval: float = 5.0   # Interval for choosing new point
 
-    # Общие параметры
-    move_speed: float = 1.5        # Скорость движения
-    think_interval: float = 0.5    # Интервал обновления AI
+    # General parameters
+    move_speed: float = 1.5        # Movement speed
+    think_interval: float = 0.5    # AI update interval
+
+    # LOD (Level of Detail) - set by AISystem
+    lod_level: int = 0             # 0=NEAR, 1=MEDIUM, 2=FAR, 3=VERY_FAR, 4=SLEEPING
 
 
 @dataclass

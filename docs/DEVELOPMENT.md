@@ -23,8 +23,9 @@
 | Экипировка | ✅ Работает | Слоты, надевание/снятие |
 | Лист персонажа | ✅ Работает | 8 вкладок: Инвентарь, Экипировка, Описание, Статы, Навыки, Способности, Квесты, Заклинания |
 | Знакомства | ✅ Работает | Система представлений |
-| Боевая система | ✅ Интегрирована | Сервер и клиент работают |
-| NPC | ✅ Интегрирована | ECS-based AI, плагин `nine.npc` |
+| Боевая система | ✅ Интегрирована | Автостарт боя при агро NPC, пошаговый бой с инициативой |
+| NPC | ✅ Интегрирована | Unified ECS, AI, pathfinding, агро, **оптимизация 300+ NPC** |
+| ECS | ✅ Унифицирована | Общая система для игроков и NPC (`nine/core/components.py`, `systems.py`) |
 | Аудио | ✅ Работает | AudioManager, плейлисты, шаги, боевые звуки |
 | DM Panel | ✅ Реализована | F2, вкладки: Players, Combat, Spawn, Audio, World |
 | Заклинания | ✅ Реализована | 35 заклинаний, слоты, концентрация, вкладка в листе (K) |
@@ -32,7 +33,8 @@
 | Квесты | ✅ Реализована | Журнал в листе персонажа (J), типы целей: kill, collect, talk, reach |
 | Отдых | ✅ Реализована | Short/Long rest, Hit Dice |
 | Living NPC | ✅ Реализована | Потребности, личность, отношения, память, расписания |
-| UI System | 🎨 Редизайн | Квесты/заклинания интегрированы в лист → **Следующий этап: BG1 стиль** |
+| UI System | 🎨 Редизайн | BG1 кнопки, блочная система → **В работе: Combat UI** |
+| PostFX | ✅ Работает | PS1-стиль пикселизация (плагин `nine.postfx`) |
 
 **Инструкция для администратора:** см. [ADMIN_GUIDE.md](ADMIN_GUIDE.md)
 
@@ -125,7 +127,7 @@
 - `nine/ui/settings_menu.py` — меню настроек с вкладками:
   - **Вкладка "Общие":** никнейм, разрешение
   - **Вкладка "Управление":** чувствительность мыши, инверсия X/Y, режим камеры (от 1/3 лица)
-  - **Вкладка "Графика":** FOV (60-120)
+  - **Вкладка "Графика":** FOV (60-120), PS1 эффект (вкл/выкл), PS1 разрешение
   - Live preview — все настройки применяются в реальном времени
   - Откат изменений при нажатии "Назад"
 
@@ -133,11 +135,32 @@
   - `invert_mouse_x`, `invert_mouse_y` — инверсия осей мыши
   - `third_person_camera` — режим камеры (true = от 3 лица)
   - `fov` — поле зрения (по умолчанию 70)
+  - `ps1_effect_enabled` — PS1-стиль пикселизация (по умолчанию выкл)
+  - `ps1_effect_resolution` — разрешение эффекта (0=320x240, 1=640x480, 2=800x600)
 
 - `nine/core/ecs.py` — базовая ECS архитектура:
   - Entity, Component, System базовые классы
+  - ECSWorld — контейнер сущностей с методом `query()`
   - Регистрация и управление компонентами
   - Базовый игровой цикл для систем
+
+- `nine/core/components.py` — унифицированные ECS компоненты:
+  - `TransformComponent` — позиция и поворот (x, y, z, rotation)
+  - `VelocityComponent` — скорость движения (vx, vy, vz)
+  - `PawnComponent` — тип существа (player/npc/creature), имя, владелец
+  - `PhysicsComponent` — коллизия, скорость ходьбы/бега, состояние
+  - `HealthComponent` — HP (current/max), флаг смерти
+  - `InputComponent` — состояние ввода игрока
+  - `AIControllerComponent` — AI поведение, состояние, цель
+  - `ModelComponent` — путь к модели, анимация, масштаб
+  - `NetworkSyncComponent` — флаги синхронизации
+
+- `nine/core/systems.py` — ECS системы:
+  - `PhysicsSystem` — физика, коллизии, гравитация для всех Pawn
+  - `InputSystem` — обработка ввода игроков
+  - `AISystem` — AI поведения NPC (idle, patrol, hostile, wander)
+  - `AnimationSystem` — определение анимации по состоянию
+  - `NetworkSyncSystem` — генерация world_state для сети
 
 - `nine/plugins/npc/` — система NPC (отдельный плагин):
   - `sh_plugin.py` — общий плагин (регистрация)
@@ -1379,15 +1402,24 @@ nine/plugins/dnd/npc/
 ##### Модификации ядра (nine/core/)
 
 **Новые файлы:**
-- `nine/core/ecs.py` — базовые классы Entity, Component, System
-- `nine/core/navmesh.py` — генерация и работа с NavMesh
-- `nine/core/pathfinder.py` — алгоритмы поиска пути
+- `nine/core/ecs.py` — базовые классы Entity, Component, System, ECSWorld с методом `query()`
+- `nine/core/components.py` — унифицированные компоненты для Player и NPC:
+  - `TransformComponent`, `VelocityComponent`, `PawnComponent`
+  - `PhysicsComponent`, `HealthComponent`, `InputComponent`
+  - `AIControllerComponent`, `ModelComponent`, `NetworkSyncComponent`
+- `nine/core/systems.py` — ECS системы:
+  - `PhysicsSystem`, `InputSystem`, `AISystem`, `AnimationSystem`, `NetworkSyncSystem`
+- `nine/core/navmesh.py` — генерация и работа с NavMesh (в планах)
+- `nine/core/pathfinder.py` — алгоритмы поиска пути (в планах)
 
 **Изменения существующих:**
 - `nine/core/world.py`:
-  - Добавить `NavMesh` как часть мира
-  - Интегрировать ECS EntityManager
-  - Метод `spawn_npc()`, `despawn_npc()`
+  - ✅ Интегрирован ECSWorld для Player entities
+  - ✅ Player как обёртка над ECS Entity
+  - ✅ `get_unified_world_state()` для единого формата сети
+  - ✅ `get_ecs_world()` для доступа к shared ECS
+  - Добавить `NavMesh` как часть мира (в планах)
+  - Метод `spawn_npc()`, `despawn_npc()` (делегировано в NPCManager)
 
 - `nine/server/game_server.py`:
   - Тик для NPC систем в game_loop()
@@ -1481,7 +1513,7 @@ nine/plugins/dnd/npc/
 7. ✅ **Особенности и черты** — выбор классовых особенностей (Fighting Style), черты характера (Traits, Ideals, Bonds, Flaws)
 8. ✅ **Биография** — имя, фракция, физическое описание (возраст, рост, вес, глаза), отличительные черты, биография, мотивация
 9. ✅ **Финальный чарлист** — полный лист персонажа с превью 3D модели
-10. 🔄 **Система NPC (ECS)** — ECS-архитектура, компоненты, AI, pathfinding, диалоги (реализовано: `nine/core/ecs.py`, `nine/plugins/dnd/npc/`)
+10. ✅ **Система NPC (ECS)** — Unified ECS-архитектура, компоненты, AI, pathfinding (`nine/core/ecs.py`, `components.py`, `systems.py`, `nine/plugins/npc/`)
 11. ⏳ **Система фракций** — 4 фракции с точками спавна и отношениями (зависит от NPC)
 12. ✅ **Команда /charsetmodel** — административная команда для смены модели персонажа
 
@@ -2220,11 +2252,13 @@ nine/plugins/dnd/
 
 ### Первые шаги
 
-**КРИТИЧЕСКИ ВАЖНО — NPC система (перед всем остальным):**
-1. Создать `nine/core/ecs.py` — базовые классы Entity, Component, System
-2. Создать `nine/core/pathfinder.py` — Grid-based A* pathfinding
-3. Реализовать базовые компоненты NPC (Position, Model, AI)
-4. Добавить простой спавнер для статичных NPC
+**КРИТИЧЕСКИ ВАЖНО — NPC система (перед всем остальным):** ✅ ЗАВЕРШЕНО
+1. ✅ Создать `nine/core/ecs.py` — базовые классы Entity, Component, System, ECSWorld
+2. ✅ Создать `nine/core/components.py` — унифицированные компоненты (Transform, Pawn, Physics, AI)
+3. ✅ Создать `nine/core/systems.py` — системы (Physics, AI, Animation, NetworkSync)
+4. ✅ Интегрировать Player в ECS через `GameWorld`
+5. ✅ Добавить unified mode в `NPCManager` для shared ECS world
+6. Создать `nine/core/pathfinder.py` — Grid-based A* pathfinding (в работе)
 
 **Затем:**
 1. `dnd_character` — лист персонажа, это фундамент для механик
@@ -2666,6 +2700,61 @@ class FactionStanding:
 - **Сетевая синхронизация:** Клиенту не нужны все детали — только видимое поведение
 - **Масштабирование:** Система должна работать с 100+ NPC
 
+### Масштабирование NPC (RimWorld/Kenshi уровень) — ✅ РЕАЛИЗОВАНО
+
+> **Обновлено:** январь 2026
+
+**Оценка производительности:**
+| Оптимизация | NPC | Статус |
+|-------------|-----|--------|
+| Без оптимизации | 20-50 | Базовый уровень |
+| AI LOD + Spatial | 100-200 | ✅ Реализовано |
+| + Async Pathfinding | 200-300 | ✅ Реализовано |
+| + Interest Management | 300-500+ | ✅ Реализовано |
+
+**Реализованные оптимизации:**
+
+1. **Spatial Partitioning** (`nine/core/spatial.py`)
+   - `SpatialHash` — grid-based хеширование позиций
+   - O(1) обновление позиции, O(k) поиск соседей
+   - `MultiResolutionSpatialHash` для больших миров
+   - Настраиваемый размер ячеек (по умолчанию 15 юнитов)
+
+2. **AI LOD System** (`nine/plugins/npc/sv_npc_ai.py`)
+   - 5 уровней LOD: NEAR, MEDIUM, FAR, VERY_FAR, SLEEPING
+   - Дистанции: 30m / 60m / 100m / 200m / 200m+
+   - Интервалы: 0.5s / 1.0s / 2.0s / 5.0s / frozen
+   - Отключение pathfinding и perception на дальних дистанциях
+
+3. **Async Pathfinding** (`nine/core/pathfinder_async.py`)
+   - Thread pool с настраиваемым числом воркеров (по умолчанию 2)
+   - Priority queue: COMBAT > PURSUIT > PATROL > WANDER
+   - Request throttling и deduplication
+   - Path cache для часто запрашиваемых маршрутов
+
+4. **Interest Management** (`nine/server/game_server.py`)
+   - `InterestManager` — фильтрация NPC по дистанции к клиенту
+   - Full updates (50m) / Reduced updates (100m) / No updates (>100m)
+   - Delta compression — отправка только изменённых полей
+   - Position threshold 0.1 юнита для минимизации трафика
+
+5. **Entity Pooling** (`nine/core/ecs.py`)
+   - `EntityPool` — переиспользование Entity объектов
+   - `PooledECSWorld` — автоматический pooling в ECS
+   - Настраиваемый размер пула (100-500 entities)
+   - Thread-safe acquire/release
+
+**Новые файлы:**
+- `nine/core/spatial.py` — spatial partitioning
+- `nine/core/pathfinder_async.py` — async pathfinding
+
+**Статистика и отладка:**
+```python
+# Получить статистику оптимизаций
+stats = npc_manager.get_optimization_stats()
+# Returns: {spatial: {...}, lod: {...}, pathfinding: {...}, pool: {...}}
+```
+
 ---
 
 ## Scene Optimizer (Оптимизация рендеринга)
@@ -2699,6 +2788,51 @@ self.scene_optimizer.setup_distance_culling(
 - Medium detail: 50-150m
 - Low detail: 150-300m
 - Culled: >400m
+
+---
+
+## Post-Processing Effects (PS1 Pixelation)
+
+> **Добавлено:** январь 2026
+
+Плагин `nine/plugins/postfx/` добавляет PS1-стиль пикселизацию для ретро-атмосферы.
+
+**Файлы:**
+- `sh_plugin.py` — метаданные плагина (ID: `nine.postfx`, load_order: 90)
+- `cl_postfx.py` — клиентский модуль с эффектом пикселизации
+
+**Принцип работы:**
+```
+Обычный рендер:  Scene -> Camera -> Window (1920x1080)
+
+PS1 эффект:      Scene -> Camera -> LowResBuffer (320x240)
+                                          |
+                                          v
+                                   FullscreenQuad -> Window (render2d)
+                                   (nearest-neighbor scaling)
+```
+
+**Разрешения:**
+| Уровень | Разрешение | Описание |
+|---------|------------|----------|
+| 0 (Low) | 320x240 | Классический PS1 |
+| 1 (Medium) | 640x480 | PS1 high-res |
+| 2 (High) | 800x600 | Retro PC |
+
+**Настройки (config.py):**
+- `ps1_effect_enabled` — включить/выключить эффект
+- `ps1_effect_resolution` — уровень разрешения (0-2)
+
+**События:**
+- `ps1_effect_toggle` — `{"enabled": bool}` — переключение эффекта
+- `ps1_effect_resolution` — `{"level": int}` — изменение разрешения
+
+**UI (settings_menu.py → Графика):**
+- Checkbox "PS1 эффект"
+- Dropdown "PS1 разрешение" (Low/Medium/High)
+
+**Важно:** UI (render2d/aspect2d) остаётся чётким — quad помещён в bin "background".
+
 ---
 
 ## UI Редизайн в стиле Baldur's Gate 1
