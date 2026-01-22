@@ -3,6 +3,9 @@ Server-side game world management.
 
 Uses Panda3D collision system (no Bullet physics).
 Supports loading maps from config or generating test map.
+
+This module now uses a unified ECS architecture where both players and NPCs
+are managed as Pawn entities with shared components and systems.
 """
 
 import json
@@ -11,6 +14,7 @@ import os
 import time
 from itertools import cycle
 from math import sin, cos, radians
+from typing import Dict, Optional, List, Any
 
 from panda3d.core import (
     Vec3, LVector3, Geom, GeomNode, GeomTriangles, GeomVertexData,
@@ -23,12 +27,36 @@ logger = logging.getLogger("nine.server.game_server")
 
 from nine.core.database import DatabaseManager
 from nine.core.character_controller import CharacterController
+from nine.core.ecs import ECSWorld, Entity
+from nine.core.components import (
+    TransformComponent,
+    VelocityComponent,
+    ModelComponent,
+    PawnComponent,
+    PhysicsComponent,
+    HealthComponent,
+    InputComponent,
+    NetworkSyncComponent,
+    PawnType,
+)
+from nine.core.systems import (
+    PhysicsSystem,
+    InputSystem,
+    AnimationSystem,
+    NetworkSyncSystem,
+)
 
 
 class Player:
-    """Represents a player on the server side."""
+    """
+    Represents a player on the server side.
 
-    def __init__(self, client_id, name, actor, render, cTrav):
+    This is a wrapper class that bridges the legacy API with the new ECS system.
+    Internally, player data is stored in ECS components.
+    """
+
+    def __init__(self, client_id: int, name: str, actor, render, cTrav,
+                 entity: Optional[Entity] = None):
         self.client_id = client_id
         self.name = name
         self.actor = actor
@@ -36,16 +64,27 @@ class Player:
         self.is_dev_client = False
         self.cTrav = cTrav
 
-        # Input state from client
+        # ECS entity reference (set when using unified ECS)
+        self.entity = entity
+
+        # Input state from client (legacy - will be moved to InputComponent)
         self.keys = {"w": False, "a": False, "s": False, "d": False, "space": False, "shift": False}
         self.camera_yaw = 0.0  # Camera direction for calculating movement
 
+        # Character controller (legacy physics - used when ECS physics not enabled)
         self.character_controller = CharacterController(self.actor, render, cTrav)
 
-    def update(self, dt):
+    def update(self, dt: float):
         """Updates the player's character controller."""
         if self.is_dev_client:
             return None
+
+        # If using ECS entity, sync input to component
+        if self.entity:
+            input_comp = self.entity.get_component(InputComponent)
+            if input_comp:
+                input_comp.keys = self.keys.copy()
+                input_comp.camera_yaw = self.camera_yaw
 
         # Calculate movement vector from keys and camera direction
         move_vector = self._calculate_move_vector()
@@ -59,6 +98,31 @@ class Player:
         result = self.character_controller.update(dt, move_vector, is_running, do_jump)
         if result:
             self.last_move_time = time.time()
+
+        # Sync position back to ECS entity
+        if self.entity and result:
+            transform = self.entity.get_component(TransformComponent)
+            velocity = self.entity.get_component(VelocityComponent)
+            physics = self.entity.get_component(PhysicsComponent)
+
+            if transform:
+                pos = self.actor.getPos()
+                rot = self.actor.getHpr()
+                transform.x = pos.x
+                transform.y = pos.y
+                transform.z = pos.z
+                transform.rotation = rot.x
+
+            if velocity:
+                vel = self.character_controller.get_velocity()
+                velocity.vx = vel.x
+                velocity.vy = vel.y
+                velocity.vz = vel.z
+
+            if physics:
+                physics.is_on_ground = self.character_controller.is_on_ground
+                physics.is_jumping = self.character_controller.is_jumping
+                physics.is_running = self.character_controller.is_running
 
         # Clear jump after processing (one-shot)
         self.keys["space"] = False
@@ -86,7 +150,7 @@ class Player:
         move.normalize()
         return move
 
-    def get_state(self):
+    def get_state(self) -> Dict[str, Any]:
         """Gets the player's state for broadcasting."""
         pos = self.actor.getPos()
         rot = self.actor.getHpr()
@@ -108,13 +172,22 @@ class Player:
             "speed_ratio": speed_ratio
         }
 
+    def get_entity_id(self) -> Optional[str]:
+        """Get the ECS entity ID for this player."""
+        return self.entity.id if self.entity else None
+
 
 class GameWorld:
-    """Manages the server-side game state using Panda3D collision system."""
+    """
+    Manages the server-side game state using Panda3D collision system.
+
+    Now uses a unified ECS architecture for managing both players and NPCs
+    through the Pawn system.
+    """
 
     def __init__(self, render_node, world_config: dict = None):
         self.render = render_node
-        self.players = {}
+        self.players: Dict[int, Player] = {}
         self.db = DatabaseManager()
         self.world_config = world_config or self._load_world_config()
 
@@ -122,6 +195,21 @@ class GameWorld:
         self.cTrav = CollisionTraverser('world_traverser')
         # Enable previous transform mode for fast-moving objects (prevents tunneling)
         self.cTrav.setRespectPrevTransform(True)
+
+        # =========================================================================
+        # Unified ECS World
+        # =========================================================================
+        self.ecs_world = ECSWorld()
+
+        # Network sync system (used to generate world_state)
+        self.network_sync_system = NetworkSyncSystem()
+        self.ecs_world.add_system(self.network_sync_system)
+
+        # Animation system
+        self.ecs_world.add_system(AnimationSystem())
+
+        # Player entity ID mapping: client_id -> entity_id
+        self._player_entity_map: Dict[int, str] = {}
 
         # DEBUG: Визуализация коллизий (раскомментируйте для отладки на КЛИЕНТЕ)
         # Показывает collision geometry красными линиями
@@ -437,14 +525,100 @@ class GameWorld:
 
         logger.debug(f"[World] Created collision box '{name}' at {pos} size {size}")
 
-    def get_world_state(self):
-        """Gathers the state of all players for broadcasting."""
+    def get_world_state(self) -> Dict[str, Any]:
+        """
+        Gathers the state of all players for broadcasting.
+
+        Returns both legacy format (players dict) and new unified format (pawns list).
+        """
+        # Legacy format for backward compatibility
         player_states = {}
         for client_id, player in self.players.items():
             player_states[client_id] = player.get_state()
-        return {"type": "world_state", "players": player_states}
 
-    def update(self, dt):
+        return {
+            "type": "world_state",
+            "players": player_states,
+            # Unified ECS format will be added by game_server when merging with NPCs
+        }
+
+    def get_unified_world_state(self) -> Dict[str, Any]:
+        """
+        Get world state in the new unified format with pawns.
+
+        Returns:
+            {
+                "type": "world_state",
+                "pawns": [...],  # All pawns (players + NPCs)
+                "players": {...}  # Legacy format for backward compatibility
+            }
+        """
+        # Get legacy player states
+        player_states = {}
+        for client_id, player in self.players.items():
+            player_states[client_id] = player.get_state()
+
+        # Get unified pawn states from ECS
+        pawns = []
+        for entity in self.ecs_world.query(PawnComponent, TransformComponent):
+            pawn_data = self._serialize_pawn_entity(entity)
+            if pawn_data:
+                pawns.append(pawn_data)
+
+        return {
+            "type": "world_state",
+            "players": player_states,
+            "pawns": pawns,
+        }
+
+    def _serialize_pawn_entity(self, entity: Entity) -> Optional[Dict[str, Any]]:
+        """Serialize a pawn entity for network transmission."""
+        pawn = entity.get_component(PawnComponent)
+        transform = entity.get_component(TransformComponent)
+
+        if not pawn or not transform:
+            return None
+
+        data = {
+            "entity_id": entity.id,
+            "pawn_type": pawn.pawn_type.name.lower(),
+            "display_name": pawn.display_name,
+            "transform": {
+                "x": transform.x,
+                "y": transform.y,
+                "z": transform.z,
+                "rotation": transform.rotation
+            }
+        }
+
+        # Add owner_id for players
+        if pawn.owner_id is not None:
+            data["owner_id"] = pawn.owner_id
+
+        # Add velocity
+        velocity = entity.get_component(VelocityComponent)
+        if velocity:
+            data["velocity"] = {
+                "x": velocity.vx,
+                "y": velocity.vy,
+                "z": velocity.vz
+            }
+
+        # Add model
+        model = entity.get_component(ModelComponent)
+        if model:
+            data["model"] = model.model_path
+            data["animation"] = model.animation
+
+        # Add health
+        health = entity.get_component(HealthComponent)
+        if health:
+            data["hp_current"] = health.hp_current
+            data["hp_max"] = health.hp_max
+
+        return data
+
+    def update(self, dt: float) -> None:
         """The main update tick for the world."""
         # DEBUG: Store tick ID for debugging
         if not hasattr(self, '_tick_id'):
@@ -454,9 +628,12 @@ class GameWorld:
         if self._tick_id % 10 == 0 or self._tick_id < 20:  # Log first 20 ticks and every 10th
             logger.info(f"[World TICK #{self._tick_id}] Updating {len(self.players)} players")
 
-        # Update all players
+        # Update all players (legacy character controller)
         for player in self.players.values():
             player.update(dt)
+
+        # Update ECS world (systems like Animation, NetworkSync)
+        self.ecs_world.update(dt)
 
         # Run collision detection
         self.cTrav.traverse(self.render)
@@ -491,32 +668,134 @@ class GameWorld:
             player.character_controller.is_moving = move_data.get("is_moving", False)
             player.character_controller.is_running = move_data.get("is_running", False)
 
-    def remove_player(self, client_id):
+    def remove_player(self, client_id: int) -> Optional[int]:
+        """Remove a player from the world."""
         if client_id in self.players:
             player = self.players.pop(client_id)
             player.character_controller.cleanup()
             player.actor.removeNode()
+
+            # Remove ECS entity
+            if client_id in self._player_entity_map:
+                entity_id = self._player_entity_map.pop(client_id)
+                self.ecs_world.remove_entity(entity_id)
+                logger.debug(f"[World] Removed ECS entity {entity_id[:8]} for player")
+
             self.db.shutdown()
             logger.info(f"[World] Removed player (client_id={client_id})")
             return player.client_id
         return None
 
-    def add_player(self, client_id, name):
-        """Creates a player entity in the world."""
+    def add_player(self, client_id: int, name: str) -> Player:
+        """
+        Creates a player entity in the world.
+
+        Creates both a legacy Player wrapper and an ECS Entity for the player.
+        """
         actor = self.render.attachNewNode(name)
 
-        player = Player(client_id, name, actor, self.render, self.cTrav)
+        # Create ECS entity for the player
+        entity = self._create_player_entity(client_id, name)
+
+        # Create legacy Player wrapper with entity reference
+        player = Player(client_id, name, actor, self.render, self.cTrav, entity=entity)
 
         # Set spawn position
         spawn_pos = next(self.spawn_points)
         logger.info(f"[World] Spawning player '{name}' at {spawn_pos}")
         player.character_controller.set_position(spawn_pos)
 
+        # Sync spawn position to ECS entity
+        transform = entity.get_component(TransformComponent)
+        if transform:
+            transform.x = spawn_pos[0]
+            transform.y = spawn_pos[1]
+            transform.z = spawn_pos[2]
+
         # Verify position was set
         actual_pos = player.actor.getPos()
         logger.info(f"[World] Actual position after spawn: ({actual_pos.x:.2f}, {actual_pos.y:.2f}, {actual_pos.z:.2f})")
 
+        # Store mappings
         self.players[client_id] = player
+        self._player_entity_map[client_id] = entity.id
 
-        logger.info(f"[World] Added player '{name}' (client_id={client_id})")
+        logger.info(f"[World] Added player '{name}' (client_id={client_id}, entity_id={entity.id[:8]})")
         return player
+
+    def _create_player_entity(self, client_id: int, name: str) -> Entity:
+        """Create an ECS entity for a player with all required components."""
+        entity = self.ecs_world.create_entity()
+
+        # Core pawn component
+        entity.add_component(PawnComponent(
+            pawn_type=PawnType.PLAYER,
+            display_name=name,
+            owner_id=client_id,
+            tags=["player"]
+        ))
+
+        # Transform (position/rotation)
+        entity.add_component(TransformComponent())
+
+        # Velocity
+        entity.add_component(VelocityComponent())
+
+        # Physics properties
+        entity.add_component(PhysicsComponent(
+            walk_speed=1.5,
+            run_speed=3.0
+        ))
+
+        # Health
+        entity.add_component(HealthComponent(
+            hp_current=100,
+            hp_max=100,
+            armor_class=10
+        ))
+
+        # Input state
+        entity.add_component(InputComponent())
+
+        # Model
+        entity.add_component(ModelComponent(
+            model_path="human_male",
+            animation="idle"
+        ))
+
+        # Network sync
+        entity.add_component(NetworkSyncComponent(needs_full_sync=True))
+
+        # Add player tag
+        entity.add_tag("player")
+        entity.add_tag("pawn")
+
+        return entity
+
+    # =========================================================================
+    # ECS Helper Methods
+    # =========================================================================
+
+    def get_ecs_world(self) -> ECSWorld:
+        """Get the unified ECS world instance."""
+        return self.ecs_world
+
+    def get_player_entity(self, client_id: int) -> Optional[Entity]:
+        """Get the ECS entity for a player by client_id."""
+        entity_id = self._player_entity_map.get(client_id)
+        if entity_id:
+            return self.ecs_world.get_entity(entity_id)
+        return None
+
+    def get_entity_by_id(self, entity_id: str) -> Optional[Entity]:
+        """Get an entity by its ID."""
+        return self.ecs_world.get_entity(entity_id)
+
+    def get_pawns_in_radius(self, x: float, y: float, radius: float) -> List[Entity]:
+        """Get all pawn entities within a radius of a point."""
+        result = []
+        for entity in self.ecs_world.query(PawnComponent, TransformComponent):
+            transform = entity.get_component(TransformComponent)
+            if transform and transform.distance_to(x, y) <= radius:
+                result.append(entity)
+        return result

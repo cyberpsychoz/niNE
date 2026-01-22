@@ -113,7 +113,7 @@ class SettingsMenu(BaseUIComponent):
             text="Сохранить",
             command=self._on_save,
             parent=panel,
-            pos=(-0.22, 0, btn_row_y),
+            pos=(-0.35, 0, btn_row_y),
             small=True
         )
 
@@ -122,7 +122,7 @@ class SettingsMenu(BaseUIComponent):
             text="Назад",
             command=self._on_back,
             parent=panel,
-            pos=(0.22, 0, btn_row_y),
+            pos=(0.35, 0, btn_row_y),
             small=True
         )
 
@@ -219,9 +219,23 @@ class SettingsMenu(BaseUIComponent):
                   initial=config.get("fov", 70),
                   value_format="{:.0f}", command=self._on_fov_change)
 
-        block.spacer(0.08)
+        block.spacer(0.04)
 
-        block.label("Больше настроек будет добавлено", style="small", align="center")
+        # PS1 Effect toggle
+        r2 = block.row(justify="space-between")
+        r2.label("PS1 эффект:")
+        r2.checkbox(name="ps1_enabled", initial=config.get("ps1_effect_enabled", False),
+                    command=self._on_ps1_toggle)
+
+        block.spacer(0.04)
+
+        # PS1 Resolution
+        ps1_resolutions = ["320x240 (Low)", "640x480 (Medium)", "800x600 (High)"]
+        current_level = config.get("ps1_effect_resolution", 1)
+
+        r3 = block.row(justify="space-between")
+        r3.label("PS1 разрешение:")
+        r3.dropdown(name="ps1_resolution", items=ps1_resolutions, initial=ps1_resolutions[current_level])
 
         block.build(height=self.TAB_CONTENT_HEIGHT)
         self._tab_blocks["graphics"] = block
@@ -314,6 +328,28 @@ class SettingsMenu(BaseUIComponent):
         if val and self.client and self.client.camera_controller:
             self.client.camera_controller.set_fov(int(val))
 
+    def _on_ps1_toggle(self, status):
+        """Toggle PS1 pixelation effect."""
+        if hasattr(self.base, 'event_manager') and self.base.event_manager:
+            self.base.event_manager.post("ps1_effect_toggle", {"enabled": bool(status)})
+
+    def _on_ps1_resolution(self):
+        """Handle PS1 resolution change."""
+        gfx = self._tab_blocks.get("graphics")
+        if not gfx:
+            return
+        res_str = gfx.get("ps1_resolution")
+        if res_str:
+            # Extract level from dropdown selection
+            if "320x240" in res_str:
+                level = 0
+            elif "640x480" in res_str:
+                level = 1
+            else:
+                level = 2
+            if hasattr(self.base, 'event_manager') and self.base.event_manager:
+                self.base.event_manager.post("ps1_effect_resolution", {"level": level})
+
     def _on_master_change(self):
         val = self._tab_blocks["audio"].get("master")
         if val is not None and hasattr(self.base, 'audio_manager') and self.base.audio_manager:
@@ -381,6 +417,24 @@ class SettingsMenu(BaseUIComponent):
             if fov is not None:
                 config.set("fov", int(fov))
 
+            # PS1 effect settings
+            ps1_enabled = gfx.get("ps1_enabled")
+            if ps1_enabled is not None:
+                config.set("ps1_effect_enabled", bool(ps1_enabled))
+
+            ps1_res = gfx.get("ps1_resolution")
+            if ps1_res:
+                if "320x240" in ps1_res:
+                    level = 0
+                elif "640x480" in ps1_res:
+                    level = 1
+                else:
+                    level = 2
+                config.set("ps1_effect_resolution", level)
+                # Apply resolution change
+                if hasattr(self.base, 'event_manager') and self.base.event_manager:
+                    self.base.event_manager.post("ps1_effect_resolution", {"level": level})
+
         # Audio
         aud = self._tab_blocks.get("audio")
         if aud:
@@ -411,6 +465,13 @@ class SettingsMenu(BaseUIComponent):
             am.set_channel_volume(AudioChannel.BGM, config.get("audio_bgm_volume", 70) / 100.0)
             am.set_channel_volume(AudioChannel.SFX, config.get("audio_sfx_volume", 80) / 100.0)
             am.set_channel_volume(AudioChannel.BGS, config.get("audio_ambient_volume", 60) / 100.0)
+
+        # Восстановить PS1 эффект
+        if hasattr(self.base, 'event_manager') and self.base.event_manager:
+            saved_ps1_enabled = config.get("ps1_effect_enabled", False)
+            saved_ps1_level = config.get("ps1_effect_resolution", 1)
+            self.base.event_manager.post("ps1_effect_toggle", {"enabled": saved_ps1_enabled})
+            self.base.event_manager.post("ps1_effect_resolution", {"level": saved_ps1_level})
 
         self._go_back()
 

@@ -234,9 +234,9 @@ class CharacterSheetClientModule(PluginModule, DirectObject):
 
         self.is_open = True
 
-        # Останавливаем камеру
+        # Приостанавливаем управление камерой (камера остаётся прикреплённой)
         if hasattr(self.app, 'camera_controller') and self.app.camera_controller:
-            self.app.camera_controller.stop()
+            self.app.camera_controller.pause()
 
         self._create_ui()
         self.logger.debug(f"Лист персонажа открыт (вкладка: {self.current_tab})")
@@ -249,9 +249,9 @@ class CharacterSheetClientModule(PluginModule, DirectObject):
         self.is_open = False
         self._destroy_ui()
 
-        # Возобновляем камеру
+        # Возобновляем управление камерой
         if hasattr(self.app, 'camera_controller') and self.app.camera_controller:
-            self.app.camera_controller.start()
+            self.app.camera_controller.resume()
 
         self.logger.debug("Лист персонажа закрыт")
 
@@ -1104,9 +1104,17 @@ class CharacterSheetClientModule(PluginModule, DirectObject):
     def _create_abilities_content(self):
         """Создаёт содержимое вкладки способностей."""
         features = self.character_data.get("features", {})
-        racial = features.get("racial", [])
-        class_features = features.get("class", [])
-        background = features.get("background", [])
+
+        # Handle case where features is a list instead of dict
+        if isinstance(features, list):
+            # Convert list to dict format
+            racial = []
+            class_features = features  # Assume list contains class features
+            background = []
+        else:
+            racial = features.get("racial", [])
+            class_features = features.get("class", [])
+            background = features.get("background", [])
 
         # Скроллящийся фрейм
         scroll_frame = DirectScrolledFrame(

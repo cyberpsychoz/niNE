@@ -21,6 +21,8 @@ class Config:
         "third_person_camera": True,  # True = от третьего лица, False = от первого лица
         # Графика
         "fov": 70,  # Поле зрения (для first-person)
+        "ps1_effect_enabled": False,  # PS1-стиль пикселизация
+        "ps1_effect_resolution": 1,   # 0=Low (320x240), 1=Medium (640x480), 2=High (800x600)
         # Звук
         "audio_master_volume": 100,  # Общая громкость (0-100)
         "audio_bgm_volume": 70,      # Громкость музыки (0-100)

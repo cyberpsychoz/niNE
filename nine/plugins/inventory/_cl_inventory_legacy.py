@@ -126,9 +126,9 @@ class InventoryClientModule(PluginModule, DirectObject):
 
         self.is_open = True
 
-        # Останавливаем камеру (отключает захват мыши)
+        # Приостанавливаем управление камерой (камера остаётся прикреплённой)
         if hasattr(self.app, 'camera_controller') and self.app.camera_controller:
-            self.app.camera_controller.stop()
+            self.app.camera_controller.pause()
 
         self._create_ui()
         self.logger.debug("Инвентарь открыт")
@@ -141,9 +141,9 @@ class InventoryClientModule(PluginModule, DirectObject):
         self.is_open = False
         self._destroy_ui()
 
-        # Возобновляем камеру
+        # Возобновляем управление камерой
         if hasattr(self.app, 'camera_controller') and self.app.camera_controller:
-            self.app.camera_controller.start()
+            self.app.camera_controller.resume()
 
         self.logger.debug("Инвентарь закрыт")
 

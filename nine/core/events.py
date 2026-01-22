@@ -1,5 +1,9 @@
 from collections import defaultdict
 from typing import Callable, Any, Dict, List
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class EventManager:
     """Простой менеджер событий для слабой связи компонентов."""
@@ -11,6 +15,7 @@ class EventManager:
         """Подписывает слушателя на тип события."""
         if listener not in self._listeners[event_type]:
             self._listeners[event_type].append(listener)
+            logger.debug(f"[EventManager] Subscribed to '{event_type}': {listener.__qualname__}")
 
     def unsubscribe(self, event_type: str, listener: Callable):
         """Отписывает слушателя от типа события."""
@@ -19,9 +24,15 @@ class EventManager:
 
     def post(self, event_type: str, data: Any = None):
         """Отправляет событие всем подписанным слушателям."""
-        for listener in self._listeners[event_type]:
+        listeners = self._listeners[event_type]
+        if event_type.startswith("dm_") or event_type == "npc_spawn":
+            # Debug logging for NPC-related events
+            logger.info(f"[EventManager] Posting '{event_type}' to {len(listeners)} listeners: {data}")
+        for listener in listeners:
             try:
+                if event_type.startswith("dm_") or event_type == "npc_spawn":
+                    logger.info(f"[EventManager] Calling {listener.__qualname__}")
                 listener(data)
             except Exception as e:
-                print(f"Ошибка в обработчике события '{event_type}': {e}")
+                logger.error(f"Error in event handler '{event_type}': {e}", exc_info=True)
 
