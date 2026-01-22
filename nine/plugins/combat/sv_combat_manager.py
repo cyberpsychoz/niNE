@@ -498,7 +498,7 @@ class CombatManager:
 
     def _get_player_data(self, client_id: int) -> Optional[dict]:
         """Получает данные игрока из игрового мира."""
-        # Получаем из D&D плагина
+        # Сначала пробуем получить из D&D плагина (полные данные персонажа)
         if hasattr(self.app, 'plugin_manager'):
             dnd_plugin = self.app.plugin_manager.get_plugin("nine.dnd")
             if dnd_plugin:
@@ -521,40 +521,65 @@ class CombatManager:
                                     "dex_modifier": dex_mod,
                                     "movement_speed": 30.0,
                                 }
+
+        # Fallback: получаем базовые данные из GameWorld
+        if hasattr(self.app, 'world') and self.app.world:
+            player = self.app.world.players.get(client_id)
+            if player:
+                return {
+                    "name": player.name,
+                    "faction": "players",
+                    "hp_current": 10,
+                    "hp_max": 10,
+                    "armor_class": 10,
+                    "dex_modifier": 0,
+                    "movement_speed": 30.0,
+                }
+
         return None
 
     def _get_npc_data(self, entity_id: str) -> Optional[dict]:
         """Получает данные NPC из ECS."""
-        # Получаем из NPC менеджера
-        if hasattr(self.app, 'plugin_manager'):
+        entity = None
+
+        # Сначала проверяем прямую ссылку на npc_manager
+        if hasattr(self.app, 'npc_manager') and self.app.npc_manager:
+            entity = self.app.npc_manager.get_npc_entity(entity_id)
+
+        # Fallback: через plugin_manager
+        if not entity and hasattr(self.app, 'plugin_manager'):
             npc_plugin = self.app.plugin_manager.get_plugin("nine.npc")
             if npc_plugin:
                 for module in npc_plugin.modules:
                     if hasattr(module, 'get_npc_entity'):
                         entity = module.get_npc_entity(entity_id)
                         if entity:
-                            from nine.plugins.npc.sh_components import (
-                                CombatComponent, FactionComponent, NPCInfoComponent
-                            )
+                            break
 
-                            combat = entity.get_component(CombatComponent)
-                            faction = entity.get_component(FactionComponent)
-                            info = entity.get_component(NPCInfoComponent)
+        if entity:
+            from nine.plugins.npc.sh_components import (
+                CombatComponent, FactionComponent, NPCInfoComponent
+            )
 
-                            dex_mod = 0
-                            if combat:
-                                # Используем save_dex как приближение
-                                dex_mod = combat.save_dex
+            combat = entity.get_component(CombatComponent)
+            faction = entity.get_component(FactionComponent)
+            info = entity.get_component(NPCInfoComponent)
 
-                            return {
-                                "name": info.display_name if info else "NPC",
-                                "faction": faction.faction_id if faction else "monsters",
-                                "hp_current": combat.hp_current if combat else 10,
-                                "hp_max": combat.hp_max if combat else 10,
-                                "armor_class": combat.armor_class if combat else 10,
-                                "dex_modifier": dex_mod,
-                                "movement_speed": 30.0,
-                            }
+            dex_mod = 0
+            if combat:
+                # Используем save_dex как приближение
+                dex_mod = combat.save_dex
+
+            return {
+                "name": info.display_name if info else "NPC",
+                "faction": faction.faction_id if faction else "monsters",
+                "hp_current": combat.hp_current if combat else 10,
+                "hp_max": combat.hp_max if combat else 10,
+                "armor_class": combat.armor_class if combat else 10,
+                "dex_modifier": dex_mod,
+                "movement_speed": 30.0,
+            }
+
         return None
 
     # =========================================================================

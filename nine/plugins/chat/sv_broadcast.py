@@ -221,6 +221,11 @@ CHAT_COMMANDS = {
         "role": "all",
         "usage": "/whoami",
     },
+    "pos": {
+        "description": "/pos — показать свои координаты",
+        "role": "all",
+        "usage": "/pos",
+    },
 
     # GM аудио команды
     "music": {
@@ -461,6 +466,10 @@ class ChatBroadcastModule(PluginModule):
         # /whoami - показать своё имя и ID
         if message.lower().strip() == "/whoami":
             return ParsedMessage(ChatType.COMMAND, "", command="whoami", args=[])
+
+        # /pos - показать свои координаты
+        if message.lower().strip() == "/pos":
+            return ParsedMessage(ChatType.COMMAND, "", command="pos", args=[])
 
         # Проверка на неизвестную команду (начинается с /, но не распознана)
         if message.startswith("/"):
@@ -795,6 +804,10 @@ class ChatBroadcastModule(PluginModule):
             # /whoami - показать своё имя и ID
             self._send_system_message(client_id, f"Имя: {player_name}, Client ID: {client_id}")
 
+        elif command == "pos":
+            # /pos - показать свои координаты
+            self._handle_pos_command(client_id)
+
         # =========================================================================
         # GM/DM аудио команды
         # =========================================================================
@@ -917,6 +930,17 @@ class ChatBroadcastModule(PluginModule):
         except Exception:
             return False
 
+    def _handle_pos_command(self, client_id: int):
+        """Показывает координаты игрока."""
+        if not hasattr(self.app, 'world') or client_id not in self.app.world.players:
+            self._send_system_message(client_id, "Не удалось получить позицию")
+            return
+
+        player = self.app.world.players[client_id]
+        pos = player.get_state().get("pos", [0, 0, 0])
+        x, y, z = pos[0], pos[1], pos[2]
+        self._send_system_message(client_id, f"Позиция: X={x:.2f}, Y={y:.2f}, Z={z:.2f}")
+
     def _handle_setrole(self, client_id: int, player_name: str, role: str):
         """Устанавливает роль игроку."""
         role = role.lower()
@@ -1005,21 +1029,34 @@ class ChatBroadcastModule(PluginModule):
 
     def _handle_spawnnpc(self, client_id: int, player_name: str, template: str, coords=None):
         """Обрабатывает /spawnnpc - спавнит NPC."""
+        self.logger.info(f"[SPAWNNPC] Запрос от {player_name}: template={template}, coords={coords}")
+
         # Получаем позицию игрока если координаты не указаны
         if coords is None:
             coords = self._get_player_position(client_id)
+            self.logger.info(f"[SPAWNNPC] Получена позиция игрока: {coords}")
             if not coords:
                 self._send_system_message(client_id, "Не удалось определить позицию")
                 return
 
-        # Отправляем событие в NPC плагин
-        self.event_manager.post("npc_spawn_request", {
-            "template": template,
-            "position": coords,
+        # Преобразуем координаты в нужный формат
+        if isinstance(coords, list) and len(coords) >= 3:
+            pos_dict = {"x": coords[0], "y": coords[1], "z": coords[2]}
+        else:
+            pos_dict = {"x": 0, "y": 0, "z": 1}
+
+        self.logger.info(f"[SPAWNNPC] Отправляем событие dm_npc_spawn: template_id={template}, position={pos_dict}")
+
+        # Отправляем событие в NPC плагин (dm_npc_spawn с правильным форматом)
+        self.event_manager.post("dm_npc_spawn", {
+            "template_id": template,
+            "position": pos_dict,
             "spawner_id": client_id,
         })
-        self._send_system_message(client_id, f"Спавн NPC '{template}' на позиции {coords}")
-        self.logger.info(f"{player_name} spawned NPC {template} at {coords}")
+
+        self.logger.info(f"[SPAWNNPC] Событие dm_npc_spawn отправлено")
+        self._send_system_message(client_id, f"Спавн NPC '{template}' на позиции X={pos_dict['x']:.1f}, Y={pos_dict['y']:.1f}, Z={pos_dict['z']:.1f}")
+        self.logger.info(f"{player_name} spawned NPC {template} at {pos_dict}")
 
     def _handle_listnpcs(self, client_id: int, player_name: str):
         """Обрабатывает /listnpcs - показывает список активных NPC."""
@@ -1058,8 +1095,8 @@ class ChatBroadcastModule(PluginModule):
 
     def _handle_removenpc(self, client_id: int, player_name: str, entity_id: str):
         """Обрабатывает /removenpc - удаляет NPC."""
-        # Отправляем событие в NPC плагин
-        self.event_manager.post("npc_remove_request", {
+        # Отправляем событие в NPC плагин (dm_npc_despawn)
+        self.event_manager.post("dm_npc_despawn", {
             "entity_id": entity_id,
             "remover_id": client_id,
         })

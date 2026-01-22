@@ -133,10 +133,30 @@ CHAT_COMMANDS_CLIENT = {
     "looc": "/looc <текст> — локальный OOC чат",
     "ooc": "/ooc <текст> — глобальный OOC чат",
     "help": "/help — показать список команд",
+    # Утилиты
+    "pos": "/pos — показать свои координаты",
+    "whoami": "/whoami — показать имя и ID",
+    "myrole": "/myrole — показать свою роль",
+    "setrole": "/setrole <role> — установить роль (admins.txt)",
     # Предметы
     "give": "/give <id> [кол-во] — выдать предмет",
     "spawn": "/spawn <id> [кол-во] — заспавнить предмет",
     "items": "/items — список предметов",
+    # NPC (admin/dm)
+    "spawnnpc": "/spawnnpc <шаблон> [x y z] — заспавнить NPC",
+    "listnpcs": "/listnpcs — список активных NPC",
+    "removenpc": "/removenpc <id> — удалить NPC",
+    # Бой (admin/dm)
+    "startcombat": "/startcombat [радиус] — начать бой",
+    "endcombat": "/endcombat — завершить бой",
+    "nextturn": "/nextturn — следующий ход",
+    "spectator": "/spectator — режим спектатора",
+    # Персонаж (admin)
+    "charsetmodel": "/charsetmodel <модель> — изменить модель",
+    "charsetfaction": "/charsetfaction <фракция> — изменить фракцию",
+    # Аудио (admin/dm)
+    "music": "/music <play|stop|track> — управление музыкой",
+    "ambient": "/ambient <set|stop> — управление эмбиентом",
 }
 
 
@@ -1019,9 +1039,9 @@ class ChatWindow(BaseUIComponent, DirectObject):
         self.history_frame.verticalScroll.setValue(1)
 
     def _enable_mouse_cursor(self):
-        """Показывает курсор мыши."""
+        """Показывает курсор мыши (камера остаётся прикреплённой к персонажу)."""
         if hasattr(self.base, 'camera_controller') and self.base.camera_controller:
-            self.base.camera_controller.stop()
+            self.base.camera_controller.pause()
         else:
             props = WindowProperties()
             props.setCursorHidden(False)
@@ -1029,9 +1049,9 @@ class ChatWindow(BaseUIComponent, DirectObject):
             self.base.win.requestProperties(props)
 
     def _disable_mouse_cursor(self):
-        """Скрывает курсор."""
+        """Скрывает курсор и возобновляет управление камерой."""
         if hasattr(self.base, 'camera_controller') and self.base.camera_controller:
-            self.base.camera_controller.start()
+            self.base.camera_controller.resume()
         else:
             props = WindowProperties()
             props.setCursorHidden(True)

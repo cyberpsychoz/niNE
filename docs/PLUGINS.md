@@ -1286,6 +1286,72 @@ class MyClientModule(PluginModule):
 
 ---
 
+## ECS компоненты и системы
+
+Плагины могут взаимодействовать с унифицированной ECS архитектурой для работы с игроками и NPC.
+
+### Основные файлы
+
+| Файл | Описание |
+|------|----------|
+| `nine/core/ecs.py` | Базовые классы Entity, Component, ECSWorld |
+| `nine/core/components.py` | Унифицированные компоненты (Transform, Pawn, Physics и др.) |
+| `nine/core/systems.py` | Системы (Physics, AI, Animation, NetworkSync) |
+
+### Доступ к ECS World
+
+```python
+class MyServerModule(PluginModule):
+    def on_load(self):
+        # Получение ECS world через GameServer
+        if hasattr(self.app, 'world') and self.app.world:
+            self.ecs_world = self.app.world.get_ecs_world()
+
+    def query_pawns(self):
+        from nine.core.components import PawnComponent, TransformComponent
+        for entity in self.ecs_world.query(PawnComponent, TransformComponent):
+            pawn = entity.get_component(PawnComponent)
+            transform = entity.get_component(TransformComponent)
+            self.logger.info(f"{pawn.display_name} at ({transform.x}, {transform.y})")
+```
+
+### Унифицированные компоненты
+
+| Компонент | Описание |
+|-----------|----------|
+| `TransformComponent` | Позиция (x, y, z) и поворот |
+| `VelocityComponent` | Скорость движения (vx, vy, vz) |
+| `PawnComponent` | Тип существа (player/npc), имя, владелец |
+| `PhysicsComponent` | Коллизия, скорость ходьбы/бега |
+| `HealthComponent` | HP (current/max), флаг смерти |
+| `InputComponent` | Состояние ввода игрока |
+| `AIControllerComponent` | AI поведение, состояние, цель |
+| `ModelComponent` | Путь к модели, анимация, масштаб |
+
+### Пример: Создание entity
+
+```python
+from nine.core.ecs import ECSWorld
+from nine.core.components import (
+    TransformComponent, PawnComponent, PhysicsComponent
+)
+
+# Создание entity
+entity = ecs_world.create_entity("my_npc_123")
+entity.add_component(TransformComponent(x=10, y=20, z=1))
+entity.add_component(PawnComponent(pawn_type="npc", display_name="Guard"))
+entity.add_component(PhysicsComponent(has_collision=True))
+entity.add_tag("pawn")
+entity.add_tag("npc")
+```
+
+### Подробная документация
+
+- **ECS Architecture**: см. [ECS_ARCHITECTURE.md](ECS_ARCHITECTURE.md)
+- **NPC System**: см. [NPC_SYSTEM.md](NPC_SYSTEM.md)
+
+---
+
 ## Дополнительные ресурсы
 
 - [Документация Panda3D](https://docs.panda3d.org/)
@@ -1294,5 +1360,5 @@ class MyClientModule(PluginModule):
 
 ---
 
-**Версия документации**: 1.0.0
-**Дата обновления**: 2026-01-06
+**Версия документации**: 1.1.0
+**Дата обновления**: 2026-01-22

@@ -665,6 +665,9 @@ class GameClient(ShowBase):
                         actor_model.setPlayRate(anim_rate, anim_state)
                     else:
                         actor_model.setPlayRate(1.0, anim_state)
+
+            # Post world_state_received event for NPC renderer and other plugins
+            self.event_manager.post("world_state_received", data)
         else:
             self.event_manager.post(msg_type, data)
 

@@ -905,11 +905,35 @@ def on_world_config(self, data: dict):
 
 ### world_state_received
 
-Получено состояние мира с данными NPC.
+Получено состояние мира с данными игроков и NPC.
 
 **Когда вызывается**: При получении world_state от сервера.
 
-**Данные**:
+**Данные** (Unified Format - новый):
+```python
+{
+    "pawns": [  # Унифицированный список всех существ (игроки + NPC)
+        {
+            "entity_id": str,      # "player_1" или "npc_goblin_123"
+            "pawn_type": str,      # "player" | "npc" | "creature"
+            "owner_id": int,       # client_id для игроков, None для NPC
+            "display_name": str,
+            "transform": {"x": float, "y": float, "z": float, "rotation": float},
+            "velocity": {"x": float, "y": float, "z": float},
+            "model": str,
+            "animation": str,
+            "hp_current": int,
+            "hp_max": int,
+            "ai_state": str        # Только для NPC: "IDLE" | "PATROL" | "HOSTILE"
+        }
+    ],
+    # Legacy format (для обратной совместимости):
+    "players": [...],
+    "npcs": [...]
+}
+```
+
+**Данные** (Legacy Format):
 ```python
 {
     "npcs": [
@@ -929,7 +953,27 @@ def on_world_config(self, data: dict):
 }
 ```
 
-**Где слушать**: Клиентские модули (NPC renderer)
+**Где слушать**: Клиентские модули (NPC renderer, Pawn renderer)
+
+---
+
+### npc_aggro_player
+
+NPC обнаружил и агрится на игрока.
+
+**Когда вызывается**: Когда враждебный NPC обнаруживает игрока в радиусе агро.
+
+**Данные**:
+```python
+{
+    "npc_id": str,      # Entity ID NPC
+    "player_id": str    # Client ID игрока (как строка)
+}
+```
+
+**Где слушать**: Серверные модули (CombatManager автоматически подписан)
+
+**Результат**: CombatManager автоматически начинает бой между NPC и игроком.
 
 ---
 
@@ -945,6 +989,29 @@ def on_world_config(self, data: dict):
     "client_id": int,
     "entity_id": str,
     "interaction_type": str  # "talk" | "trade" | "quest"
+}
+```
+
+**Где слушать**: Серверные модули
+
+---
+
+### npc_attack
+
+NPC атакует цель.
+
+**Когда вызывается**: Когда NPC совершает атаку по цели.
+
+**Данные**:
+```python
+{
+    "attacker_id": str,     # Entity ID NPC
+    "target_id": str,       # Entity ID цели
+    "attack_roll": int,     # Бросок атаки (d20)
+    "attack_total": int,    # Итоговый бросок (d20 + мод)
+    "damage": int,          # Урон (если попал)
+    "hit": bool,            # Попадание?
+    "is_critical": bool     # Крит?
 }
 ```
 
@@ -1383,5 +1450,5 @@ InventoryClientModule обновляет UI
 
 ---
 
-**Версия документа**: 1.1.0
-**Дата обновления**: 2026-01-16
+**Версия документа**: 1.2.0
+**Дата обновления**: 2026-01-22

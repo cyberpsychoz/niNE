@@ -102,9 +102,9 @@ class TargetSelector(PluginModule):
         """Включает режим курсора."""
         self.cursor_mode = True
 
-        # Останавливаем камеру
+        # Приостанавливаем управление камерой (камера остаётся прикреплённой)
         if hasattr(self.app, 'camera_controller') and self.app.camera_controller:
-            self.app.camera_controller.stop()
+            self.app.camera_controller.pause()
         else:
             # Показываем курсор вручную
             props = WindowProperties()
@@ -124,9 +124,9 @@ class TargetSelector(PluginModule):
         """Выключает режим курсора."""
         self.cursor_mode = False
 
-        # Возобновляем камеру
+        # Возобновляем управление камерой
         if hasattr(self.app, 'camera_controller') and self.app.camera_controller:
-            self.app.camera_controller.start()
+            self.app.camera_controller.resume()
         else:
             # Скрываем курсор вручную
             props = WindowProperties()

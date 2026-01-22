@@ -1,6 +1,6 @@
 {
     "nickname": "MilkiWinky",
-    "resolution": "1280x720",
+    "resolution": "1920x1080",
     "available_resolutions": [
         "800x600",
         "1024x768",
@@ -8,10 +8,12 @@
         "1920x1080"
     ],
     "camera_sensitivity": 0.9880418181419373,
-    "invert_mouse_x": false,
-    "invert_mouse_y": true,
+    "invert_mouse_x": true,
+    "invert_mouse_y": false,
     "third_person_camera": true,
     "fov": 70,
+    "ps1_effect_enabled": true,
+    "ps1_effect_resolution": 2,
     "audio_master_volume": 65,
     "audio_bgm_volume": 69,
     "audio_sfx_volume": 21,

@@ -58,6 +58,7 @@ class CameraController:
 
         # State
         self._task = None
+        self._paused = False  # True = cursor visible, no mouse rotation, but camera still follows player
 
     def _apply_fov(self):
         """Apply field of view to the camera lens."""
@@ -90,6 +91,41 @@ class CameraController:
         props.setCursorHidden(False)
         props.setMouseMode(WindowProperties.M_absolute)
         self.win.requestProperties(props)
+        self._paused = False
+
+    def pause(self):
+        """Pause mouse input but keep camera following player.
+
+        Use this when opening UI (chat, menus) - camera stays attached
+        but user can move mouse freely.
+        """
+        if self._paused:
+            return
+
+        self._paused = True
+        props = WindowProperties()
+        props.setCursorHidden(False)
+        props.setMouseMode(WindowProperties.M_absolute)
+        self.win.requestProperties(props)
+
+    def resume(self):
+        """Resume mouse input after pause.
+
+        Call this when closing UI to re-capture mouse.
+        """
+        if not self._paused:
+            return
+
+        self._paused = False
+        props = WindowProperties()
+        props.setCursorHidden(True)
+        props.setMouseMode(WindowProperties.M_relative)
+        self.win.requestProperties(props)
+
+    @property
+    def is_paused(self) -> bool:
+        """Check if camera input is paused."""
+        return self._paused
 
     def _update(self, task):
         if not self.target or self.target.isEmpty():
@@ -105,6 +141,10 @@ class CameraController:
 
     def _handle_mouse(self):
         """Handle mouse input for camera rotation with smoothing."""
+        # Don't process mouse when paused (UI open)
+        if self._paused:
+            return
+
         if not self.base.mouseWatcherNode.hasMouse():
             return
 
