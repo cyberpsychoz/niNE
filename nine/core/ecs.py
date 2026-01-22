@@ -22,13 +22,37 @@ Entity-Component-System (ECS) фреймворк для niNE.
     world.update(dt)
 """
 
+"""
+Entity-Component-System (ECS) framework for niNE.
+
+Provides base architecture for creating game entities with a component-based
+approach. Used for NPCs, items, and other game objects.
+
+Example usage:
+    # Create world
+    world = ECSWorld()
+
+    # Register systems
+    world.add_system(AISystem())
+    world.add_system(PathfindingSystem())
+
+    # Create entity
+    npc = world.create_entity()
+    npc.add_component(PositionComponent(x=10, y=5, z=1))
+    npc.add_component(AIComponent(behavior="patrol"))
+
+    # Update all systems
+    world.update(dt)
+"""
+
 from __future__ import annotations
 
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Dict, List, Type, TypeVar, Optional, Set, Iterator, Any
+from typing import Dict, List, Type, TypeVar, Optional, Set, Iterator, Any, Callable
 import logging
+import threading
 
 logger = logging.getLogger(__name__)
 
@@ -317,6 +341,24 @@ class ECSWorld:
             if entity and entity.active and entity_id not in self._pending_removal:
                 yield entity
 
+    def query(self, *component_types: Type[Component]) -> Iterator[Entity]:
+        """
+        Alias for get_entities_with_components.
+        Provides a shorter, more convenient API for querying entities.
+
+        Args:
+            component_types: Types of components to query
+
+        Yields:
+            Entities with all specified components
+
+        Example:
+            for entity in world.query(PawnComponent, TransformComponent):
+                pawn = entity.get_component(PawnComponent)
+                transform = entity.get_component(TransformComponent)
+        """
+        return self.get_entities_with_components(*component_types)
+
     def get_entities_with_tag(self, tag: str) -> Iterator[Entity]:
         """
         Возвращает все сущности с указанным тегом.
@@ -441,6 +483,12 @@ class ECSWorld:
                     self._entities_by_tag[tag] = set()
                 self._entities_by_tag[tag].add(entity.id)
 
+            # Notify systems about new entity
+            for system in self._systems:
+                if system.enabled and system.required_components:
+                    if entity.has_components(*system.required_components):
+                        system.on_entity_added(entity)
+
             logger.debug(f"Entity {entity.id[:8]}... added to ECS world")
 
         self._pending_addition.clear()
@@ -450,6 +498,12 @@ class ECSWorld:
         for entity_id in self._pending_removal:
             entity = self._entities.pop(entity_id, None)
             if entity:
+                # Notify systems about entity removal
+                for system in self._systems:
+                    if system.enabled and system.required_components:
+                        if entity.has_components(*system.required_components):
+                            system.on_entity_removed(entity)
+
                 # Очищаем кэш компонентов
                 for comp_type in entity._components:
                     if comp_type in self._component_cache:
@@ -489,6 +543,377 @@ class ECSWorld:
         self._pending_addition.clear()
 
         logger.info("ECS world cleared")
+
+
+# =============================================================================
+# Entity Pool - Object reuse for reduced GC pressure
+# =============================================================================
+
+class EntityPool:
+    """
+    Object pool for Entity instances.
+
+    Reduces garbage collection pressure by reusing Entity objects
+    instead of creating/destroying them. Essential for scaling to
+    300+ NPCs with frequent spawn/despawn.
+
+    Thread Safety:
+        This pool is thread-safe for acquire/release operations.
+
+    Usage:
+        pool = EntityPool(initial_size=50)
+
+        # Acquire entity from pool
+        entity = pool.acquire("npc_123")
+        entity.add_component(PositionComponent(x=10, y=5))
+
+        # Return to pool when done
+        pool.release(entity)  # Components are cleared automatically
+    """
+
+    def __init__(
+        self,
+        initial_size: int = 50,
+        max_size: int = 500,
+        auto_grow: bool = True
+    ):
+        """
+        Initialize entity pool.
+
+        Args:
+            initial_size: Number of entities to pre-allocate
+            max_size: Maximum pool size (prevents unbounded growth)
+            auto_grow: If True, create new entities when pool is empty
+        """
+        self._pool: List[Entity] = []
+        self._active: Dict[str, Entity] = {}  # entity_id -> Entity
+        self._max_size = max_size
+        self._auto_grow = auto_grow
+        self._lock = threading.Lock()
+
+        # Statistics
+        self._stats = {
+            "acquires": 0,
+            "releases": 0,
+            "creates": 0,
+            "reuses": 0,
+            "peak_active": 0,
+        }
+
+        # Pre-allocate entities
+        for _ in range(initial_size):
+            self._pool.append(Entity())
+            self._stats["creates"] += 1
+
+        logger.debug(f"EntityPool initialized with {initial_size} entities")
+
+    def acquire(self, entity_id: Optional[str] = None) -> Entity:
+        """
+        Get an entity from the pool.
+
+        If the pool is empty and auto_grow is True, creates a new entity.
+        If auto_grow is False and pool is empty, raises RuntimeError.
+
+        Args:
+            entity_id: Optional ID for the entity. If None, generates UUID.
+
+        Returns:
+            A clean Entity ready for use
+
+        Raises:
+            RuntimeError: If pool is empty and auto_grow is False
+        """
+        with self._lock:
+            self._stats["acquires"] += 1
+
+            # Try to get from pool
+            if self._pool:
+                entity = self._pool.pop()
+                self._stats["reuses"] += 1
+            elif self._auto_grow:
+                entity = Entity()
+                self._stats["creates"] += 1
+            else:
+                raise RuntimeError("Entity pool exhausted")
+
+            # Reset entity with new ID
+            entity.id = entity_id or str(uuid.uuid4())
+            entity._components.clear()
+            entity.tags.clear()
+            entity.active = True
+            entity._world = None
+
+            # Track active entity
+            self._active[entity.id] = entity
+
+            # Update peak
+            if len(self._active) > self._stats["peak_active"]:
+                self._stats["peak_active"] = len(self._active)
+
+            return entity
+
+    def release(self, entity: Entity) -> bool:
+        """
+        Return an entity to the pool.
+
+        The entity's components and tags are cleared automatically.
+        If the pool is at max capacity, the entity is discarded.
+
+        Args:
+            entity: The entity to release
+
+        Returns:
+            True if returned to pool, False if discarded
+        """
+        with self._lock:
+            self._stats["releases"] += 1
+
+            # Remove from active tracking
+            self._active.pop(entity.id, None)
+
+            # Clear entity state
+            self._clear_entity(entity)
+
+            # Return to pool if under capacity
+            if len(self._pool) < self._max_size:
+                self._pool.append(entity)
+                return True
+            else:
+                # Pool is full, let GC handle it
+                return False
+
+    def release_by_id(self, entity_id: str) -> bool:
+        """
+        Release entity by ID.
+
+        Args:
+            entity_id: ID of entity to release
+
+        Returns:
+            True if found and released, False otherwise
+        """
+        with self._lock:
+            entity = self._active.get(entity_id)
+            if entity:
+                # Use internal release (already holding lock)
+                self._stats["releases"] += 1
+                self._active.pop(entity_id, None)
+                self._clear_entity(entity)
+                if len(self._pool) < self._max_size:
+                    self._pool.append(entity)
+                return True
+            return False
+
+    def _clear_entity(self, entity: Entity) -> None:
+        """Reset entity to clean state for reuse."""
+        entity._components.clear()
+        entity.tags.clear()
+        entity.active = False
+        entity._world = None
+
+    def get_active(self, entity_id: str) -> Optional[Entity]:
+        """
+        Get an active entity by ID.
+
+        Args:
+            entity_id: Entity ID
+
+        Returns:
+            Entity if active, None otherwise
+        """
+        return self._active.get(entity_id)
+
+    def is_active(self, entity_id: str) -> bool:
+        """Check if entity is currently active (acquired from pool)."""
+        return entity_id in self._active
+
+    def prewarm(self, count: int) -> int:
+        """
+        Pre-allocate additional entities.
+
+        Useful before expected high activity (e.g., dungeon start).
+
+        Args:
+            count: Number of entities to pre-allocate
+
+        Returns:
+            Number of entities actually created
+        """
+        created = 0
+        with self._lock:
+            space = self._max_size - len(self._pool) - len(self._active)
+            to_create = min(count, space)
+
+            for _ in range(to_create):
+                self._pool.append(Entity())
+                self._stats["creates"] += 1
+                created += 1
+
+        if created > 0:
+            logger.debug(f"EntityPool prewarmed with {created} entities")
+
+        return created
+
+    def shrink(self, target_size: Optional[int] = None) -> int:
+        """
+        Shrink pool to target size, releasing excess entities.
+
+        Args:
+            target_size: Target pool size. If None, uses initial_size.
+
+        Returns:
+            Number of entities removed
+        """
+        if target_size is None:
+            target_size = 50
+
+        removed = 0
+        with self._lock:
+            while len(self._pool) > target_size:
+                self._pool.pop()
+                removed += 1
+
+        if removed > 0:
+            logger.debug(f"EntityPool shrunk by {removed} entities")
+
+        return removed
+
+    def clear(self) -> None:
+        """Clear all entities (active and pooled)."""
+        with self._lock:
+            for entity in self._active.values():
+                self._clear_entity(entity)
+            self._active.clear()
+            self._pool.clear()
+
+        logger.debug("EntityPool cleared")
+
+    # =========================================================================
+    # Statistics
+    # =========================================================================
+
+    @property
+    def pool_size(self) -> int:
+        """Number of entities available in pool."""
+        return len(self._pool)
+
+    @property
+    def active_count(self) -> int:
+        """Number of entities currently in use."""
+        return len(self._active)
+
+    @property
+    def total_count(self) -> int:
+        """Total entities (pooled + active)."""
+        return len(self._pool) + len(self._active)
+
+    def get_stats(self) -> Dict:
+        """
+        Get pool statistics.
+
+        Returns:
+            Dict with stats (acquires, releases, reuse rate, etc.)
+        """
+        with self._lock:
+            total_acquires = self._stats["acquires"]
+            reuses = self._stats["reuses"]
+
+            return {
+                **self._stats,
+                "pool_size": len(self._pool),
+                "active_count": len(self._active),
+                "max_size": self._max_size,
+                "reuse_rate": reuses / total_acquires if total_acquires > 0 else 0.0,
+            }
+
+    def reset_stats(self) -> None:
+        """Reset statistics counters (keeps pool state)."""
+        with self._lock:
+            self._stats = {
+                "acquires": 0,
+                "releases": 0,
+                "creates": 0,
+                "reuses": 0,
+                "peak_active": len(self._active),
+            }
+
+
+class PooledECSWorld(ECSWorld):
+    """
+    ECSWorld that uses EntityPool for entity management.
+
+    Drop-in replacement for ECSWorld with automatic entity pooling.
+    """
+
+    def __init__(self, pool: Optional[EntityPool] = None):
+        """
+        Initialize pooled ECS world.
+
+        Args:
+            pool: Optional EntityPool to use. If None, creates default pool.
+        """
+        super().__init__()
+        self._pool = pool or EntityPool(initial_size=100, max_size=500)
+
+    def create_entity(self, entity_id: Optional[str] = None) -> Entity:
+        """
+        Create an entity from the pool.
+
+        Args:
+            entity_id: Optional ID (generates UUID if not provided)
+
+        Returns:
+            New entity from pool
+        """
+        entity = self._pool.acquire(entity_id)
+        entity._world = self
+        self._pending_addition.append(entity)
+        return entity
+
+    def _process_pending_removals(self) -> None:
+        """Process removals and return entities to pool."""
+        for entity_id in self._pending_removal:
+            entity = self._entities.pop(entity_id, None)
+            if entity:
+                # Notify systems
+                for system in self._systems:
+                    if system.enabled and system.required_components:
+                        if entity.has_components(*system.required_components):
+                            system.on_entity_removed(entity)
+
+                # Clear caches
+                for comp_type in list(entity._components.keys()):
+                    if comp_type in self._component_cache:
+                        self._component_cache[comp_type].discard(entity_id)
+
+                for tag in list(entity.tags):
+                    if tag in self._entities_by_tag:
+                        self._entities_by_tag[tag].discard(entity_id)
+
+                # Return to pool
+                self._pool.release(entity)
+
+                logger.debug(f"Entity {entity_id[:8]}... returned to pool")
+
+        self._pending_removal.clear()
+
+    def clear(self) -> None:
+        """Clear world and return all entities to pool."""
+        for entity_id in list(self._entities.keys()):
+            entity = self._entities[entity_id]
+            self._pool.release(entity)
+
+        self._entities.clear()
+        self._component_cache.clear()
+        self._entities_by_tag.clear()
+        self._pending_removal.clear()
+        self._pending_addition.clear()
+
+        logger.info("PooledECSWorld cleared")
+
+    def get_pool_stats(self) -> Dict:
+        """Get entity pool statistics."""
+        return self._pool.get_stats()
 
 
 # =============================================================================

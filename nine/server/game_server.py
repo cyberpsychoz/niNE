@@ -2,13 +2,16 @@ import asyncio
 import ipaddress
 import json
 import logging
+import math
 import os
 import ssl
 import struct
 import subprocess
 import time
 from collections import deque
+from dataclasses import dataclass, field
 from itertools import cycle
+from typing import Dict, List, Set, Optional, Tuple
 
 from direct.showbase.ShowBase import ShowBase
 from panda3d.core import loadPrcFileData, Vec3, ClockObject
@@ -21,6 +24,214 @@ from nine.core.events import EventManager
 from nine.core.plugins import PluginManager
 from nine.core.database import DatabaseManager
 
+
+# =============================================================================
+# Interest Management - Network Optimization
+# =============================================================================
+
+@dataclass
+class ClientInterest:
+    """Tracks which entities a client is interested in."""
+    client_id: int
+    position: Tuple[float, float, float] = (0, 0, 0)
+    full_update_entities: Set[str] = field(default_factory=set)
+    reduced_update_entities: Set[str] = field(default_factory=set)
+    last_sent_state: Dict[str, Dict] = field(default_factory=dict)
+
+
+class InterestManager:
+    """
+    Manages which NPCs each client should receive updates for.
+
+    Clients only receive:
+    - Full updates for nearby NPCs (position, animation, stats)
+    - Reduced updates for mid-range NPCs (position only)
+    - No updates for far NPCs
+
+    This significantly reduces network bandwidth for large NPC counts.
+    """
+
+    # Distance thresholds
+    FULL_UPDATE_RADIUS = 50.0      # Full state updates
+    REDUCED_UPDATE_RADIUS = 100.0  # Position-only updates
+    # Beyond REDUCED_UPDATE_RADIUS: no updates
+
+    # Delta compression settings
+    POSITION_THRESHOLD = 0.1       # Min position change to send
+    ROTATION_THRESHOLD = 1.0       # Min rotation change to send
+
+    def __init__(self):
+        """Initialize interest manager."""
+        self._client_interests: Dict[int, ClientInterest] = {}
+        self._logger = logging.getLogger(__name__)
+
+    def register_client(self, client_id: int) -> None:
+        """Register a new client."""
+        self._client_interests[client_id] = ClientInterest(client_id=client_id)
+
+    def unregister_client(self, client_id: int) -> None:
+        """Unregister a client."""
+        self._client_interests.pop(client_id, None)
+
+    def update_client_position(
+        self,
+        client_id: int,
+        x: float,
+        y: float,
+        z: float
+    ) -> None:
+        """Update client's known position."""
+        interest = self._client_interests.get(client_id)
+        if interest:
+            interest.position = (x, y, z)
+
+    def get_npcs_for_client(
+        self,
+        client_id: int,
+        all_npcs: List[Dict]
+    ) -> Tuple[List[Dict], List[Dict]]:
+        """
+        Get NPCs that should be sent to a client.
+
+        Args:
+            client_id: Client ID
+            all_npcs: List of all NPC states
+
+        Returns:
+            Tuple of (full_update_npcs, reduced_update_npcs)
+        """
+        interest = self._client_interests.get(client_id)
+        if not interest:
+            return [], []
+
+        px, py, pz = interest.position
+        full_updates = []
+        reduced_updates = []
+
+        for npc in all_npcs:
+            npc_pos = npc.get("position", {})
+            nx = npc_pos.get("x", 0)
+            ny = npc_pos.get("y", 0)
+
+            # Calculate distance
+            dx = nx - px
+            dy = ny - py
+            dist = math.sqrt(dx * dx + dy * dy)
+
+            npc_id = npc.get("entity_id", "")
+
+            if dist <= self.FULL_UPDATE_RADIUS:
+                # Full update - check for delta compression
+                if self._should_send_full_update(interest, npc_id, npc):
+                    full_updates.append(npc)
+                    interest.full_update_entities.add(npc_id)
+                    interest.reduced_update_entities.discard(npc_id)
+                    interest.last_sent_state[npc_id] = npc.copy()
+
+            elif dist <= self.REDUCED_UPDATE_RADIUS:
+                # Reduced update - position only
+                if self._should_send_reduced_update(interest, npc_id, npc):
+                    reduced_npc = self._create_reduced_state(npc)
+                    reduced_updates.append(reduced_npc)
+                    interest.reduced_update_entities.add(npc_id)
+                    interest.full_update_entities.discard(npc_id)
+                    interest.last_sent_state[npc_id] = reduced_npc
+
+            else:
+                # Out of range - clear tracking
+                if npc_id in interest.full_update_entities:
+                    interest.full_update_entities.discard(npc_id)
+                if npc_id in interest.reduced_update_entities:
+                    interest.reduced_update_entities.discard(npc_id)
+                interest.last_sent_state.pop(npc_id, None)
+
+        return full_updates, reduced_updates
+
+    def _should_send_full_update(
+        self,
+        interest: ClientInterest,
+        npc_id: str,
+        npc: Dict
+    ) -> bool:
+        """Check if full update should be sent (delta compression)."""
+        last_state = interest.last_sent_state.get(npc_id)
+        if not last_state:
+            return True  # First update
+
+        # Check position delta
+        npc_pos = npc.get("position", {})
+        last_pos = last_state.get("position", {})
+
+        dx = abs(npc_pos.get("x", 0) - last_pos.get("x", 0))
+        dy = abs(npc_pos.get("y", 0) - last_pos.get("y", 0))
+
+        if dx > self.POSITION_THRESHOLD or dy > self.POSITION_THRESHOLD:
+            return True
+
+        # Check rotation delta
+        dr = abs(npc_pos.get("rotation", 0) - last_pos.get("rotation", 0))
+        if dr > self.ROTATION_THRESHOLD:
+            return True
+
+        # Check animation change
+        if npc.get("animation") != last_state.get("animation"):
+            return True
+
+        # Check HP change
+        if npc.get("hp_current") != last_state.get("hp_current"):
+            return True
+
+        # Check state change
+        if npc.get("ai_state") != last_state.get("ai_state"):
+            return True
+
+        return False
+
+    def _should_send_reduced_update(
+        self,
+        interest: ClientInterest,
+        npc_id: str,
+        npc: Dict
+    ) -> bool:
+        """Check if reduced update should be sent."""
+        last_state = interest.last_sent_state.get(npc_id)
+        if not last_state:
+            return True
+
+        # Only check position for reduced updates
+        npc_pos = npc.get("position", {})
+        last_pos = last_state.get("position", {})
+
+        dx = abs(npc_pos.get("x", 0) - last_pos.get("x", 0))
+        dy = abs(npc_pos.get("y", 0) - last_pos.get("y", 0))
+
+        return dx > self.POSITION_THRESHOLD or dy > self.POSITION_THRESHOLD
+
+    def _create_reduced_state(self, npc: Dict) -> Dict:
+        """Create reduced state with position only."""
+        return {
+            "entity_id": npc.get("entity_id"),
+            "position": npc.get("position"),
+            "is_reduced": True  # Flag for client
+        }
+
+    def get_stats(self) -> Dict:
+        """Get interest management statistics."""
+        total_full = 0
+        total_reduced = 0
+
+        for interest in self._client_interests.values():
+            total_full += len(interest.full_update_entities)
+            total_reduced += len(interest.reduced_update_entities)
+
+        return {
+            "clients": len(self._client_interests),
+            "total_full_updates": total_full,
+            "total_reduced_updates": total_reduced,
+            "full_radius": self.FULL_UPDATE_RADIUS,
+            "reduced_radius": self.REDUCED_UPDATE_RADIUS,
+        }
+
 # Load server-specific PRC file data
 loadPrcFileData("", """
     window-type none
@@ -32,13 +243,22 @@ class GameServer(ShowBase):
     def __init__(self):
         super().__init__()
 
-        # Setup logging
+        # Setup logging - configure root logger to capture all modules
         log_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         file_handler = logging.FileHandler("server.log", mode='w')
         file_handler.setFormatter(log_formatter)
+
+        # Configure root logger so all modules log to server.log
+        root_logger = logging.getLogger()
+        root_logger.setLevel(logging.INFO)
+        root_logger.addHandler(file_handler)
+
+        # Also add console handler for visibility
+        console_handler = logging.StreamHandler()
+        console_handler.setFormatter(log_formatter)
+        root_logger.addHandler(console_handler)
+
         self.logger = logging.getLogger(__name__)
-        self.logger.setLevel(logging.INFO)
-        self.logger.addHandler(file_handler)
 
         # Load config (create default if not exists)
         config = self._load_or_create_config()
@@ -86,17 +306,83 @@ class GameServer(ShowBase):
         self.event_manager.subscribe("dnd_send_to_client", self.handle_dnd_send)
         self.event_manager.subscribe("dnd_character_selected", self.handle_character_selected)
 
+        # Subscribe to combat events
+        self.event_manager.subscribe("combat_started", self.handle_combat_started)
+        self.event_manager.subscribe("combat_ended", self.handle_combat_ended)
+        self.event_manager.subscribe("combat_turn_start", self.handle_combat_turn_start)
+        self.event_manager.subscribe("combat_action_result", self.handle_combat_action_result)
+        self.event_manager.subscribe("combat_round_start", self.handle_combat_round_start)
+
+        # NPC Manager will be set by NPC plugin during load
+        self.npc_manager = None
+
+        # Interest manager for network optimization
+        self.interest_manager = InterestManager()
+
         # Load plugins
         self.plugin_manager.load_plugins()
 
-        # NPC Manager reference (will be set by plugin system)
-        self.npc_manager = None
+        # NPC Manager reference is set by the NPC plugin during load_plugins()
+        # (see nine/plugins/npc/sv_plugin.py:30)
+
+        # Enable unified ECS mode for NPC manager if available
+        self._setup_unified_ecs()
+
+        # Flag for unified world_state format
+        self.use_unified_world_state = True
+
+        # Notify plugins that world is loaded (initializes pathfinder, spawns test NPCs)
+        self._post_world_loaded()
 
         # Setup game loop
         self.taskMgr.add(self.game_loop, "game_loop")
         self.taskMgr.add(self.poll_asyncio, "asyncio-poll")
 
         self.logger.info("Game Server initialized.")
+
+    def _setup_unified_ecs(self) -> None:
+        """
+        Setup unified ECS mode where NPCs share the same ECS world as players.
+
+        This enables:
+        - Shared physics system
+        - Unified world_state format with pawns
+        - Consistent entity management
+        """
+        if self.npc_manager is None:
+            self.logger.debug("[ECS] NPC Manager not available, skipping unified ECS setup")
+            return
+
+        try:
+            # Get the ECS world from GameWorld
+            ecs_world = self.world.get_ecs_world()
+
+            # Set shared ECS world in NPC manager
+            if hasattr(self.npc_manager, 'set_shared_ecs_world'):
+                self.npc_manager.set_shared_ecs_world(ecs_world)
+                self.logger.info("[ECS] Unified ECS mode enabled - NPCs and Players share ECS world")
+            else:
+                self.logger.debug("[ECS] NPC Manager doesn't support unified mode")
+
+        except Exception as e:
+            self.logger.warning(f"[ECS] Failed to setup unified ECS mode: {e}")
+
+    def _post_world_loaded(self) -> None:
+        """
+        Post world_loaded event to initialize NPC pathfinder and spawn test NPCs.
+        """
+        # Get world bounds from collision mesh or use defaults
+        bounds = (-50, -50, 50, 50)  # min_x, min_y, max_x, max_y
+
+        # Try to get actual bounds from map
+        if hasattr(self.world, 'get_bounds'):
+            bounds = self.world.get_bounds()
+
+        self.event_manager.post("world_loaded", {
+            "bounds": bounds,
+            "map_path": "nine/assets/models/maps/map.bam"
+        })
+        self.logger.info(f"[World] world_loaded event posted with bounds: {bounds}")
 
     def _load_or_create_config(self) -> dict:
         """Load server config from file, or create default if not exists."""
@@ -292,19 +578,103 @@ class GameServer(ShowBase):
                 })
             self.event_manager.post("player_update", {"players": players_data})
 
-        # 3. Broadcast new state
-        world_state = self.world.get_world_state()
+        # 3. Update client positions in interest manager
+        for cid, player in self.world.players.items():
+            state = player.get_state()
+            pos = state["pos"]
+            self.interest_manager.update_client_position(cid, pos[0], pos[1], pos[2])
 
-        # Добавляем NPC состояния
-        if self.npc_manager:
-            world_state["npcs"] = self.npc_manager.get_npc_states()
-
-        if world_state["players"] or world_state.get("npcs"):
+        # 4. Broadcast state (with interest management for NPCs)
+        if self.use_unified_world_state:
+            # Use per-client filtered NPC updates
             asyncio.run_coroutine_threadsafe(
-                self.broadcast(world_state), self.asyncio_loop
+                self._broadcast_with_interest_management(), self.asyncio_loop
             )
+        else:
+            world_state = self.world.get_world_state()
+            # Add NPC states (legacy format)
+            if self.npc_manager:
+                world_state["npcs"] = self.npc_manager.get_npc_states()
+
+            if world_state.get("players") or world_state.get("pawns") or world_state.get("npcs"):
+                asyncio.run_coroutine_threadsafe(
+                    self.broadcast(world_state), self.asyncio_loop
+                )
 
         return task.cont
+
+    def _get_unified_world_state(self) -> dict:
+        """
+        Get world state in unified format with pawns list.
+
+        Returns:
+            {
+                "type": "world_state",
+                "players": {...},  # Legacy format for backward compatibility
+                "pawns": [...],    # Unified pawn list (players + NPCs)
+                "npcs": [...]      # Legacy NPC format for backward compatibility
+            }
+        """
+        # Get base state from world
+        world_state = self.world.get_unified_world_state()
+
+        # Add NPC pawns to the unified pawns list
+        if self.npc_manager:
+            npc_pawns = self.npc_manager.get_npc_pawn_states()
+            if "pawns" in world_state:
+                world_state["pawns"].extend(npc_pawns)
+            else:
+                world_state["pawns"] = npc_pawns
+
+            # Also include legacy NPC format for backward compatibility
+            world_state["npcs"] = self.npc_manager.get_npc_states()
+
+        return world_state
+
+    async def _broadcast_with_interest_management(self):
+        """
+        Broadcast world state with per-client NPC filtering.
+
+        Uses InterestManager to send only nearby NPCs to each client,
+        reducing network bandwidth significantly.
+        """
+        # Get base world state (without NPCs)
+        base_state = self.world.get_unified_world_state()
+
+        # Get all NPC states
+        all_npcs = []
+        if self.npc_manager:
+            all_npcs = self.npc_manager.get_npc_states()
+
+        # Send filtered state to each client
+        for client_id, writer in self.clients.items():
+            if writer.is_closing():
+                continue
+
+            # Get filtered NPCs for this client
+            full_npcs, reduced_npcs = self.interest_manager.get_npcs_for_client(
+                client_id, all_npcs
+            )
+
+            # Build state for this client
+            client_state = base_state.copy()
+            client_state["npcs"] = full_npcs
+
+            # Add reduced NPCs as separate list
+            if reduced_npcs:
+                client_state["npcs_reduced"] = reduced_npcs
+
+            # Only send if there's something to send
+            if not client_state.get("players") and not client_state.get("pawns") and not client_state.get("npcs"):
+                continue
+
+            try:
+                payload = json.dumps(client_state).encode("utf-8")
+                header = struct.pack("!I", len(payload))
+                writer.write(header + payload)
+                await writer.drain()
+            except Exception as e:
+                self.logger.error(f"Error sending filtered state to client {client_id}: {e}")
         
     def process_message(self, client_id, data):
         msg_type = data.get("type")
@@ -623,11 +993,15 @@ class GameServer(ShowBase):
         pos_y = character.get("pos_y", -3.0)
         pos_z = character.get("pos_z", 1.0)
 
-        # Создаём игрока в мире
+        # Create player in world
         player = self.world.add_player(client_id, character_name)
         if player:
-            # Устанавливаем позицию из сохранения
+            # Set position from save
             player.actor.setPos(pos_x, pos_y, pos_z)
+
+        # Register client in interest manager
+        self.interest_manager.register_client(client_id)
+        self.interest_manager.update_client_position(client_id, pos_x, pos_y, pos_z)
 
         self.logger.info(f"Character '{character_name}' (Client #{client_id}) entered the game world")
 
@@ -667,6 +1041,111 @@ class GameServer(ShowBase):
             self.broadcast(join_data, exclude_ids=[client_id]), self.asyncio_loop
         )
 
+    # =========================================================================
+    # Combat Event Handlers
+    # =========================================================================
+
+    def handle_combat_started(self, event_data: dict):
+        """Broadcasts combat_started to all participants."""
+        combat_id = event_data.get("combat_id")
+        participants = event_data.get("participants", [])
+        turn_order = event_data.get("turn_order", [])
+        round_num = event_data.get("round", 1)
+
+        self.logger.info(f"[Combat] Combat {combat_id[:8]}... started with {len(participants)} participants")
+
+        # Get client IDs of player participants
+        client_ids = []
+        for p in participants:
+            if p.get("is_player"):
+                try:
+                    client_ids.append(int(p.get("entity_id")))
+                except (ValueError, TypeError):
+                    pass
+
+        if client_ids:
+            combat_data = {
+                "type": "combat_started",
+                "combat_id": combat_id,
+                "participants": participants,
+                "turn_order": turn_order,
+                "round": round_num
+            }
+            asyncio.run_coroutine_threadsafe(
+                self.send_to_clients(combat_data, client_ids), self.asyncio_loop
+            )
+
+    def handle_combat_ended(self, event_data: dict):
+        """Broadcasts combat_ended to all participants."""
+        combat_id = event_data.get("combat_id")
+        reason = event_data.get("reason", "DM_ENDED")
+        winners = event_data.get("winners", [])
+
+        self.logger.info(f"[Combat] Combat {combat_id[:8]}... ended: {reason}")
+
+        # Broadcast to all clients (they check if they were in combat)
+        combat_data = {
+            "type": "combat_ended",
+            "combat_id": combat_id,
+            "reason": reason,
+            "winners": winners
+        }
+        asyncio.run_coroutine_threadsafe(
+            self.broadcast(combat_data), self.asyncio_loop
+        )
+
+    def handle_combat_turn_start(self, event_data: dict):
+        """Broadcasts turn start to all participants."""
+        combat_id = event_data.get("combat_id")
+        entity_id = event_data.get("entity_id")
+        is_player = event_data.get("is_player", False)
+        round_num = event_data.get("round", 1)
+        turn_order = event_data.get("turn_order", [])
+        current_index = event_data.get("current_index", 0)
+        resources = event_data.get("resources", {})
+
+        self.logger.debug(f"[Combat] Turn start: entity={entity_id}, round={round_num}")
+
+        turn_data = {
+            "type": "combat_turn_start",
+            "combat_id": combat_id,
+            "entity_id": entity_id,
+            "is_player": is_player,
+            "round": round_num,
+            "turn_order": turn_order,
+            "current_index": current_index,
+            "resources": resources
+        }
+        asyncio.run_coroutine_threadsafe(
+            self.broadcast(turn_data), self.asyncio_loop
+        )
+
+    def handle_combat_action_result(self, event_data: dict):
+        """Broadcasts action result to all participants."""
+        combat_data = {
+            "type": "combat_action_result",
+            **event_data
+        }
+        asyncio.run_coroutine_threadsafe(
+            self.broadcast(combat_data), self.asyncio_loop
+        )
+
+    def handle_combat_round_start(self, event_data: dict):
+        """Broadcasts round start to all participants."""
+        combat_id = event_data.get("combat_id")
+        round_num = event_data.get("round", 1)
+
+        self.logger.debug(f"[Combat] Round {round_num} started in combat {combat_id[:8]}...")
+
+        round_data = {
+            "type": "combat_round_start",
+            "combat_id": combat_id,
+            "round": round_num
+        }
+        asyncio.run_coroutine_threadsafe(
+            self.broadcast(round_data), self.asyncio_loop
+        )
+
     async def send_to_clients(self, data, client_ids):
         """Sends a message to specific clients."""
         payload = json.dumps(data).encode("utf-8")
@@ -685,6 +1164,9 @@ class GameServer(ShowBase):
         self.logger.info(f"Client #{client_id} processing disconnection.")
         if client_id in self.clients:
             del self.clients[client_id]
+
+        # Unregister from interest manager
+        self.interest_manager.unregister_client(client_id)
 
         # Notify plugins about player leave before removing
         self.event_manager.post("player_left", {"uuid": client_id})
