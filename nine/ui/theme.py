@@ -19,7 +19,8 @@ class NineTheme:
 
     # Font path
     FONT_PATH = "nine/assets/fonts/PlainPixel-Regular.ttf"
-    FONT_PIXELS_PER_UNIT = 48
+    FONT_PIXELS_PER_UNIT = 96  # Higher resolution for crisp pixel font rendering
+    FONT_USE_NEAREST = True    # Use nearest-neighbor filtering for pixel fonts
 
     # ==========================================================================
     # Colors (direct references to UIConfig)
@@ -151,7 +152,8 @@ class NineTheme(metaclass=NineThemeMeta):
     """
 
     FONT_PATH = "nine/assets/fonts/PlainPixel-Regular.ttf"
-    FONT_PIXELS_PER_UNIT = 48
+    FONT_PIXELS_PER_UNIT = 96
+    FONT_USE_NEAREST = True
 
     # Static color values for direct access
     BG_DARK = ui.colors.bg_dark

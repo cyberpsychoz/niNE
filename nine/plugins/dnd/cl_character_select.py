@@ -11,6 +11,8 @@ from panda3d.core import TextNode, TransparencyAttrib
 
 from nine.ui.base_component import BaseUIComponent
 from nine.ui.theme import NineTheme
+from nine.ui.ui_config import ui
+from nine.ui.bg1_button import BG1Button, BG1ButtonSmall
 
 
 # Локализация рас и классов
@@ -116,33 +118,19 @@ class CharacterSelectUI(BaseUIComponent):
 
         # Кнопка "Создать персонажа" (если не достигнут лимит)
         if len(self.characters) < self.max_characters:
-            self._add_element('create_btn', DirectButton(
+            self._add_element('create_btn', BG1Button.create(
                 parent=panel,
                 text="Создать персонажа",
-                scale=NineTheme.BUTTON_SCALE,
-                pos=(0, 0, -panel_height/2 + 0.15),
                 command=self._on_create_character,
-                frameColor=NineTheme.accent_button_colors(),
-                text_fg=NineTheme.TEXT_PRIMARY,
-                text_align=TextNode.ACenter,
-                pressEffect=True,
-                relief=DGG.FLAT,
-                frameSize=(-4.5, 4.5, -0.8, 1.1),
+                pos=(0, 0, -panel_height/2 + 0.15),
             ))
 
         # Кнопка "Выход" (отключение)
-        self._add_element('logout_btn', DirectButton(
+        self._add_element('logout_btn', BG1ButtonSmall.create(
             parent=panel,
             text="Выход",
-            scale=NineTheme.SMALL_SCALE,
-            pos=(-panel_width/2 + 0.12, 0, -panel_height/2 + 0.08),
             command=self._on_logout,
-            frameColor=NineTheme.button_colors(),
-            text_fg=NineTheme.TEXT_SECONDARY,
-            text_align=TextNode.ACenter,
-            pressEffect=True,
-            relief=DGG.FLAT,
-            frameSize=(-2, 2, -0.8, 1.1),
+            pos=(-panel_width/2 + 0.18, 0, -panel_height/2 + 0.08),
         ))
 
     def _create_character_cards(self, canvas):
@@ -265,36 +253,35 @@ class CharacterSelectUI(BaseUIComponent):
                     frameColor=(0, 0, 0, 0),
                 )
 
-            # Кнопка "Играть"
+            # Кнопка "Играть" в стиле BG1
             char_uuid = char.get('uuid')
-            DirectButton(
+            play_btn = BG1ButtonSmall.create(
                 parent=card,
                 text="Играть",
-                scale=NineTheme.SMALL_SCALE,
-                pos=(card_width/2 - 0.18, 0, 0),
                 command=lambda uuid=char_uuid: self._on_select_character(uuid),
-                frameColor=NineTheme.accent_button_colors(),
-                text_fg=NineTheme.TEXT_PRIMARY,
-                text_align=TextNode.ACenter,
-                pressEffect=True,
-                relief=DGG.FLAT,
-                frameSize=(-3.5, 3.5, -1.2, 1.5),
+                pos=(card_width/2 - 0.20, 0, 0),
             )
+            self._character_cards.append(play_btn)
 
-            # Кнопка "Удалить" (красный X)
-            DirectButton(
+            # Кнопка "Удалить" (красный X) - иконка в углу карточки
+            delete_btn = DirectButton(
                 parent=card,
                 text="X",
-                scale=NineTheme.SMALL_SCALE,
-                pos=(card_width/2 - 0.05, 0, card_height/2 - 0.05),
+                scale=0.035,  # Маленький масштаб
+                pos=(card_width/2 - 0.04, 0, card_height/2 - 0.04),
                 command=lambda uuid=char_uuid, name=char_name: self._on_delete_character(uuid, name),
-                frameColor=(0.6, 0.15, 0.15, 0.9),
-                text_fg=(1, 1, 1, 1),
+                frameColor=(0.5, 0.12, 0.12, 0.85),
+                text_fg=(1, 0.9, 0.9, 1),
                 text_align=TextNode.ACenter,
                 pressEffect=True,
                 relief=DGG.FLAT,
-                frameSize=(-1.3, 1.3, -1.1, 1.3),
+                frameSize=(-1.0, 1.0, -1.0, 1.0),  # Квадратный
             )
+            delete_btn.setTransparency(TransparencyAttrib.M_alpha)
+            # Эффект при наведении
+            delete_btn.bind(DGG.ENTER, lambda e, b=delete_btn: b.setColor(0.7, 0.2, 0.2, 1))
+            delete_btn.bind(DGG.EXIT, lambda e, b=delete_btn: b.setColor(1, 1, 1, 1))
+            self._character_cards.append(delete_btn)
 
     def update_characters(self, characters_data: list, max_characters: int):
         """Обновляет список персонажей."""

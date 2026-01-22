@@ -14,6 +14,7 @@ Audio Manager - ядро звуковой системы niNE.
 """
 
 import random
+import time
 from pathlib import Path
 from typing import Dict, List, Optional, Callable
 from dataclasses import dataclass, field
@@ -109,6 +110,11 @@ class AudioManager:
         self._current_bgm: Optional[AudioSound] = None
         self._current_bgs: Optional[AudioSound] = None
         self._bgm_fading: Optional[AudioSound] = None  # Для кроссфейда
+
+        # Track state for proper end detection
+        self._bgm_was_playing: bool = False
+        self._bgm_length: float = 0.0
+        self._bgm_start_time: float = 0.0
 
         # Плейлисты
         self._playlists: Dict[str, Playlist] = {}
@@ -467,6 +473,11 @@ class AudioManager:
         self._current_bgm.setVolume(initial_volume)
         self._current_bgm.play()
 
+        # Track playing state for end detection
+        self._bgm_was_playing = True
+        self._bgm_length = new_bgm.length()
+        self._bgm_start_time = time.time()
+
         if crossfade > 0:
             self._fade_in(self._current_bgm, crossfade, AudioChannel.BGM)
 
@@ -498,6 +509,11 @@ class AudioManager:
         self._current_bgm.setLoop(loop)
         self._current_bgm.setVolume(0 if crossfade > 0 else self._get_channel_volume(AudioChannel.BGM))
         self._current_bgm.play()
+
+        # Track playing state
+        self._bgm_was_playing = True
+        self._bgm_length = new_bgm.length() if not loop else 0
+        self._bgm_start_time = time.time()
 
         if crossfade > 0:
             self._fade_in(self._current_bgm, crossfade, AudioChannel.BGM)
@@ -836,13 +852,39 @@ class AudioManager:
 
     def _update_task(self, task):
         """Задача обновления аудио системы."""
+        # Update audio managers to process sounds
+        if self._bgm_manager:
+            self._bgm_manager.update()
+        if self._bgs_manager:
+            self._bgs_manager.update()
+        if self._sfx_manager:
+            self._sfx_manager.update()
+
         # Проверяем окончание текущего BGM трека для плейлиста
         if self._current_playlist and self._current_bgm:
-            if self._current_bgm.status() == AudioSound.READY:
+            # Method 1: Check status transition from PLAYING to not PLAYING
+            current_status = self._current_bgm.status()
+            is_playing = (current_status == AudioSound.PLAYING)
+
+            # Track ended: was playing before, not playing now
+            track_ended = False
+
+            if self._bgm_was_playing and not is_playing:
+                track_ended = True
+            elif self._bgm_length > 0:
+                # Method 2: Check if playback time exceeded track length
+                elapsed = time.time() - self._bgm_start_time
+                if elapsed >= self._bgm_length - 0.5:  # 0.5s buffer for crossfade
+                    track_ended = True
+
+            if track_ended:
+                self._bgm_was_playing = False
                 # Трек закончился - играем следующий
                 playlist = self._playlists.get(self._current_playlist)
                 if playlist and playlist.loop:
                     self._play_next_bgm_track(playlist.crossfade)
+            else:
+                self._bgm_was_playing = is_playing
 
         return task.cont
 
