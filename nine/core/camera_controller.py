@@ -1,15 +1,21 @@
 """
 Camera controller with first-person and third-person modes.
 
-Third-person: Camera orbits around the player target.
+Third-person: Camera orbits around the player target with collision detection.
 First-person: Camera at player eye level, looking where player faces.
 
 Mouse moves the camera in both modes. Player rotation is handled based on movement direction.
+
+Collision detection prevents camera from going through walls using raycasting.
 """
 
 from math import sin, cos, radians, pi
 
-from panda3d.core import NodePath, WindowProperties, Vec3
+from panda3d.core import (
+    NodePath, WindowProperties, Vec3, Point3, BitMask32,
+    CollisionTraverser, CollisionNode, CollisionRay, CollisionSegment,
+    CollisionHandlerQueue, CollisionSphere
+)
 from direct.task import Task
 
 
@@ -59,6 +65,33 @@ class CameraController:
         # State
         self._task = None
         self._paused = False  # True = cursor visible, no mouse rotation, but camera still follows player
+
+        # Collision detection for third-person mode
+        self._collision_enabled = True
+        self._collision_offset = 0.3  # How far to keep camera from walls
+        self._actual_distance = self.distance  # Current distance after collision
+        self._setup_collision()
+
+    def _setup_collision(self):
+        """Setup collision detection for camera."""
+        # Create collision traverser
+        self._coll_traverser = CollisionTraverser("camera_coll_traverser")
+        self._coll_handler = CollisionHandlerQueue()
+
+        # Create collision ray from target to camera
+        self._coll_ray = CollisionSegment()
+        coll_node = CollisionNode("camera_ray")
+        coll_node.addSolid(self._coll_ray)
+
+        # Set collision masks - camera ray checks against geometry
+        # FROM_MASK = what this ray can collide with
+        # INTO_MASK = what can collide with this (not used for rays)
+        coll_node.setFromCollideMask(BitMask32.bit(0))  # Collide with default geometry
+        coll_node.setIntoCollideMask(BitMask32.allOff())  # Nothing collides with the ray
+
+        # Attach to render (not to target, as we set points manually)
+        self._coll_np = self.base.render.attachNewNode(coll_node)
+        self._coll_traverser.addCollider(self._coll_np, self._coll_handler)
 
     def _apply_fov(self):
         """Apply field of view to the camera lens."""
@@ -194,7 +227,7 @@ class CameraController:
             self._position_camera_first_person()
 
     def _position_camera_third_person(self):
-        """Position camera in orbit around target (third-person mode)."""
+        """Position camera in orbit around target (third-person mode) with collision."""
         # Get target position
         target_pos = self.target.getPos()
         look_at = Vec3(target_pos.x, target_pos.y, target_pos.z + self.tp_height_offset)
@@ -215,9 +248,72 @@ class CameraController:
         cam_y = -self.distance * cos_pitch * cos(yaw_rad)
         cam_z = self.distance * sin_pitch
 
+        # Desired camera position
+        desired_pos = Vec3(look_at.x + cam_x, look_at.y + cam_y, look_at.z + cam_z)
+
+        # Check collision between target and desired camera position
+        actual_distance = self.distance
+        if self._collision_enabled:
+            actual_distance = self._check_camera_collision(look_at, desired_pos)
+
+        # Recalculate position with actual distance (after collision)
+        if actual_distance < self.distance:
+            cam_x = actual_distance * cos_pitch * sin(yaw_rad)
+            cam_y = -actual_distance * cos_pitch * cos(yaw_rad)
+            cam_z = actual_distance * sin_pitch
+            actual_pos = Vec3(look_at.x + cam_x, look_at.y + cam_y, look_at.z + cam_z)
+        else:
+            actual_pos = desired_pos
+
+        self._actual_distance = actual_distance
+
         # Set camera position
-        self.camera.setPos(look_at.x + cam_x, look_at.y + cam_y, look_at.z + cam_z)
+        self.camera.setPos(actual_pos)
         self.camera.lookAt(look_at)
+
+    def _check_camera_collision(self, start: Vec3, end: Vec3) -> float:
+        """
+        Check for collision between start and end points.
+
+        Args:
+            start: Look-at point (near target)
+            end: Desired camera position
+
+        Returns:
+            Safe distance from start (may be less than desired distance)
+        """
+        # Calculate direction and distance
+        direction = end - start
+        desired_distance = direction.length()
+
+        if desired_distance < 0.1:
+            return desired_distance
+
+        # Set collision segment from target to desired camera position
+        self._coll_ray.setPointA(Point3(start))
+        self._coll_ray.setPointB(Point3(end))
+
+        # Traverse collision
+        self._coll_traverser.traverse(self.base.render)
+
+        # Check for collisions
+        if self._coll_handler.getNumEntries() > 0:
+            # Sort by distance (closest first)
+            self._coll_handler.sortEntries()
+
+            # Get closest collision point
+            entry = self._coll_handler.getEntry(0)
+            hit_point = entry.getSurfacePoint(self.base.render)
+
+            # Calculate distance to hit
+            hit_distance = (hit_point - start).length()
+
+            # Apply offset to keep camera away from wall
+            safe_distance = max(self.min_distance * 0.5, hit_distance - self._collision_offset)
+
+            return min(safe_distance, desired_distance)
+
+        return desired_distance
 
     def _position_camera_first_person(self):
         """Position camera at player eye level (first-person mode)."""
@@ -301,6 +397,16 @@ class CameraController:
             self.pitch = 0.0
             self.target_pitch = self.pitch
 
+    def set_collision_enabled(self, enabled: bool):
+        """Enable or disable camera collision detection."""
+        self._collision_enabled = enabled
+
+    def get_actual_distance(self) -> float:
+        """Get current camera distance (may be less than target due to collision)."""
+        return self._actual_distance
+
     def destroy(self):
         """Clean up."""
         self.stop()
+        if hasattr(self, '_coll_np') and self._coll_np:
+            self._coll_np.removeNode()

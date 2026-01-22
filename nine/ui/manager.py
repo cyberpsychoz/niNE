@@ -43,19 +43,29 @@ class UIManager:
         self.active_components = {}
 
     def _load_font(self):
-        """Загружает шрифт UI (Orbitron - футуристический стиль с кириллицей)."""
+        """Загружает шрифт UI (PlainPixel - пиксельный шрифт с кириллицей)."""
         try:
             font = self.loader.loadFont(NineTheme.FONT_PATH)
             font.setPixelsPerUnit(NineTheme.FONT_PIXELS_PER_UNIT)
-            # Линейная фильтрация для гладкого шрифта
-            font.setMinfilter(1)  # FT_linear
-            font.setMagfilter(1)  # FT_linear
+
+            # Для пиксельных шрифтов используем nearest-neighbor фильтрацию
+            # чтобы сохранить четкость пикселей без размытия
+            if getattr(NineTheme, 'FONT_USE_NEAREST', False):
+                font.setMinfilter(0)  # FT_nearest
+                font.setMagfilter(0)  # FT_nearest
+            else:
+                # Линейная фильтрация для гладких шрифтов
+                font.setMinfilter(1)  # FT_linear
+                font.setMagfilter(1)  # FT_linear
+
             return font
         except Exception:
-            # Fallback на старый шрифт
+            # Fallback на DejaVuSans (гладкий шрифт с полной кириллицей)
             try:
                 font = self.loader.loadFont("nine/assets/fonts/DejaVuSans.ttf")
                 font.setPixelsPerUnit(100)
+                font.setMinfilter(1)
+                font.setMagfilter(1)
                 return font
             except Exception:
                 return DGG.getDefaultFont()
