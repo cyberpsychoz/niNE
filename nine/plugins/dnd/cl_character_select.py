@@ -12,7 +12,7 @@ from panda3d.core import TextNode, TransparencyAttrib
 from nine.ui.base_component import BaseUIComponent
 from nine.ui.theme import NineTheme
 from nine.ui.ui_config import ui
-from nine.ui.bg1_button import BG1Button, BG1ButtonSmall
+from nine.ui.bg1_button import BG1Button
 
 
 # Локализация рас и классов
@@ -122,15 +122,21 @@ class CharacterSelectUI(BaseUIComponent):
                 parent=panel,
                 text="Создать персонажа",
                 command=self._on_create_character,
-                pos=(0, 0, -panel_height/2 + 0.15),
+                pos=(0, 0, -panel_height/2 + 0.12),
+                scale=0.055,
+                width=5.5,
+                height=0.9,
             ))
 
         # Кнопка "Выход" (отключение)
-        self._add_element('logout_btn', BG1ButtonSmall.create(
+        self._add_element('logout_btn', BG1Button.create(
             parent=panel,
             text="Выход",
             command=self._on_logout,
-            pos=(-panel_width/2 + 0.18, 0, -panel_height/2 + 0.08),
+            pos=(-panel_width/2 + 0.15, 0, -panel_height/2 + 0.06),
+            scale=0.04,
+            width=3.5,
+            height=0.8,
         ))
 
     def _create_character_cards(self, canvas):
@@ -253,13 +259,16 @@ class CharacterSelectUI(BaseUIComponent):
                     frameColor=(0, 0, 0, 0),
                 )
 
-            # Кнопка "Играть" в стиле BG1
+            # Кнопка "Играть" - компактная
             char_uuid = char.get('uuid')
-            play_btn = BG1ButtonSmall.create(
+            play_btn = BG1Button.create(
                 parent=card,
                 text="Играть",
                 command=lambda uuid=char_uuid: self._on_select_character(uuid),
-                pos=(card_width/2 - 0.20, 0, 0),
+                pos=(card_width/2 - 0.15, 0, 0),
+                scale=0.045,  # Меньше кнопка
+                width=4.0,
+                height=0.9,
             )
             self._character_cards.append(play_btn)
 
