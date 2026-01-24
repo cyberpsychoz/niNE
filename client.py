@@ -25,6 +25,7 @@ from nine.core.plugins import PluginManager
 from nine.core.network import send_message, read_messages
 from nine.core.scene_optimizer import SceneOptimizer, LODSettings
 from nine.ui.manager import UIManager
+from nine.ui.loading_screen import LoadingScreen
 
 # Audio enabled - using OpenAL (default)
 # loadPrcFileData("", "audio-library-name null")  # Uncomment to disable audio
@@ -97,6 +98,8 @@ class GameClient(ShowBase):
             "settings": self.show_settings_menu,
         }
         self.ui = UIManager(self, callbacks)
+        self.loading_screen = LoadingScreen(self.ui)
+        self.loading_screen.hide()  # Скрыт по умолчанию
         self.event_manager.subscribe("client_send_chat_message", self.send_chat_packet)
         self.event_manager.subscribe("client_item_use", self.send_item_use_packet)
         self.event_manager.subscribe("client_item_drop", self.send_item_drop_packet)
@@ -167,7 +170,9 @@ class GameClient(ShowBase):
 
     def _load_map(self, model_path: str):
         """Загружает модель карты и применяет оптимизации."""
-        from panda3d.core import CardMaker
+        from panda3d.core import CardMaker, BitMask32, CollisionNode, CollisionPolygon, Point3
+        from panda3d.core import GeomNode, GeomVertexReader
+        from nine.core.character_controller import CharacterController
 
         # Удаляем старую карту если есть
         if self.map_model:
@@ -179,6 +184,9 @@ class GameClient(ShowBase):
             self.map_model.reparentTo(self.render)
             self.map_model.setPos(0, 0, 0)
             self.logger.info(f"Map loaded: {model_path}")
+
+            # Настраиваем коллизии для камеры
+            self._setup_map_collision()
 
             # Оптимизация карты для повышения производительности
             if self.scene_optimizer:
@@ -205,6 +213,81 @@ class GameClient(ShowBase):
             self.map_model = self.render.attachNewNode(cm.generate())
             self.map_model.setP(-90)
             self.map_model.setColor(0.2, 0.25, 0.2, 1)
+
+    def _setup_map_collision(self):
+        """Настраивает коллизии карты для камеры."""
+        from panda3d.core import BitMask32, CollisionNode, CollisionPolygon, Point3
+        from panda3d.core import GeomNode, GeomVertexReader, Geom
+        from nine.core.character_controller import CharacterController
+
+        if not self.map_model:
+            return
+
+        # Находим все GeomNode в модели
+        geom_nodes = self.map_model.findAllMatches("**/+GeomNode")
+        total_polys = 0
+
+        for i in range(geom_nodes.getNumPaths()):
+            geom_np = geom_nodes.getPath(i)
+            geom_node = geom_np.node()
+
+            # Создаём узел коллизий для этой геометрии
+            coll_node = CollisionNode(f"map_coll_{i}")
+            coll_node.setIntoCollideMask(CharacterController.WALL_MASK)
+            coll_node.setFromCollideMask(BitMask32.allOff())
+
+            poly_count = 0
+
+            # Проходим по всем Geom в GeomNode
+            for j in range(geom_node.getNumGeoms()):
+                geom = geom_node.getGeom(j)
+                vdata = geom.getVertexData()
+                vertex_reader = GeomVertexReader(vdata, "vertex")
+
+                # Проходим по примитивам
+                for k in range(geom.getNumPrimitives()):
+                    prim = geom.getPrimitive(k)
+                    prim = prim.decompose()  # Разбиваем на треугольники
+
+                    # Читаем треугольники
+                    for p in range(prim.getNumPrimitives()):
+                        start = prim.getPrimitiveStart(p)
+                        end = prim.getPrimitiveEnd(p)
+
+                        if end - start >= 3:
+                            vertices = []
+                            for v_idx in range(start, min(start + 3, end)):
+                                vert_index = prim.getVertex(v_idx)
+                                vertex_reader.setRow(vert_index)
+                                v = vertex_reader.getData3()
+                                # Применяем трансформацию узла
+                                world_v = geom_np.getTransform(self.render).getMat().xformPoint(Point3(v))
+                                vertices.append(world_v)
+
+                            if len(vertices) == 3:
+                                # Проверяем что полигон вертикальный (стена)
+                                v0, v1, v2 = vertices
+                                edge1 = v1 - v0
+                                edge2 = v2 - v0
+                                normal = edge1.cross(edge2)
+                                normal.normalize()
+
+                                # Если нормаль почти горизонтальная - это стена
+                                if abs(normal.z) < 0.7:
+                                    try:
+                                        poly = CollisionPolygon(
+                                            Point3(v0), Point3(v1), Point3(v2)
+                                        )
+                                        coll_node.addSolid(poly)
+                                        poly_count += 1
+                                    except Exception:
+                                        pass  # Невалидный полигон
+
+            if poly_count > 0:
+                coll_np = self.render.attachNewNode(coll_node)
+                total_polys += poly_count
+
+        self.logger.info(f"Map collision setup: {total_polys} wall polygons for camera")
 
     def update_key_map(self, key, state):
         # Блокируем ввод движения когда чат открыт
@@ -437,9 +520,18 @@ class GameClient(ShowBase):
             return
 
         self.ui.hide_login_menu()
+        # Показываем экран загрузки
+        self.loading_screen.set_title("ПОДКЛЮЧЕНИЕ")
+        self.loading_screen.set_status("Подключение к серверу...")
+        self.loading_screen.set_progress(0.1)
+        self.loading_screen.show()
         self.asyncio_loop.create_task(self.connect_and_read(host, port))
 
     def on_successful_connection(self):
+        # Обновляем экран загрузки
+        self.loading_screen.set_status("Авторизация...")
+        self.loading_screen.set_progress(0.3)
+
         if self.dev_mode:
             auth_data = {"type": "dev_auth", "name": self.character_name, "uuid": self.client_uuid}
         else:
@@ -560,10 +652,22 @@ class GameClient(ShowBase):
             self.send_message({"type": "character_list_request"})
 
         elif msg_type == "welcome":
+            # Скрываем экран загрузки
+            self.loading_screen.set_progress(1.0)
+            self.loading_screen.hide()
+
             # Переходим в игровое состояние (скрывает меню и уведомляет плагины)
             self.current_character = data.get("character_data")
             self.ui.enter_game(self.current_character)
             self.player_id = data["id"]
+
+            # Очищаем старого актёра если есть (предотвращаем двойной спавн)
+            if self.player_actor:
+                if self.player_actor_model:
+                    self.player_actor_model.cleanup()
+                    self.player_actor_model = None
+                self.player_actor.removeNode()
+                self.player_actor = None
 
             # Загружаем актёра (TODO: использовать модель из character_data)
             self.load_actor(self.player_id, LColor(0.5, 0.8, 0.5, 1), is_local_player=True)
@@ -603,14 +707,25 @@ class GameClient(ShowBase):
                 del self.other_players_state[p_id]
 
         elif msg_type == "world_config":
+            # Обновляем экран загрузки
+            self.loading_screen.set_title("ЗАГРУЗКА МИРА")
+            self.loading_screen.set_status("Загрузка карты...")
+            self.loading_screen.set_progress(0.5)
+
             # Загружаем карту
             map_config = data.get("map", {})
             map_model = map_config.get("model", "nine/assets/models/maps/map.bam")
             self._load_map(map_model)
 
+            self.loading_screen.set_status("Настройка освещения...")
+            self.loading_screen.set_progress(0.7)
+
             # Передаём плагинам для обработки освещения и скайбокса
             self.event_manager.post("world_config", data)
             self.logger.info("World config received and applied")
+
+            self.loading_screen.set_status("Ожидание персонажа...")
+            self.loading_screen.set_progress(0.9)
 
         elif msg_type == "inventory_update":
             # Передаём плагину инвентаря
@@ -674,6 +789,7 @@ class GameClient(ShowBase):
     def cleanup_game_state(self):
         self.logger.info("Connection closed. Cleaning up game state.")
         self.disable_game_input()
+        self.loading_screen.hide()
 
         # Stop interpolation task
         if self.taskMgr.hasTaskNamed("interpolate-players"):
@@ -747,6 +863,9 @@ class GameClient(ShowBase):
             await read_messages(reader, self.handle_network_data)
         except Exception as e:
             self.logger.error(f"Connection error: {e}")
+            # Скрываем экран загрузки при ошибке
+            self.loading_screen.hide()
+            self.ui.show_main_menu()
         finally:
             self.is_connected = False
             if self.writer: self.writer.close()

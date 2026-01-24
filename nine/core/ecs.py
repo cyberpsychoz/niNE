@@ -21,30 +21,6 @@ Entity-Component-System (ECS) фреймворк для niNE.
     # Обновление всех систем
     world.update(dt)
 """
-
-"""
-Entity-Component-System (ECS) framework for niNE.
-
-Provides base architecture for creating game entities with a component-based
-approach. Used for NPCs, items, and other game objects.
-
-Example usage:
-    # Create world
-    world = ECSWorld()
-
-    # Register systems
-    world.add_system(AISystem())
-    world.add_system(PathfindingSystem())
-
-    # Create entity
-    npc = world.create_entity()
-    npc.add_component(PositionComponent(x=10, y=5, z=1))
-    npc.add_component(AIComponent(behavior="patrol"))
-
-    # Update all systems
-    world.update(dt)
-"""
-
 from __future__ import annotations
 
 import uuid

@@ -922,8 +922,8 @@ class NPCManager:
                     (10.0, 10.0, 1.0)
                 ]
 
-        # Гоблин враг
-        self.spawn_npc("goblin", x=-5.0, y=-5.0, z=1.0)
+        # Гоблин враг (отключено - вызывает автоматический бой)
+        # self.spawn_npc("goblin", x=-5.0, y=-5.0, z=1.0)
 
     def _on_player_update(self, data: dict):
         """Обновляет кэш данных игроков."""

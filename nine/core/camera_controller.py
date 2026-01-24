@@ -74,6 +74,9 @@ class CameraController:
 
     def _setup_collision(self):
         """Setup collision detection for camera."""
+        # Import wall mask from CharacterController
+        from nine.core.character_controller import CharacterController
+
         # Create collision traverser
         self._coll_traverser = CollisionTraverser("camera_coll_traverser")
         self._coll_handler = CollisionHandlerQueue()
@@ -83,10 +86,10 @@ class CameraController:
         coll_node = CollisionNode("camera_ray")
         coll_node.addSolid(self._coll_ray)
 
-        # Set collision masks - camera ray checks against geometry
-        # FROM_MASK = what this ray can collide with
+        # Set collision masks - camera ray checks against walls
+        # FROM_MASK = what this ray can collide with (walls use bit 1)
         # INTO_MASK = what can collide with this (not used for rays)
-        coll_node.setFromCollideMask(BitMask32.bit(0))  # Collide with default geometry
+        coll_node.setFromCollideMask(CharacterController.WALL_MASK)  # bit(1) - walls
         coll_node.setIntoCollideMask(BitMask32.allOff())  # Nothing collides with the ray
 
         # Attach to render (not to target, as we set points manually)

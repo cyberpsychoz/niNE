@@ -35,6 +35,7 @@ class CombatUI(PluginModule):
         self.event_manager.subscribe("combat_turn_start", self._on_turn_start)
         self.event_manager.subscribe("combat_action_result", self._on_action_result)
         self.event_manager.subscribe("combat_round_start", self._on_round_start)
+        self.event_manager.subscribe("game_state_changed", self._on_game_state_changed)
 
     def on_unload(self):
         self.event_manager.unsubscribe("combat_started", self._on_combat_started)
@@ -42,6 +43,7 @@ class CombatUI(PluginModule):
         self.event_manager.unsubscribe("combat_turn_start", self._on_turn_start)
         self.event_manager.unsubscribe("combat_action_result", self._on_action_result)
         self.event_manager.unsubscribe("combat_round_start", self._on_round_start)
+        self.event_manager.unsubscribe("game_state_changed", self._on_game_state_changed)
 
         self._cleanup_ui()
 
@@ -312,3 +314,17 @@ class CombatUI(PluginModule):
                                 return info.display_name
 
         return entity_id[:8] + "..."  # Сокращённый ID
+
+    def _on_game_state_changed(self, data: dict):
+        """Обрабатывает смену состояния игры - очищает UI при выходе в меню."""
+        from nine.core.game_state import GameState
+
+        new_state = data.get("new_state")
+
+        # При выходе в меню - очистить боевой UI
+        if new_state == GameState.MENU:
+            self.is_in_combat = False
+            self.current_combat_id = None
+            self.is_my_turn = False
+            self._cleanup_ui()
+            self.logger.info("Combat UI cleaned up on game state change to MENU")
