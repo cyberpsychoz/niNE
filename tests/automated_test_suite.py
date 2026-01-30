@@ -68,6 +68,11 @@ class AutomatedTestClient(ShowBase):
         self.reader = None
         self.player_id = -1
 
+        # Атрибуты для совместимости с UI
+        self.camera_controller = None
+        self.character_name = "AutoTest"
+        self.is_connected = False
+
         # Импорты
         from nine.core.events import EventManager
         from nine.core.plugins import PluginManager
@@ -200,6 +205,26 @@ class AutomatedTestClient(ShowBase):
         """Выполняет последовательность тестов."""
         logger.info("\n=== Starting Test Sequence ===\n")
 
+        try:
+            await self._run_tests()
+        except Exception as e:
+            logger.error(f"Test sequence failed: {e}", exc_info=True)
+            self.test_results.append({
+                "step": 999,
+                "name": "ERROR",
+                "description": f"Test sequence crashed: {str(e)}",
+                "screenshot": None,
+                "timestamp": datetime.now().isoformat()
+            })
+        finally:
+            # Всегда генерируем отчёт
+            self.generate_report()
+            await asyncio.sleep(1)
+            sys.exit(0)
+
+    async def _run_tests(self):
+        """Внутренний метод с тестами."""
+
         # Test 1: Main Menu
         logger.info("Test 1: Main Menu")
         self.ui.show_main_menu()
@@ -272,13 +297,6 @@ class AutomatedTestClient(ShowBase):
         self.take_screenshot("08_combat_started", "Боевая система - проверка UI")
 
         logger.info("\n=== Test Sequence Complete ===\n")
-
-        # Generate report
-        self.generate_report()
-
-        # Shutdown
-        await asyncio.sleep(1)
-        sys.exit(0)
 
     def generate_report(self):
         """Генерирует HTML отчёт."""
