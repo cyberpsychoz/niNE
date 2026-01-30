@@ -354,6 +354,8 @@ class AISystem(System):
             # Update AI based on behavior
             if ai.behavior == AIBehavior.IDLE:
                 self._update_idle(entity, ai, pos, dt, lod_level)
+            elif ai.behavior == AIBehavior.NEUTRAL:
+                self._update_neutral(entity, ai, pos, dt, lod_level)
             elif ai.behavior == AIBehavior.PATROL:
                 self._update_patrol(entity, ai, pos, dt, lod_level)
             elif ai.behavior == AIBehavior.HOSTILE:
@@ -415,6 +417,19 @@ class AISystem(System):
                 ai.state = AIState.PURSUING
                 # Post aggro event to start combat
                 self._post_aggro_event(entity.id, target.id)
+
+    def _update_neutral(
+        self,
+        entity: Entity,
+        ai: AIComponent,
+        pos: PositionComponent,
+        dt: float,
+        lod_level: AILODLevel = AILODLevel.NEAR
+    ):
+        """Neutral - stands in place, does NOT attack first (only if attacked)."""
+        ai.state = AIState.IDLE
+        # Neutral NPCs do not search for enemies automatically
+        # They will only react if attacked (handled by damage events)
 
     def _update_patrol(
         self,
