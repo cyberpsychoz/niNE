@@ -1,0 +1,97 @@
+{
+  "issues": [],
+  "warnings": [
+    {
+      "type": "HARDCODED_POSITION",
+      "file": "nine\\plugins\\combat\\cl_action_bar.py",
+      "line": 73,
+      "position": "0, 0, -0.82"
+    },
+    {
+      "type": "HARDCODED_POSITION",
+      "file": "nine\\plugins\\combat\\cl_action_bar.py",
+      "line": 137,
+      "position": "0, 0, -0.055"
+    },
+    {
+      "type": "HARDCODED_POSITION",
+      "file": "nine\\plugins\\combat\\cl_action_bar.py",
+      "line": 152,
+      "position": "0.45, 0, 0.03"
+    },
+    {
+      "type": "HARDCODED_POSITION",
+      "file": "nine\\plugins\\combat\\cl_action_bar.py",
+      "line": 163,
+      "position": "0, 0, 0.04"
+    },
+    {
+      "type": "HARDCODED_POSITION",
+      "file": "nine\\plugins\\combat\\cl_action_bar.py",
+      "line": 171,
+      "position": "0, 0, 0.04"
+    },
+    {
+      "type": "HARDCODED_POSITION",
+      "file": "nine\\plugins\\combat\\cl_action_bar.py",
+      "line": 180,
+      "position": "0, 0, 0.07"
+    },
+    {
+      "type": "HARDCODED_POSITION",
+      "file": "nine\\plugins\\combat\\cl_action_bar.py",
+      "line": 196,
+      "position": "x_offset, 0, -0.04"
+    },
+    {
+      "type": "HARDCODED_POSITION",
+      "file": "nine\\plugins\\combat\\cl_action_bar.py",
+      "line": 204,
+      "position": "0, 0, -0.005"
+    },
+    {
+      "type": "HARDCODED_POSITION",
+      "file": "nine\\plugins\\combat\\cl_initiative_display.py",
+      "line": 65,
+      "position": "-1.05, 0, 0"
+    },
+    {
+      "type": "HARDCODED_POSITION",
+      "file": "nine\\plugins\\combat\\cl_initiative_display.py",
+      "line": 76,
+      "position": "0, 0, 0.82"
+    },
+    {
+      "type": "HARDCODED_POSITION",
+      "file": "nine\\plugins\\combat\\cl_initiative_display.py",
+      "line": 87,
+      "position": "0, 0, 0.74"
+    },
+    {
+      "type": "HARDCODED_POSITION",
+      "file": "nine\\plugins\\combat\\cl_initiative_display.py",
+      "line": 128,
+      "position": "-0.2, 0, 0.02"
+    },
+    {
+      "type": "HARDCODED_POSITION",
+      "file": "nine\\plugins\\combat\\cl_initiative_display.py",
+      "line": 143,
+      "position": "-0.12, 0, 0.02"
+    },
+    {
+      "type": "HARDCODED_POSITION",
+      "file": "nine\\plugins\\combat\\cl_initiative_display.py",
+      "line": 170,
+      "position": "0.02, 0, -0.04"
+    },
+    {
+      "type": "HARDCODED_POSITION",
+      "file": "nine\\plugins\\combat\\cl_initiative_display.py",
+      "line": 180,
+      "position": "0.02, 0, -0.04"
+    }
+  ],
+  "total_issues": 0,
+  "total_warnings": 15
+}
