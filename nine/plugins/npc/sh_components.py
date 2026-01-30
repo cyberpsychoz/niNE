@@ -20,6 +20,7 @@ from nine.core.ecs import Component
 class AIBehavior(Enum):
     """Типы AI поведения."""
     IDLE = auto()       # Стоит на месте
+    NEUTRAL = auto()    # Нейтральный, не атакует первым
     PATROL = auto()     # Патрулирует по точкам
     HOSTILE = auto()    # Враждебный, атакует
     FOLLOW = auto()     # Следует за целью

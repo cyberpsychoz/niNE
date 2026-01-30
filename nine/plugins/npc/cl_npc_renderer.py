@@ -289,6 +289,8 @@ class NPCClientModule(PluginModule):
         """Обрабатывает world_state с NPC данными."""
         npcs = data.get("npcs", [])
 
+        self.logger.info(f"[NPC_RENDERER] world_state received: {len(npcs)} NPCs")
+
         # Обновляем существующих NPC и создаём новых
         current_ids = set()
         for npc_data in npcs:
@@ -303,6 +305,7 @@ class NPCClientModule(PluginModule):
                 self._renderers[entity_id].update(0, npc_data)
             else:
                 # Создаём нового
+                self.logger.info(f"[NPC_RENDERER] Creating new NPC: {entity_id[:8]}, name={npc_data.get('display_name')}, pos={npc_data.get('position')}")
                 renderer = NPCRenderer(
                     entity_id,
                     npc_data,
@@ -310,7 +313,7 @@ class NPCClientModule(PluginModule):
                     self.app
                 )
                 self._renderers[entity_id] = renderer
-                self.logger.debug(f"Created NPC renderer: {entity_id[:8]}")
+                self.logger.info(f"[NPC_RENDERER] Created NPC renderer: {entity_id[:8]}")
 
         # Удаляем отсутствующих NPC
         to_remove = []
@@ -319,9 +322,9 @@ class NPCClientModule(PluginModule):
                 to_remove.append(entity_id)
 
         for entity_id in to_remove:
+            self.logger.info(f"[NPC_RENDERER] REMOVING NPC renderer: {entity_id[:8]} (not in world_state)")
             self._renderers[entity_id].destroy()
             del self._renderers[entity_id]
-            self.logger.debug(f"Removed NPC renderer: {entity_id[:8]}")
 
     def _update_task(self, task):
         """Задача обновления интерполяции."""

@@ -681,7 +681,10 @@ class NPCManager:
         Returns:
             Список данных NPC (in legacy format for backward compatibility)
         """
-        return list(self._npc_network_data.values())
+        states = list(self._npc_network_data.values())
+        if states:
+            self.logger.info(f"[NPC_MANAGER] get_npc_states returning {len(states)} NPCs: {[s.get('entity_id', '')[:8] for s in states]}")
+        return states
 
     def get_npc_pawn_states(self) -> List[Dict]:
         """
@@ -1050,3 +1053,4 @@ class NPCManager:
         }
 
         self._npc_network_data[entity.id] = data
+        self.logger.debug(f"[NPC_MANAGER] Updated network data for {entity.id[:8]}: pos=({data['position']['x']:.1f}, {data['position']['y']:.1f}), name={data['display_name']}")
