@@ -43,7 +43,7 @@ class UIManager:
         self.active_components = {}
 
     def _load_font(self):
-        """Загружает шрифт UI (PlainPixel - пиксельный шрифт с кириллицей)."""
+        """Загружает шрифт UI (Press Start 2P - пиксельный шрифт с кириллицей)."""
         try:
             font = self.loader.loadFont(NineTheme.FONT_PATH)
             font.setPixelsPerUnit(NineTheme.FONT_PIXELS_PER_UNIT)

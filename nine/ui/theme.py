@@ -18,7 +18,7 @@ class NineTheme:
     """
 
     # Font path
-    FONT_PATH = "nine/assets/fonts/PlainPixel-Regular.ttf"
+    FONT_PATH = "nine/assets/fonts/PressStart2P.ttf"
     FONT_PIXELS_PER_UNIT = 96  # Higher resolution for crisp pixel font rendering
     FONT_USE_NEAREST = True    # Use nearest-neighbor filtering for pixel fonts
 
@@ -151,7 +151,7 @@ class NineTheme(metaclass=NineThemeMeta):
         NineTheme.button_colors()
     """
 
-    FONT_PATH = "nine/assets/fonts/PlainPixel-Regular.ttf"
+    FONT_PATH = "nine/assets/fonts/PressStart2P.ttf"
     FONT_PIXELS_PER_UNIT = 96
     FONT_USE_NEAREST = True
 
