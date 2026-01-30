@@ -103,6 +103,7 @@ class GameClient(ShowBase):
         self.event_manager.subscribe("client_send_chat_message", self.send_chat_packet)
         self.event_manager.subscribe("client_item_use", self.send_item_use_packet)
         self.event_manager.subscribe("client_item_drop", self.send_item_drop_packet)
+        self.event_manager.subscribe("send_to_server", self._handle_send_to_server)
 
         # --- Scene Optimizer ---
         self.scene_optimizer = SceneOptimizer(
@@ -926,6 +927,18 @@ class GameClient(ShowBase):
                 "count": data.get("count", 1),
             }
             self.asyncio_loop.create_task(send_message(self.writer, packet))
+
+    def _handle_send_to_server(self, event_data: dict):
+        """Отправляет локальное событие на сервер как сетевой пакет."""
+        if not self.writer or not self.is_connected:
+            return
+
+        message = {"type": event_data.get("type")}
+        for key, value in event_data.items():
+            if key != "type":
+                message[key] = value
+
+        self.asyncio_loop.create_task(send_message(self.writer, message))
 
     def open_login_menu(self): self.ui.show_login_menu(default_ip="localhost:9009", default_name=self.character_name)
     def close_login_menu(self): self.ui.hide_login_menu(); self.ui.show_main_menu()

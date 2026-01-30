@@ -738,6 +738,24 @@ class GameServer(ShowBase):
                 "count": data.get("count", 1),
                 "position": position,
             })
+        elif msg_type == "combat_action":
+            # Боевое действие от клиента
+            self.event_manager.post("combat_action_request", {
+                "client_id": client_id,
+                "action_id": data.get("action_id"),
+                "target_id": data.get("target_id"),
+            })
+        elif msg_type == "combat_end_turn":
+            # Пропуск хода
+            self.event_manager.post("combat_end_turn_request", {
+                "client_id": client_id,
+            })
+        elif msg_type == "combat_movement":
+            # Движение в бою
+            self.event_manager.post("combat_movement_request", {
+                "client_id": client_id,
+                "destination": data.get("destination"),
+            })
         elif data.get("type") == "internal_disconnect":
             self.handle_disconnect(client_id)
 

@@ -79,17 +79,28 @@ class NPCRenderer:
         # Пытаемся загрузить модель
         model_loaded = False
         try:
-            # Пробуем загрузить как Actor (для анимаций)
-            # Если указан путь - используем его, иначе base.bam как fallback
-            if self.model_path:
-                model_file = f"nine/assets/models/characters/{self.model_path}.bam"
-            else:
-                model_file = "nine/assets/models/base.bam"
+            # Используем base.bam для всех NPC (единая модель как у игроков)
+            model_file = "nine/assets/models/base.bam"
             self.actor = Actor(model_file)
             self.actor.reparentTo(self.node)
             self.actor.setScale(0.3)  # Такой же масштаб как у игрока
+
+            # Применяем цвет в зависимости от типа NPC
+            color_map = {
+                "goblin": (0.4, 0.6, 0.3, 1),    # Зелёный
+                "skeleton": (0.9, 0.9, 0.8, 1),  # Белый/костяной
+                "bandit": (0.6, 0.4, 0.3, 1),    # Коричневый
+                "wolf": (0.5, 0.5, 0.5, 1),      # Серый
+            }
+            npc_type = self.model_path if self.model_path else "default"
+            if npc_type in color_map:
+                self.actor.setColor(color_map[npc_type])
+            else:
+                # По умолчанию - светло-серый
+                self.actor.setColor(0.7, 0.7, 0.7, 1)
+
             model_loaded = True
-            logger.debug(f"Loaded NPC model: {model_file}")
+            logger.debug(f"Loaded NPC model: {model_file} (type: {npc_type})")
         except Exception as e:
             logger.warning(f"Failed to load NPC model: {e}")
 

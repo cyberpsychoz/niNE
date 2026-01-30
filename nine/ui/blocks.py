@@ -179,8 +179,8 @@ class EntryElement(BaseElement):
         self._entry = None
 
     def get_size(self) -> ElementSize:
-        # Entry width: scale * char_width * ~0.6 (font width factor)
-        width = self.char_width * self.ENTRY_SCALE * 0.6
+        # Entry width: scale * char_width * 0.75 (updated for cyrillic), with UI_SCALE
+        width = self.char_width * self.ENTRY_SCALE * 0.75 * ui.ui_scale
         height = self.ENTRY_SCALE * 2.2
         return ElementSize(width, height)
 
