@@ -35,11 +35,19 @@ class GameClient(ShowBase):
     def __init__(self, dev_mode=False, name="Player", client_uuid=None):
         # --- Standard setup (logging, asyncio, ShowBase) ---
         log_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+        # Логирование в файл
         file_handler = logging.FileHandler("client.log", mode='w')
         file_handler.setFormatter(log_formatter)
+
+        # Логирование в консоль
+        console_handler = logging.StreamHandler()
+        console_handler.setFormatter(log_formatter)
+
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(logging.INFO)
         self.logger.addHandler(file_handler)
+        self.logger.addHandler(console_handler)
 
         try:
             self.asyncio_loop = asyncio.get_running_loop()
