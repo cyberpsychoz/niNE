@@ -245,17 +245,21 @@ class GameServer(ShowBase):
 
         # Setup logging - configure root logger to capture all modules
         log_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+        # File handler - всё логируется в файл (INFO+)
         file_handler = logging.FileHandler("server.log", mode='w')
         file_handler.setFormatter(log_formatter)
+        file_handler.setLevel(logging.INFO)
 
-        # Configure root logger so all modules log to server.log
-        root_logger = logging.getLogger()
-        root_logger.setLevel(logging.INFO)
-        root_logger.addHandler(file_handler)
-
-        # Also add console handler for visibility
+        # Console handler - только важные сообщения (WARNING+)
         console_handler = logging.StreamHandler()
         console_handler.setFormatter(log_formatter)
+        console_handler.setLevel(logging.WARNING)  # Только WARNING, ERROR, CRITICAL в консоль
+
+        # Configure root logger
+        root_logger = logging.getLogger()
+        root_logger.setLevel(logging.INFO)  # Общий уровень INFO
+        root_logger.addHandler(file_handler)
         root_logger.addHandler(console_handler)
 
         self.logger = logging.getLogger(__name__)
