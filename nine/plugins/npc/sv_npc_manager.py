@@ -297,8 +297,8 @@ class NPCManager:
                 "model": "goblin",
                 "components": {
                     "AIComponent": {
-                        "behavior": "HOSTILE",
-                        "aggro_radius": 12.0,
+                        "behavior": "NEUTRAL",
+                        "aggro_radius": 5.0,
                         "attack_range": 1.5,
                         "move_speed": 1.5
                     },
@@ -357,8 +357,8 @@ class NPCManager:
                 "model": "skeleton",
                 "components": {
                     "AIComponent": {
-                        "behavior": "HOSTILE",
-                        "aggro_radius": 10.0,
+                        "behavior": "NEUTRAL",
+                        "aggro_radius": 4.0,
                         "attack_range": 1.5,
                         "move_speed": 1.2
                     },

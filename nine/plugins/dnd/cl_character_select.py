@@ -259,32 +259,33 @@ class CharacterSelectUI(BaseUIComponent):
                     frameColor=(0, 0, 0, 0),
                 )
 
-            # Кнопка "Играть" - компактная
+            # Кнопка "Загрузить" - внизу справа карточки
             char_uuid = char.get('uuid')
             play_btn = BG1Button.create(
                 parent=card,
-                text="Играть",
+                text="Загрузить",
                 command=lambda uuid=char_uuid: self._on_select_character(uuid),
-                pos=(card_width/2 - 0.17, 0, 0),
+                pos=(card_width/2 - 0.2, 0, -card_height/2 + 0.06),
                 scale=0.045,  # Меньше кнопка
                 width=3.2,
                 height=0.9,
             )
             self._character_cards.append(play_btn)
 
-            # Кнопка "Удалить" (красный X) - иконка в углу карточки
+            # Кнопка "Удалить" (красный X) - верхний правый угол карточки
             delete_btn = DirectButton(
                 parent=card,
                 text="X",
-                scale=0.05,  # Увеличен для видимости
-                pos=(card_width/2 - 0.08, 0, card_height/2 - 0.08),
+                scale=0.055,  # Увеличен для видимости
+                pos=(card_width/2 - 0.06, 0, card_height/2 - 0.06),
                 command=lambda uuid=char_uuid, name=char_name: self._on_delete_character(uuid, name),
                 frameColor=(0.5, 0.12, 0.12, 0.85),
                 text_fg=(1, 0.9, 0.9, 1),
                 text_align=TextNode.ACenter,
                 pressEffect=True,
                 relief=DGG.FLAT,
-                frameSize=(-0.6, 0.6, -0.6, 0.6),  # Уменьшен для правильного размера
+                frameSize=(-0.5, 0.5, -0.5, 0.5),
+                sortOrder=2,  # Поверх других элементов
             )
             delete_btn.setTransparency(TransparencyAttrib.M_alpha)
             # Эффект при наведении

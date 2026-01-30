@@ -5,9 +5,9 @@ Action Bar - панель действий в бою.
 
 from typing import Dict, Optional, Callable
 from direct.gui.DirectGui import (
-    DirectFrame, DirectButton, DirectLabel, DirectWaitBar
+    DirectFrame, DirectButton, DirectLabel, DirectWaitBar, DGG
 )
-from panda3d.core import TextNode
+from panda3d.core import TextNode, TransparencyAttrib
 
 from nine.core.plugins import PluginModule
 from nine.plugins.combat.sh_action_economy import COMBAT_ACTIONS, ActionCost
@@ -204,6 +204,24 @@ class ActionBar(PluginModule):
                 pos=(0, 0, -0.005),
                 frameColor=(0, 0, 0, 0)
             )
+
+            # Создаём tooltip (скрыт по умолчанию)
+            tooltip_label = DirectLabel(
+                parent=indicator,
+                text=tooltip,
+                text_scale=0.025,
+                text_fg=(1, 1, 1, 1),
+                pos=(0, 0, 0.05),
+                frameColor=(0.1, 0.1, 0.1, 0.9),
+                frameSize=(-0.08, 0.08, -0.015, 0.015),
+                text_align=TextNode.ACenter,
+            )
+            tooltip_label.setTransparency(TransparencyAttrib.M_alpha)
+            tooltip_label.hide()
+
+            # Добавляем события для показа/скрытия tooltip
+            indicator.bind(DGG.ENTER, lambda e, t=tooltip_label: t.show())
+            indicator.bind(DGG.EXIT, lambda e, t=tooltip_label: t.hide())
 
             self.resource_indicators[res_id] = indicator
 

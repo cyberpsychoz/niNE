@@ -9,6 +9,7 @@ from panda3d.core import TransparencyAttrib
 
 from .base_component import BaseUIComponent
 from .blocks import Block
+from .bg1_button import BG1Button
 from .ui_config import ui
 
 
@@ -70,16 +71,32 @@ class LoginMenu(BaseUIComponent):
 
         self._block.spacer(ui.spacing.lg)
 
-        # Кнопки
-        btn_row = self._block.row(gap=ui.spacing.lg, justify="center")
-        btn_row.button("Войти", command=self.ui_manager.callbacks.get("attempt_login"), small=True)
-        btn_row.button("Назад", command=self.ui_manager.callbacks.get("close_login_menu"), small=True)
-
-        self._block.spacer(ui.spacing.sm)
-
-        # Строим
+        # Строим блок сначала (без кнопок)
         frame = self._block.build()
         self._add_element('panel', frame)
+
+        # Кнопки - создаём напрямую через BG1Button для правильного позиционирования
+        login_btn = BG1Button.create(
+            parent=frame,
+            text="Войти",
+            command=self.ui_manager.callbacks.get("attempt_login"),
+            pos=(-0.15, 0, -0.35),
+            scale=0.045,
+            width=2.5,
+            height=1.0,
+        )
+        self._add_element('login_btn', login_btn)
+
+        back_btn = BG1Button.create(
+            parent=frame,
+            text="Назад",
+            command=self.ui_manager.callbacks.get("close_login_menu"),
+            pos=(0.15, 0, -0.35),
+            scale=0.045,
+            width=2.5,
+            height=1.0,
+        )
+        self._add_element('back_btn', back_btn)
 
         self._play_open_sound()
 
