@@ -625,8 +625,8 @@ class GameWorld:
             self._tick_id = 0
         self._tick_id += 1
 
-        if self._tick_id % 10 == 0 or self._tick_id < 20:  # Log first 20 ticks and every 10th
-            logger.info(f"[World TICK #{self._tick_id}] Updating {len(self.players)} players")
+        if self._tick_id < 5:  # Log only first 5 ticks (startup)
+            logger.debug(f"[World TICK #{self._tick_id}] Updating {len(self.players)} players")
 
         # Update all players (legacy character controller)
         for player in self.players.values():

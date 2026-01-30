@@ -564,8 +564,8 @@ class GameServer(ShowBase):
             self.process_message(client_id, data)
 
         # 2. Update game world (includes collision traversal)
-        if self._tick_id % 10 == 0 or self._tick_id < 20:  # Log first 20 and every 10th
-            self.logger.info(f"[GameServer TICK #{self._tick_id}] world.update(dt={dt:.4f})")
+        if self._tick_id < 5:  # Log only first 5 ticks (startup)
+            self.logger.debug(f"[GameServer TICK #{self._tick_id}] world.update(dt={dt:.4f})")
         self.world.update(dt)
 
         # 2.5. Update NPC system
