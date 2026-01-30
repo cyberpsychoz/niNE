@@ -300,7 +300,7 @@ class NPCDiagnosticClient(ShowBase):
         logger.info("Spawning goblin...")
         self.asyncio_loop.create_task(self.send_message({
             "type": "chat_message",
-            "message": "/spawn goblin 0 3 0"
+            "message": "/spawnnpc goblin 0 3 0"
         }))
 
     def start_combat(self):
