@@ -89,13 +89,19 @@ class AutomatedTestClient(ShowBase):
         # Загружаем плагины
         self.plugin_manager.load_plugins()
 
-        # Asyncio
-        self.asyncio_loop = asyncio.get_event_loop()
+        # Asyncio - создаём новый loop если нужно
+        try:
+            self.asyncio_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self.asyncio_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self.asyncio_loop)
+
         self.taskMgr.add(self.poll_asyncio, "asyncio-poll")
 
         logger.info("Test client initialized")
 
     def poll_asyncio(self, task):
+        """Обрабатывает asyncio события."""
         self.asyncio_loop.stop()
         self.asyncio_loop.run_forever()
         return task.cont
@@ -345,7 +351,7 @@ class AutomatedTestClient(ShowBase):
         logger.info(f"Report generated: {report_path}")
 
 
-async def main():
+def main():
     """Главная функция."""
     # Создаём директорию для отчёта
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -360,7 +366,7 @@ async def main():
     # Запускаем тесты
     app.asyncio_loop.create_task(app.run_test_sequence())
 
-    # Запускаем Panda3D
+    # Запускаем Panda3D (блокирует до завершения)
     app.run()
 
 
@@ -368,4 +374,4 @@ if __name__ == "__main__":
     logger.info("Starting automated test suite")
     logger.info("Make sure server is running: python -m nine.server.game_server")
 
-    asyncio.run(main())
+    main()
