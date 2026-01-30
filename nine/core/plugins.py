@@ -233,6 +233,14 @@ class PluginManager:
     ):
         """Загружает один плагин со всеми его модулями."""
         try:
+            # Проверка на дубликаты unique_id
+            if plugin_info.unique_id in self.loaded_plugins:
+                self.logger.warning(
+                    f"Plugin '{plugin_info.unique_id}' already loaded! "
+                    f"Skipping duplicate from {plugin_dir.relative_to(Path.cwd())}"
+                )
+                return
+
             # Создаем логгер для плагина
             plugin_logger = logging.getLogger(f"Plugin.{plugin_info.unique_id}")
             if not plugin_logger.handlers:

@@ -63,9 +63,10 @@ class UIManager:
             # Fallback на DejaVuSans (гладкий шрифт с полной кириллицей)
             try:
                 font = self.loader.loadFont("nine/assets/fonts/DejaVuSans.ttf")
-                font.setPixelsPerUnit(100)
-                font.setMinfilter(1)
-                font.setMagfilter(1)
+                font.setPixelsPerUnit(NineTheme.FONT_PIXELS_PER_UNIT)
+                # DejaVuSans лучше работает с linear фильтрацией
+                font.setMinfilter(1)  # FT_linear
+                font.setMagfilter(1)  # FT_linear
                 return font
             except Exception:
                 return DGG.getDefaultFont()

@@ -253,9 +253,9 @@ class CharacterSelectUI(BaseUIComponent):
                     parent=card,
                     text=f"Последняя игра: {last_played_str}",
                     scale=NineTheme.SMALL_SCALE * 0.8,
-                    pos=(card_width/2 - 0.35, 0, -card_height/2 + 0.05),
+                    pos=(-card_width/2 + 0.05, 0, -card_height/2 + 0.05),
                     text_fg=NineTheme.TEXT_HINT,
-                    text_align=TextNode.ARight,
+                    text_align=TextNode.ALeft,
                     frameColor=(0, 0, 0, 0),
                 )
 
@@ -265,9 +265,9 @@ class CharacterSelectUI(BaseUIComponent):
                 parent=card,
                 text="Играть",
                 command=lambda uuid=char_uuid: self._on_select_character(uuid),
-                pos=(card_width/2 - 0.15, 0, 0),
+                pos=(card_width/2 - 0.17, 0, 0),
                 scale=0.045,  # Меньше кнопка
-                width=4.0,
+                width=3.2,
                 height=0.9,
             )
             self._character_cards.append(play_btn)
@@ -276,15 +276,15 @@ class CharacterSelectUI(BaseUIComponent):
             delete_btn = DirectButton(
                 parent=card,
                 text="X",
-                scale=0.035,  # Маленький масштаб
-                pos=(card_width/2 - 0.04, 0, card_height/2 - 0.04),
+                scale=0.05,  # Увеличен для видимости
+                pos=(card_width/2 - 0.08, 0, card_height/2 - 0.08),
                 command=lambda uuid=char_uuid, name=char_name: self._on_delete_character(uuid, name),
                 frameColor=(0.5, 0.12, 0.12, 0.85),
                 text_fg=(1, 0.9, 0.9, 1),
                 text_align=TextNode.ACenter,
                 pressEffect=True,
                 relief=DGG.FLAT,
-                frameSize=(-1.0, 1.0, -1.0, 1.0),  # Квадратный
+                frameSize=(-0.6, 0.6, -0.6, 0.6),  # Уменьшен для правильного размера
             )
             delete_btn.setTransparency(TransparencyAttrib.M_alpha)
             # Эффект при наведении
