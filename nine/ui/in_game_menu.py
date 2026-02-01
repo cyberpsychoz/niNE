@@ -1,14 +1,14 @@
 # nine/ui/in_game_menu.py
 """
 Игровое меню паузы.
-Использует блочную систему layout.
+Полностью переписано с использованием blocks_v2.
 """
 
 from direct.gui.DirectGui import DirectFrame
 from panda3d.core import TransparencyAttrib
 
 from .base_component import BaseUIComponent
-from .blocks import Block
+from .blocks_v2 import Block
 from .ui_config import ui
 
 
@@ -35,33 +35,31 @@ class InGameMenu(BaseUIComponent):
         # Создаём блок меню
         self._block = Block(
             parent=self.base.aspect2d,
-            width=0.8,
-            padding=ui.spacing.panel_padding,
+            width=0.7,  # Компактное меню паузы
+            padding=0.08,
             bg_color=ui.colors.bg_medium,
             pos=(0, 0, 0)
         )
 
-        # Заголовок по центру
+        # Заголовок
         self._block.label("ПАУЗА", style="title", align="center")
-        self._block.spacer(ui.spacing.lg)
+        self._block.spacer(ui.spacing.xl)
 
-        # Кнопки - каждая в отдельном row по центру
+        # Кнопка Продолжить
         row1 = self._block.row(justify="center")
-        row1.button("Продолжить", command=self._on_continue_click, small=True)
-
-        self._block.spacer(ui.spacing.sm)
-
-        row2 = self._block.row(justify="center")
-        row2.button("Настройки", command=self._on_settings_click, small=True)
-
-        self._block.spacer(ui.spacing.sm)
-
-        row3 = self._block.row(justify="center")
-        row3.button("Отключиться", command=self._on_disconnect_click, small=True)
-
+        row1.button("ПРОДОЛЖИТЬ", command=self._on_continue_click, small=False)
         self._block.spacer(ui.spacing.md)
 
-        # Строим
+        # Кнопка Настройки
+        row2 = self._block.row(justify="center")
+        row2.button("НАСТРОЙКИ", command=self._on_settings_click, small=False)
+        self._block.spacer(ui.spacing.md)
+
+        # Кнопка Отключиться
+        row3 = self._block.row(justify="center")
+        row3.button("ОТКЛЮЧИТЬСЯ", command=self._on_disconnect_click, small=False)
+
+        # Строим блок
         frame = self._block.build()
         self._add_element('panel', frame)
 

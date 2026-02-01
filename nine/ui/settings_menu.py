@@ -8,7 +8,7 @@ from direct.gui.DirectGui import DirectFrame, DirectButton, DirectLabel, DGG
 from panda3d.core import TextNode, TransparencyAttrib
 
 from .base_component import BaseUIComponent
-from .blocks import Block
+from .blocks_v2 import Block, Margin  # V2 с улучшениями!
 from .ui_config import ui
 from nine.core.config import config
 
@@ -16,10 +16,10 @@ from nine.core.config import config
 class SettingsMenu(BaseUIComponent):
     """Меню настроек."""
 
-    # Размеры панели
-    PANEL_WIDTH = 1.6
-    PANEL_HEIGHT = 1.4  # Увеличена высота для лучшего размещения
-    TAB_CONTENT_HEIGHT = 0.6  # Высота области контента вкладки
+    # Размеры панели (МАКСИМАЛЬНО ШИРОКОЕ ОКНО)
+    PANEL_WIDTH = 2.4  # ОГРОМНАЯ ширина
+    PANEL_HEIGHT = 1.5
+    TAB_CONTENT_HEIGHT = 0.65
 
     def __init__(self, ui_manager, client):
         super().__init__(ui_manager)
@@ -78,13 +78,26 @@ class SettingsMenu(BaseUIComponent):
         tabs = [("general", "Общие"), ("controls", "Управление"),
                 ("graphics", "Графика"), ("audio", "Звук")]
 
-        tab_w = 0.30
-        tab_gap = 0.03
-        total_tabs_w = len(tabs) * tab_w + (len(tabs) - 1) * tab_gap
-        start_x = -total_tabs_w / 2 + tab_w / 2
+        # Автоматический расчет ширины кнопок по тексту (РАДИКАЛЬНО УВЕЛИЧЕНО)
+        tab_widths = []
+        for tid, tname in tabs:
+            # Ширина текста: len * scale * 0.9 (УВЕЛИЧЕНО) + padding 0.12 (УВЕЛИЧЕНО)
+            text_width = len(tname) * ui.font.small * 0.9
+            button_width = max(0.30, text_width + 0.12)  # Минимум 0.30
+            tab_widths.append(button_width)
 
+        tab_gap = 0.03
+        total_tabs_w = sum(tab_widths) + (len(tabs) - 1) * tab_gap
+        start_x = -total_tabs_w / 2
+
+        current_x = start_x
         for i, (tid, tname) in enumerate(tabs):
-            x = start_x + i * (tab_w + tab_gap)
+            tab_w = tab_widths[i]
+            x = current_x + tab_w / 2
+
+            # DEBUG
+            print(f"[UI_DEBUG] Tab Button '{tname}': x={x:.3f}, y={tab_btn_y:.3f}, width={tab_w:.3f}, text_len={len(tname)}, text_scale={ui.font.small}")
+
             btn = DirectButton(
                 parent=panel,
                 text=tname,
@@ -98,6 +111,7 @@ class SettingsMenu(BaseUIComponent):
                 command=lambda t=tid: self._switch_tab(t)
             )
             self._tab_buttons[tid] = btn
+            current_x += tab_w + tab_gap
 
         # === ОБЛАСТЬ КОНТЕНТА ВКЛАДОК ===
         content_center_y = content_top_y - self.TAB_CONTENT_HEIGHT / 2
@@ -134,16 +148,16 @@ class SettingsMenu(BaseUIComponent):
         """Вкладка Общие."""
         block = Block(
             parent=self._panel,
-            width=1.4,
+            width=1.6,  # Было 1.4, стало 1.6 (под новую ширину панели)
             padding=0.04,
             bg_color=(0, 0, 0, 0),
             pos=(0, 0, center_y)
         )
 
-        # Никнейм
+        # Никнейм (V2: max_width предотвращает выход за границы)
         r1 = block.row(justify="space-between")
-        r1.label("Никнейм:")
-        r1.entry(name="nickname", initial=config.get("nickname", "Player"), width=14)
+        r1.label("Никнейм:", margin=Margin.all(0.01))
+        r1.entry(name="nickname", initial=config.get("nickname", "Player"), width=16, max_width=0.65)
 
         block.spacer(0.06)
 
@@ -162,7 +176,7 @@ class SettingsMenu(BaseUIComponent):
         """Вкладка Управление."""
         block = Block(
             parent=self._panel,
-            width=1.4,
+            width=2.2,  # МАКСИМАЛЬНО ШИРОКИЙ блок
             padding=0.04,
             bg_color=(0, 0, 0, 0),
             pos=(0, 0, center_y)
@@ -206,7 +220,7 @@ class SettingsMenu(BaseUIComponent):
         """Вкладка Графика."""
         block = Block(
             parent=self._panel,
-            width=1.4,
+            width=2.2,  # МАКСИМАЛЬНО ШИРОКИЙ блок
             padding=0.04,
             bg_color=(0, 0, 0, 0),
             pos=(0, 0, center_y)
@@ -244,7 +258,7 @@ class SettingsMenu(BaseUIComponent):
         """Вкладка Звук."""
         block = Block(
             parent=self._panel,
-            width=1.4,
+            width=2.2,  # МАКСИМАЛЬНО ШИРОКИЙ блок
             padding=0.04,
             bg_color=(0, 0, 0, 0),
             pos=(0, 0, center_y)

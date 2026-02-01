@@ -24,8 +24,6 @@ from nine.core.events import EventManager
 from nine.core.plugins import PluginManager
 from nine.core.network import send_message, read_messages
 from nine.core.scene_optimizer import SceneOptimizer, LODSettings
-from nine.ui.manager import UIManager
-from nine.ui.loading_screen import LoadingScreen
 
 # Audio enabled - using OpenAL (default)
 # loadPrcFileData("", "audio-library-name null")  # Uncomment to disable audio
@@ -66,13 +64,14 @@ class GameClient(ShowBase):
         self.dev_mode = dev_mode
         try:
             with open("config.json") as f:
-                config = json.load(f)
-            self.camera_sensitivity = config.get("camera_sensitivity", 1.0)
-            self.third_person_camera = config.get("third_person_camera", True)
-            self.invert_mouse_x = config.get("invert_mouse_x", False)
-            self.invert_mouse_y = config.get("invert_mouse_y", False)
-            self.fov = config.get("fov", 70)
+                self.user_config = json.load(f)
+            self.camera_sensitivity = self.user_config.get("camera_sensitivity", 1.0)
+            self.third_person_camera = self.user_config.get("third_person_camera", True)
+            self.invert_mouse_x = self.user_config.get("invert_mouse_x", False)
+            self.invert_mouse_y = self.user_config.get("invert_mouse_y", False)
+            self.fov = self.user_config.get("fov", 70)
         except (FileNotFoundError, json.JSONDecodeError):
+            self.user_config = {}
             self.camera_sensitivity = 1.0
             self.third_person_camera = True
             self.invert_mouse_x = False
@@ -105,9 +104,64 @@ class GameClient(ShowBase):
             "attempt_login": self.attempt_login, "close_login_menu": self.close_login_menu,
             "settings": self.show_settings_menu,
         }
-        self.ui = UIManager(self, callbacks)
-        self.loading_screen = LoadingScreen(self.ui)
-        self.loading_screen.hide()  # Скрыт по умолчанию
+
+        # Choose UI backend from config
+        ui_backend = self.user_config.get("ui_backend", "directgui")
+        self.logger.info(f"Using UI backend: {ui_backend}")
+
+        if ui_backend == "imgui":
+            try:
+                from nine.ui.imgui_manager import ImGuiManager
+                self.ui = ImGuiManager(self, callbacks)
+                self.ui.create_overlay()
+                self.loading_screen = None  # ImGui has integrated loading screen
+                self.logger.info("ImGui UI initialized successfully")
+            except Exception as e:
+                self.logger.error(f"Failed to initialize ImGui UI: {e}")
+                self.logger.info("Falling back to DirectGUI")
+                from nine.ui.manager import UIManager
+                from nine.ui.loading_screen import LoadingScreen
+                self.ui = UIManager(self, callbacks)
+                self.loading_screen = LoadingScreen(self.ui)
+                self.loading_screen.hide()
+        elif ui_backend == "cef":
+            try:
+                from nine.ui.cef_manager import CEFUIManager
+                self.ui = CEFUIManager(self, callbacks)
+                self.ui.create_overlay()
+                self.ui.show_main_menu()
+                self.loading_screen = None  # CEF has integrated loading screen
+                self.logger.info("CEF UI initialized successfully")
+            except Exception as e:
+                self.logger.error(f"Failed to initialize CEF UI: {e}")
+                self.logger.info("Falling back to DirectGUI")
+                from nine.ui.manager import UIManager
+                from nine.ui.loading_screen import LoadingScreen
+                self.ui = UIManager(self, callbacks)
+                self.loading_screen = LoadingScreen(self.ui)
+                self.loading_screen.hide()
+        elif ui_backend == "webview":
+            try:
+                from nine.ui.webview_manager import WebViewUIManager
+                self.ui = WebViewUIManager(self, callbacks)
+                self.ui.create_overlay()
+                self.ui.show_main_menu()
+                self.loading_screen = None
+                self.logger.info("WebView UI initialized successfully (browser mode)")
+            except Exception as e:
+                self.logger.error(f"Failed to initialize WebView UI: {e}")
+                self.logger.info("Falling back to DirectGUI")
+                from nine.ui.manager import UIManager
+                from nine.ui.loading_screen import LoadingScreen
+                self.ui = UIManager(self, callbacks)
+                self.loading_screen = LoadingScreen(self.ui)
+                self.loading_screen.hide()
+        else:
+            from nine.ui.manager import UIManager
+            from nine.ui.loading_screen import LoadingScreen
+            self.ui = UIManager(self, callbacks)
+            self.loading_screen = LoadingScreen(self.ui)
+            self.loading_screen.hide()  # Скрыт по умолчанию
         self.event_manager.subscribe("client_send_chat_message", self.send_chat_packet)
         self.event_manager.subscribe("client_item_use", self.send_item_use_packet)
         self.event_manager.subscribe("client_item_drop", self.send_item_drop_packet)
@@ -970,10 +1024,23 @@ if __name__ == "__main__":
         name=args.name,
         client_uuid=args.uuid
     )
+
+    # Custom exception hook to log uncaught exceptions
+    def exception_hook(exc_type, exc_value, exc_traceback):
+        if issubclass(exc_type, KeyboardInterrupt):
+            sys.__excepthook__(exc_type, exc_value, exc_traceback)
+            return
+        app.logger.error("Uncaught exception:", exc_info=(exc_type, exc_value, exc_traceback))
+
+    sys.excepthook = exception_hook
+
     try:
         app.run()
     except (SystemExit, KeyboardInterrupt):
         logging.info("Exiting application.")
+    except Exception as e:
+        app.logger.exception("Fatal error during execution:")
+        raise
     finally:
         if hasattr(app, 'asyncio_loop') and app.asyncio_loop.is_running():
             app.asyncio_loop.stop()

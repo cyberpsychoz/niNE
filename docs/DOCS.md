@@ -126,14 +126,45 @@ class NineTheme:
 
 -   **Базовый компонент:** Все экраны UI (например, `MainMenu`, `LoginMenu`) наследуются от `BaseUIComponent`, что обеспечивает у них единый интерфейс (`show`, `hide`, `destroy`) и гарантирует, что все элементы DirectGUI будут корректно очищены для предотвращения утечек памяти.
 -   **Коллбэки:** `UIManager` инициализируется словарем коллбэков, что позволяет компонентам UI инициировать действия в основном классе клиента (например, `attempt_login`, `exit_game`), не будучи напрямую связанными с ним.
+-   **Blocks V2:** Система декларативного layout для UI (аналог HTML/CSS) - см. `docs/BLOCKS_V2_IMPROVEMENTS.md`
 
-| Компонент | Файл | Описание |
-|-----------|------|----------|
-| MainMenu | `main_menu.py` | Главное меню (Подключиться, Настройки, Выход) |
-| LoginMenu | `login_menu.py` | Форма входа (IP, имя, пароль) |
-| SettingsMenu | `settings_menu.py` | Настройки (никнейм, разрешение, чувствительность) |
-| InGameMenu | `in_game_menu.py` | Меню паузы (Продолжить, Настройки, Отключиться) |
-| ChatWindow | `chat_window.py` | Чат |
+#### Основные меню (nine/ui/)
+
+| Компонент | Файл | Описание | Layout System |
+|-----------|------|----------|---------------|
+| MainMenu | `main_menu.py` | Главное меню (Подключиться, Настройки, Выход) | BG1Button + AnimatedBackground |
+| LoginMenu | `login_menu.py` | Форма входа (IP, имя, пароль) | ✅ blocks_v2 |
+| SettingsMenu | `settings_menu.py` | Настройки (никнейм, разрешение, чувствительность) | ✅ blocks_v2 |
+| InGameMenu | `in_game_menu.py` | Меню паузы (Продолжить, Настройки, Отключиться) | ✅ blocks_v2 |
+| ChatWindow | `chat_window.py` | Чат | Custom DirectGUI |
+
+#### UI Infrastructure (nine/ui/)
+
+| Файл | Назначение |
+|------|------------|
+| `manager.py` | UIManager - управление состояниями и экранами |
+| `base_component.py` | BaseUIComponent - базовый класс для всех UI |
+| `blocks_v2.py` | Block system - декларативный layout (CSS-like) |
+| `ui_config.py` | Конфигурация UI (цвета, шрифты, spacing) |
+| `theme.py` | NineTheme - тёмная тема (deprecated, используй ui_config) |
+| `bg1_button.py` | BG1Button - кнопки в стиле Baldur's Gate |
+
+#### DnD Plugin UI (nine/plugins/dnd/)
+
+| Файл | Назначение |
+|------|------------|
+| `cl_character_select_ui.py` | Выбор персонажа |
+| `cl_character_create_ui.py` | Создание персонажа |
+
+#### Combat Plugin UI (nine/plugins/combat/)
+
+| Файл | Назначение |
+|------|------------|
+| `cl_combat_ui.py` | Главный UI боя |
+| `cl_action_bar.py` | Панель действий (атака, заклинания) |
+| `cl_initiative_display.py` | Отображение инициативы |
+| `cl_spectator_mode.py` | Режим наблюдателя |
+| `cl_target_selector.py` | Выбор цели |
 
 ---
 
