@@ -34,7 +34,7 @@ class WorldConfigServerModule(PluginModule):
     def _get_default_config(self) -> dict:
         """Возвращает конфигурацию по умолчанию."""
         return {
-            "map": {"model": "nine/assets/models/maps/map.bam"},
+            "map": {"model": "nine/assets/models/maps/map3.bam"},
             "lighting": {
                 "ambient": {"color": [0.15, 0.1, 0.2, 1.0], "enabled": True},
                 "sun": {"color": [1.2, 0.7, 0.6, 1.0], "direction": [45, -30, 0], "enabled": True},
