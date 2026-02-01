@@ -226,10 +226,12 @@ class NPCManager:
     def _init_systems(self):
         """Initialize ECS systems with optimization support."""
         # AI system with LOD and spatial hash
+        # Pass event_manager directly to decouple from NPCManager
         ai_system = AISystem(
-            npc_manager=self,
+            npc_manager=self,  # Kept for backward compatibility
             lod_system=self.ai_lod_system,
-            spatial_hash=self.spatial_hash
+            spatial_hash=self.spatial_hash,
+            event_manager=self.event_manager
         )
         self.ecs_world.add_system(ai_system)
         self._ai_system = ai_system  # Keep reference for stats
@@ -240,7 +242,10 @@ class NPCManager:
         self._pathfinding_system = pathfinding_system
 
         # Combat AI system
-        combat_system = CombatAISystem(npc_manager=self)
+        combat_system = CombatAISystem(
+            npc_manager=self,  # Kept for backward compatibility
+            event_manager=self.event_manager
+        )
         self.ecs_world.add_system(combat_system)
 
         self.logger.debug("NPC ECS systems initialized (with LOD + spatial hash)")
@@ -614,6 +619,11 @@ class NPCManager:
         """
         # Update player positions in spatial hash (for AI enemy detection)
         self._update_player_spatial_positions()
+
+        # Update AI system with current player positions
+        # This decouples AISystem from NPCManager dependency
+        if hasattr(self, '_ai_system'):
+            self._ai_system.set_player_positions(self._players_cache)
 
         # Poll async pathfinding results
         if self.async_pathfinder:

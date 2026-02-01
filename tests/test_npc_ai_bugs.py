@@ -90,9 +90,15 @@ class NPCAITester:
     def __init__(self):
         self.world = ECSWorld()
         self.npc_manager = MockNPCManager()
-        self.ai_system = AISystem(npc_manager=self.npc_manager)
+        # Use new decoupled API - pass event_manager directly
+        self.ai_system = AISystem(event_manager=self.npc_manager)
         self.results = []
         self.bug_count = 0
+
+    def reset(self):
+        """Сбрасывает состояние между тестами."""
+        self.world.clear()
+        self.npc_manager.players.clear()
 
     def create_npc(self, x: float, y: float, behavior: AIBehavior, aggro_radius: float = 5.0, hostile: bool = True):
         """Создает NPC с заданными параметрами."""
@@ -138,6 +144,9 @@ class NPCAITester:
         for _ in range(ticks):
             # КРИТИЧНО: process pending additions before querying entities!
             self.world._process_pending_additions()
+
+            # Update AI with current player positions (new decoupled API)
+            self.ai_system.set_player_positions(self.npc_manager.players)
 
             entities = list(self.world.get_entities_with_components(PositionComponent, AIComponent))
             self.ai_system.update(0.1, entities)
@@ -340,6 +349,9 @@ class NPCAITester:
         result = TestResult("Multiple Players Target Selection")
 
         try:
+            # Clear state from previous tests
+            self.reset()
+
             npc = self.create_npc(0, 0, AIBehavior.HOSTILE, aggro_radius=10.0)
 
             player1 = self.create_player(8.0, 0.0)  # Дальше
@@ -446,10 +458,12 @@ class NPCAITester:
                 self.update_ai(1)
                 npcs_to_remove.append(npc)
 
-            # Очищаем созданные NPC из world (просто удаляем из внутренних структур)
+            # Правильно удаляем NPC через ECS API
             for npc in npcs_to_remove:
-                if hasattr(self.world, '_entities'):
-                    self.world._entities.pop(npc.id, None)
+                self.world.remove_entity(npc.id)
+
+            # Process pending removals
+            self.world._process_pending_removals()
 
             gc.collect()
             final_objects = len(gc.get_objects())
