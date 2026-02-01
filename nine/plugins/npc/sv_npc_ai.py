@@ -291,10 +291,12 @@ class AISystem(System):
         self,
         npc_manager: 'NPCManager' = None,
         lod_system: Optional[AILODSystem] = None,
-        spatial_hash: Optional['SpatialHash'] = None
+        spatial_hash: Optional['SpatialHash'] = None,
+        event_manager: Optional['EventManager'] = None
     ):
         super().__init__()
-        self.npc_manager = npc_manager
+        self.npc_manager = npc_manager  # DEPRECATED: kept for backward compatibility
+        self.event_manager = event_manager
         self._think_accumulators: Dict[str, float] = {}
 
         # AI LOD system for distance-based throttling
@@ -303,13 +305,40 @@ class AISystem(System):
         # Spatial hash for fast neighbor queries (set by NPCManager)
         self.spatial_hash: Optional['SpatialHash'] = spatial_hash
 
-        # Cached player positions (updated each tick)
+        # Cached player positions (updated via set_player_positions)
         self._player_positions: List[Tuple[float, float]] = []
         self._player_positions_dict: Dict[str, Tuple[float, float, float]] = {}
+        self._player_data: List[Dict] = []  # Full player data for targeting
 
         # Performance tracking
         self._tick_count = 0
         self._total_think_time = 0.0
+
+    def set_player_positions(self, players: List[Dict]) -> None:
+        """
+        Set player positions for AI targeting and LOD calculations.
+
+        This method should be called before update() to provide current player data.
+        Replaces the dependency on NPCManager.get_players().
+
+        Args:
+            players: List of player dicts with 'uuid', 'position', 'name' keys
+                    position dict should have 'x', 'y', 'z' keys
+        """
+        self._player_data = players
+        self._player_positions.clear()
+        self._player_positions_dict.clear()
+
+        for player in players:
+            player_pos = player.get("position", {})
+            px = player_pos.get("x", 0)
+            py = player_pos.get("y", 0)
+            pz = player_pos.get("z", 0)
+
+            self._player_positions.append((px, py))
+            player_uuid = player.get("uuid", "")
+            if player_uuid:
+                self._player_positions_dict[player_uuid] = (px, py, pz)
 
     def update(self, dt: float, entities: List[Entity]) -> None:
         """
@@ -320,8 +349,10 @@ class AISystem(System):
         self._tick_count += 1
         current_time = time.time()
 
-        # Update cached player positions
-        self._update_player_cache()
+        # Player positions should be set via set_player_positions() before update()
+        # Fallback to old method for backward compatibility
+        if not self._player_data and self.npc_manager:
+            self._update_player_cache_legacy()
 
         # Track LOD distribution for stats
         lod_counts = {level: 0 for level in AILODLevel}
@@ -332,9 +363,15 @@ class AISystem(System):
 
             # Dead NPCs don't think
             combat = entity.get_component(CombatComponent)
-            if combat and combat.is_dead:
-                ai.state = AIState.DEAD
-                continue
+            if combat:
+                # Auto-set is_dead flag if HP reaches zero
+                if combat.hp_current <= 0 and not combat.is_dead:
+                    combat.is_dead = True
+                    combat.death_time = time.time()
+
+                if combat.is_dead:
+                    ai.state = AIState.DEAD
+                    continue
 
             entity_id = entity.id
 
@@ -374,15 +411,23 @@ class AISystem(System):
             sleeping=lod_counts[AILODLevel.SLEEPING]
         )
 
-    def _update_player_cache(self) -> None:
-        """Update cached player positions for LOD calculations."""
+    def _update_player_cache_legacy(self) -> None:
+        """
+        DEPRECATED: Update cached player positions from NPCManager.
+
+        This method is kept for backward compatibility.
+        New code should use set_player_positions() instead.
+        """
         self._player_positions.clear()
         self._player_positions_dict.clear()
 
         if not self.npc_manager:
             return
 
-        for player in self.npc_manager.get_players():
+        players = self.npc_manager.get_players()
+        self._player_data = players
+
+        for player in players:
             player_pos = player.get("position", {})
             px = player_pos.get("x", 0)
             py = player_pos.get("y", 0)
@@ -409,14 +454,13 @@ class AISystem(System):
             return
 
         # Check for enemies
-        if self.npc_manager:
-            target = self._find_nearest_enemy(entity, ai, pos)
-            if target:
-                ai.target_entity_id = target.id
-                ai.behavior = AIBehavior.HOSTILE
-                ai.state = AIState.PURSUING
-                # Post aggro event to start combat
-                self._post_aggro_event(entity.id, target.id)
+        target = self._find_nearest_enemy(entity, ai, pos)
+        if target:
+            ai.target_entity_id = target.id
+            ai.behavior = AIBehavior.HOSTILE
+            ai.state = AIState.PURSUING
+            # Post aggro event to start combat
+            self._post_aggro_event(entity.id, target.id)
 
     def _update_neutral(
         self,
@@ -445,7 +489,7 @@ class AISystem(System):
             return
 
         # Check for enemies (skip at high LOD levels)
-        if self.npc_manager and self.lod_system.should_do_perception(lod_level):
+        if self.lod_system.should_do_perception(lod_level):
             target = self._find_nearest_enemy(entity, ai, pos)
             if target:
                 ai.target_entity_id = target.id
@@ -486,6 +530,12 @@ class AISystem(System):
         lod_level: AILODLevel = AILODLevel.NEAR
     ):
         """Hostile - attacks enemies."""
+        # Dead NPCs don't act
+        combat = entity.get_component(CombatComponent)
+        if combat and combat.is_dead:
+            ai.state = AIState.DEAD
+            return
+
         # Skip combat processing at very far distances
         if not self.lod_system.should_do_combat(lod_level):
             return
@@ -559,7 +609,7 @@ class AISystem(System):
             ai.wander_center = (pos.x, pos.y, pos.z)
 
         # Check for enemies (skip at high LOD levels)
-        if self.npc_manager and self.lod_system.should_do_perception(lod_level):
+        if self.lod_system.should_do_perception(lod_level):
             target = self._find_nearest_enemy(entity, ai, pos)
             if target:
                 ai.target_entity_id = target.id
@@ -629,12 +679,25 @@ class AISystem(System):
         Find nearest enemy within aggro radius.
 
         Uses spatial hash when available for O(k) complexity instead of O(n).
+
+        Behavior:
+        - If FactionComponent exists: uses faction.hostile_to_players
+        - If no FactionComponent: uses AIBehavior.HOSTILE to determine hostility
         """
-        if not self.npc_manager:
+        # No players available
+        if not self._player_data:
             return None
 
+        # Check hostility
         faction = entity.get_component(FactionComponent)
-        if not faction:
+        if faction:
+            # Use faction disposition
+            is_hostile = faction.hostile_to_players or self._is_enemy_faction(faction, "player")
+        else:
+            # Fallback: HOSTILE behavior attacks players automatically
+            is_hostile = (ai.behavior == AIBehavior.HOSTILE)
+
+        if not is_hostile:
             return None
 
         nearest = None
@@ -654,30 +717,24 @@ class AISystem(System):
                     px, py, pz = player_pos
                     dist = pos.distance_to(px, py)
 
-                    if dist <= ai.aggro_radius:
-                        # Check hostility
-                        if faction.hostile_to_players or self._is_enemy_faction(faction, "player"):
-                            if dist < nearest_dist:
-                                nearest_dist = dist
-                                # Find original player data to create entity
-                                for player in self.npc_manager.get_players():
-                                    if player.get("uuid") == player_id:
-                                        nearest = self._create_player_entity(player)
-                                        break
+                    if dist <= ai.aggro_radius and dist < nearest_dist:
+                        nearest_dist = dist
+                        # Find original player data to create entity
+                        for player in self._player_data:
+                            if player.get("uuid") == player_id:
+                                nearest = self._create_player_entity(player)
+                                break
         else:
             # Fallback: check all players (O(n))
-            for player in self.npc_manager.get_players():
+            for player in self._player_data:
                 player_pos = player.get("position", {})
                 px, py = player_pos.get("x", 0), player_pos.get("y", 0)
                 dist = pos.distance_to(px, py)
 
-                if dist <= ai.aggro_radius:
-                    # Check hostility
-                    if faction.hostile_to_players or self._is_enemy_faction(faction, "player"):
-                        if dist < nearest_dist:
-                            nearest_dist = dist
-                            # Create temporary entity for player
-                            nearest = self._create_player_entity(player)
+                if dist <= ai.aggro_radius and dist < nearest_dist:
+                    nearest_dist = dist
+                    # Create temporary entity for player
+                    nearest = self._create_player_entity(player)
 
         return nearest
 
@@ -713,11 +770,10 @@ class AISystem(System):
                     return (pos.x, pos.y, pos.z)
 
         # Проверяем игроков в кэше
-        if self.npc_manager:
-            for player in self.npc_manager.get_players():
-                if player.get("uuid") == target_id:
-                    pos = player.get("position", {})
-                    return (pos.get("x", 0), pos.get("y", 0), pos.get("z", 0))
+        for player in self._player_data:
+            if player.get("uuid") == target_id:
+                pos = player.get("position", {})
+                return (pos.get("x", 0), pos.get("y", 0), pos.get("z", 0))
 
         return None
 
@@ -750,8 +806,13 @@ class AISystem(System):
 
     def _post_aggro_event(self, npc_id: str, target_id: str) -> None:
         """Post aggro event to start combat."""
-        if self.npc_manager:
-            self.npc_manager.event_manager.post("npc_aggro_player", {
+        # Use injected event_manager, fallback to npc_manager for compatibility
+        event_mgr = self.event_manager
+        if not event_mgr and self.npc_manager:
+            event_mgr = self.npc_manager.event_manager
+
+        if event_mgr:
+            event_mgr.post("npc_aggro_player", {
                 "npc_id": npc_id,
                 "player_id": target_id
             })
@@ -902,9 +963,10 @@ class CombatAISystem(System):
     required_components = [AIComponent, CombatComponent, PositionComponent]
     priority = 30  # После pathfinding
 
-    def __init__(self, npc_manager: 'NPCManager' = None):
+    def __init__(self, npc_manager: 'NPCManager' = None, event_manager: Optional['EventManager'] = None):
         super().__init__()
-        self.npc_manager = npc_manager
+        self.npc_manager = npc_manager  # DEPRECATED: kept for backward compatibility
+        self.event_manager = event_manager
 
     def update(self, dt: float, entities: List[Entity]) -> None:
         for entity in entities:
@@ -925,14 +987,22 @@ class CombatAISystem(System):
 
     def _perform_attack(self, entity: Entity, ai: AIComponent, combat: CombatComponent, pos: PositionComponent):
         """Выполняет атаку."""
-        if not ai.target_entity_id or not self.npc_manager:
+        if not ai.target_entity_id:
+            return
+
+        # Use injected event_manager, fallback to npc_manager for compatibility
+        event_mgr = self.event_manager
+        if not event_mgr and self.npc_manager:
+            event_mgr = self.npc_manager.event_manager
+
+        if not event_mgr:
             return
 
         # Сбрасываем кулдаун
         combat.attack_timer = combat.attack_cooldown
 
         # Отправляем событие атаки
-        self.npc_manager.event_manager.post("npc_attack", {
+        event_mgr.post("npc_attack", {
             "attacker_id": entity.id,
             "target_id": ai.target_entity_id,
             "attack_bonus": combat.attack_bonus,
