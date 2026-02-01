@@ -55,6 +55,21 @@ class TurnManager:
                             break
         return self._combat_manager
 
+    @property
+    def equipment_module(self):
+        """Ленивое получение equipment module."""
+        if not hasattr(self, '_equipment_module'):
+            self._equipment_module = None
+        if self._equipment_module is None:
+            if hasattr(self.app, 'plugin_manager'):
+                inventory_plugin = self.app.plugin_manager.get_plugin("nine.inventory")
+                if inventory_plugin:
+                    for module in inventory_plugin.modules:
+                        if hasattr(module, 'get_main_weapon'):
+                            self._equipment_module = module
+                            break
+        return self._equipment_module
+
     # =========================================================================
     # Обработчики событий
     # =========================================================================
@@ -125,10 +140,11 @@ class TurnManager:
                 return
 
             # Проверяем дальность
-            if not self._check_range(actor_id, target_id, action.range_feet):
+            range_result = self._check_range(actor_id, target_id, action)
+            if not range_result["in_range"]:
                 self._send_result(combat_id, actor_id, action_id, {
                     "success": False,
-                    "error": f"Цель вне досягаемости ({action.range_feet} футов)",
+                    "error": f"Цель вне досягаемости ({range_result['required_range']:.0f} футов)",
                 })
                 return
 
@@ -369,16 +385,51 @@ class TurnManager:
         elif cost == ActionCost.REACTION:
             participant.has_reaction = False
 
-    def _check_range(self, actor_id: str, target_id: str, range_feet: float) -> bool:
-        """Проверяет, находится ли цель в пределах дальности."""
+    def _check_range(self, actor_id: str, target_id: str, action) -> dict:
+        """
+        Проверяет, находится ли цель в пределах дальности.
+
+        Для атак использует дальность экипированного оружия.
+        Для других действий использует action.range_feet.
+
+        Returns:
+            {
+                "in_range": bool,
+                "distance": float,
+                "required_range": float,
+            }
+        """
         actor_pos = self._get_entity_position(actor_id)
         target_pos = self._get_entity_position(target_id)
 
         if not actor_pos or not target_pos:
-            return True  # Не можем проверить - пропускаем
+            # Не можем проверить - пропускаем
+            return {"in_range": True, "distance": 0, "required_range": 0}
 
         distance = self._calculate_distance(actor_pos, target_pos)
-        return distance <= range_feet
+
+        # Определяем требуемую дальность
+        required_range = action.range_feet
+
+        # Для атаки используем дальность оружия
+        if action.id == "attack":
+            # Пытаемся как игрока
+            try:
+                client_id = int(actor_id)
+                player_data = self._get_player_combat_data(client_id)
+                if player_data and "weapon_range" in player_data:
+                    required_range = player_data["weapon_range"]
+            except ValueError:
+                # Пытаемся как NPC
+                npc_data = self._get_npc_combat_data(actor_id)
+                if npc_data and "weapon_range" in npc_data:
+                    required_range = npc_data["weapon_range"]
+
+        return {
+            "in_range": distance <= required_range,
+            "distance": distance,
+            "required_range": required_range,
+        }
 
     # =========================================================================
     # Утилиты
@@ -463,25 +514,96 @@ class TurnManager:
         return "1d6"
 
     def _get_player_combat_data(self, client_id: int) -> Optional[dict]:
-        """Получает боевые данные игрока."""
-        if hasattr(self.app, 'plugin_manager'):
-            dnd_plugin = self.app.plugin_manager.get_plugin("nine.dnd")
-            if dnd_plugin:
-                for module in dnd_plugin.modules:
-                    if hasattr(module, 'active_characters'):
-                        char_uuid = module.active_characters.get(client_id)
-                        if char_uuid and hasattr(self.app, 'db'):
-                            char = self.app.db.get_character(char_uuid)
-                            if char:
-                                # Вычисляем бонус атаки
-                                str_mod = (char.get("strength", 10) - 10) // 2
-                                prof = char.get("proficiency_bonus", 2)
+        """
+        Получает боевые данные игрока с учетом экипированного оружия.
 
-                                return {
-                                    "attack_bonus": str_mod + prof,
-                                    "damage_dice": "1d8+" + str(str_mod),
-                                }
-        return None
+        Учитывает:
+        - Экипированное оружие в main_hand
+        - Свойства оружия (finesse, ranged, reach)
+        - Класс игрока и proficiency с оружием
+        - Дальность оружия
+        """
+        if not hasattr(self.app, 'plugin_manager'):
+            return None
+
+        # Получаем персонажа
+        dnd_plugin = self.app.plugin_manager.get_plugin("nine.dnd")
+        if not dnd_plugin:
+            return None
+
+        char_uuid = None
+        char = None
+        for module in dnd_plugin.modules:
+            if hasattr(module, 'active_characters'):
+                char_uuid = module.active_characters.get(client_id)
+                if char_uuid and hasattr(self.app, 'db'):
+                    char = self.app.db.get_character(char_uuid)
+                    break
+
+        if not char:
+            return None
+
+        # Вычисляем модификаторы
+        str_mod = (char.get("strength", 10) - 10) // 2
+        dex_mod = (char.get("dexterity", 10) - 10) // 2
+        prof = char.get("proficiency_bonus", 2)
+
+        # Получаем экипированное оружие
+        # ВАЖНО: EquipmentServerModule использует client_id как ключ (из event "player_joined")
+        equipment_module = self.equipment_module
+        weapon = None
+        if equipment_module:
+            weapon = equipment_module.get_main_weapon(client_id)
+
+        # Если оружие экипировано
+        if weapon:
+            # Используем правильный модификатор (STR/DEX зависит от оружия)
+            ability_mod = weapon.get_attack_modifier(str_mod, dex_mod)
+
+            # Проверяем proficiency с оружием
+            player_proficiencies = char.get("proficiencies", [])
+            weapon_proficiency = weapon.required_proficiency
+            has_proficiency = weapon_proficiency in player_proficiencies
+
+            # Бонус атаки = ability modifier + proficiency (если есть)
+            attack_bonus = ability_mod + (prof if has_proficiency else 0)
+
+            # Кубы урона = weapon damage + ability modifier
+            damage_dice = weapon.DAMAGE_DICE
+            if ability_mod != 0:
+                sign = "+" if ability_mod > 0 else ""
+                damage_dice += f"{sign}{ability_mod}"
+
+            # Дальность оружия
+            weapon_range = 5.0  # По умолчанию melee 5 футов
+            if weapon.REACH:
+                weapon_range = 10.0  # Reach weapons 10 футов
+            elif weapon.is_ranged:
+                weapon_range = weapon.RANGE.normal if weapon.RANGE.normal > 0 else 80.0
+            elif weapon.THROWN:
+                weapon_range = weapon.RANGE.normal if weapon.RANGE.normal > 0 else 20.0
+
+            return {
+                "attack_bonus": attack_bonus,
+                "damage_dice": damage_dice,
+                "weapon_range": weapon_range,
+                "is_ranged": weapon.is_ranged,
+                "has_proficiency": has_proficiency,
+            }
+
+        # Без оружия - unarmed strike
+        else:
+            # Безоружная атака: 1 + STR modifier урона
+            damage = 1 + str_mod
+            damage_dice = "1" if damage <= 1 else f"1+{damage - 1}"
+
+            return {
+                "attack_bonus": str_mod + prof,  # STR + proficiency (все владеют безоружной атакой)
+                "damage_dice": damage_dice,
+                "weapon_range": 5.0,  # Unarmed strike 5 футов
+                "is_ranged": False,
+                "has_proficiency": True,
+            }
 
     def _get_npc_combat_data(self, entity_id: str) -> Optional[dict]:
         """Получает боевые данные NPC."""
@@ -495,9 +617,16 @@ class TurnManager:
                             from nine.plugins.npc.sh_components import CombatComponent
                             combat = entity.get_component(CombatComponent)
                             if combat:
+                                # По умолчанию NPCs используют melee 5 футов
+                                # TODO: добавить weapon_range в CombatComponent для NPC с ranged атаками
+                                weapon_range = 5.0
+                                if hasattr(combat, 'weapon_range'):
+                                    weapon_range = combat.weapon_range
+
                                 return {
                                     "attack_bonus": combat.attack_bonus,
                                     "damage_dice": f"{combat.damage_dice}+{combat.damage_bonus}",
+                                    "weapon_range": weapon_range,
                                 }
         return None
 
