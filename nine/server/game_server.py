@@ -384,7 +384,7 @@ class GameServer(ShowBase):
 
         self.event_manager.post("world_loaded", {
             "bounds": bounds,
-            "map_path": "nine/assets/models/maps/map.bam"
+            "map_path": "nine/assets/models/maps/map3.bam"
         })
         self.logger.info(f"[World] world_loaded event posted with bounds: {bounds}")
 
@@ -406,7 +406,7 @@ class GameServer(ShowBase):
             "tick_rate": 30,
             "allow_dev_client": False,
             "world": {
-                "map": {"model": "nine/assets/models/maps/map.bam"},
+                "map": {"model": "nine/assets/models/maps/map3.bam"},
                 "lighting": {
                     "ambient": {"color": [0.15, 0.1, 0.2, 1.0], "enabled": True},
                     "sun": {"color": [1.2, 0.7, 0.6, 1.0], "direction": [45, -30, 0], "enabled": True},
