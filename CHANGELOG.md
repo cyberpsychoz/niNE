@@ -11,6 +11,20 @@
 
 ### Added (2026-02-01)
 
+#### Тестирование боевой системы
+- **test_combat_system.py** - комплексное тестирование боевой системы D&D 5e
+  - 10 тестов покрывают: attack bonus, damage dice, range, proficiency, AC, turn-based movement, action economy, критические попадания, advantage/disadvantage
+  - Запуск: `python -m tests.test_combat_system`
+  - Все тесты проходят (10/10)
+
+- **test_combat_weapon_integration.py** - интеграционное тестирование TurnManager с системой экипировки
+  - 6 тестов проверяют корректную интеграцию equipped weapons
+  - Проверка: melee/finesse/ranged weapons, reach, proficiency, unarmed strike
+  - Запуск: `python -m tests.test_combat_weapon_integration`
+  - Результат: 6/6 тестов проходят ✅
+
+### Added (2026-02-01)
+
 #### Модели и ассеты
 - **goblin.bam** (185KB) - новая 3D модель NPC гоблина, конвертирована из FBX
   - Содержит встроенные анимации для замены T-позы
@@ -80,6 +94,79 @@
   - Пересмотрены приоритеты исправлений
 
 ### Fixed (2026-02-01)
+
+#### COMBAT SYSTEM: Интеграция с экипированным оружием — **ИСПРАВЛЕН** ✅
+**Severity:** CRITICAL
+**Location:** `nine/plugins/combat/sv_turn_manager.py`
+
+**Проблема:**
+Метод `_get_player_combat_data()` использовал хардкодированные значения вместо данных экипированного оружия:
+- Attack bonus всегда использовал STR (игнорировал finesse/ranged weapons)
+- Damage dice всегда был "1d8" (игнорировал weapon.DAMAGE_DICE)
+- Не проверял class proficiency с оружием
+- Не использовал weapon range для проверки дальности атаки
+
+**Решение:**
+```python
+# Добавлено свойство для доступа к EquipmentServerModule
+@property
+def equipment_module(self):
+    """Ленивое получение equipment module."""
+    ...
+
+# Переписан _get_player_combat_data() для использования экипированного оружия
+def _get_player_combat_data(self, client_id: int) -> Optional[dict]:
+    # Получаем экипированное оружие
+    weapon = equipment_module.get_main_weapon(client_id)
+
+    if weapon:
+        # Используем weapon.get_attack_modifier(str_mod, dex_mod) для правильного модификатора
+        ability_mod = weapon.get_attack_modifier(str_mod, dex_mod)
+
+        # Проверяем proficiency с оружием
+        has_proficiency = weapon.required_proficiency in player_proficiencies
+        attack_bonus = ability_mod + (prof if has_proficiency else 0)
+
+        # Используем weapon.DAMAGE_DICE
+        damage_dice = weapon.DAMAGE_DICE + modifier
+
+        # Определяем weapon_range
+        weapon_range = 5.0  # melee
+        if weapon.REACH:
+            weapon_range = 10.0  # reach weapons
+        elif weapon.is_ranged:
+            weapon_range = weapon.RANGE.normal
+```
+
+**Изменения:**
+- ✅ Melee weapons используют STR modifier
+- ✅ Finesse weapons используют max(STR, DEX)
+- ✅ Ranged weapons используют DEX modifier
+- ✅ Reach weapons имеют 10 футов дальности (вместо 5)
+- ✅ Проверяется class proficiency с weapon.required_proficiency
+- ✅ Используется weapon.DAMAGE_DICE вместо хардкода "1d8"
+- ✅ Unarmed strike работает без экипированного оружия
+
+**Дополнительные исправления:**
+- Переписан `_check_range()` для использования weapon_range при атаках
+- Обновлен `_get_npc_combat_data()` для возврата weapon_range
+
+**Тестирование:**
+- ✅ Тест "Melee Weapon STR Modifier" проходит
+- ✅ Тест "Finesse Weapon DEX Modifier" проходит
+- ✅ Тест "Ranged Weapon DEX Only" проходит
+- ✅ Тест "Reach Weapon 10 feet" проходит
+- ✅ Тест "No Proficiency" проходит (proficiency bonus не добавляется)
+- ✅ Тест "Unarmed Strike" проходит
+
+**Результат:**
+- Боевая система теперь корректно учитывает экипированное оружие игрока
+- Attack bonus зависит от типа оружия (STR/DEX/finesse)
+- Damage dice берётся из weapon.DAMAGE_DICE
+- Range проверяется по weapon.RANGE
+- Class proficiency влияет на attack bonus
+
+---
 
 #### БАГ #2: AISystem/NPCManager coupling — **ИСПРАВЛЕН** ✅
 - **Проблема:** AISystem жёстко зависел от NPCManager - NPCs не видели игроков в тестах
