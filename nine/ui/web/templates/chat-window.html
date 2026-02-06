@@ -1,0 +1,220 @@
+<!-- Chat Window - Two modes: closed (temporary messages) and open (history + input) -->
+<div id="chat-window">
+    <!-- Temporary messages (closed mode) -->
+    <div class="chat-temp-messages" id="chat-temp-messages"></div>
+
+    <!-- Full chat (open mode) -->
+    <div class="chat-full" id="chat-full" style="display: none;">
+        <!-- History scrollable area -->
+        <div class="chat-history" id="chat-history">
+            <div class="chat-history-content" id="chat-history-content"></div>
+        </div>
+
+        <!-- Input area -->
+        <div class="chat-input-area">
+            <input
+                type="text"
+                id="chat-input"
+                class="chat-input"
+                placeholder="Press T to chat..."
+                maxlength="512"
+                autocomplete="off"
+            />
+            <div class="chat-hint">ESC to close | Tab for commands</div>
+        </div>
+
+        <!-- Command suggestions -->
+        <div class="chat-suggestions" id="chat-suggestions" style="display: none;">
+            <div class="chat-suggestions-content" id="chat-suggestions-content"></div>
+        </div>
+    </div>
+</div>
+
+<style>
+/* Chat Window Container */
+#chat-window {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    z-index: 100;
+    pointer-events: none;
+}
+
+#chat-window * {
+    pointer-events: auto;
+}
+
+/* Temporary Messages (Closed Mode) */
+.chat-temp-messages {
+    max-width: 600px;
+}
+
+.chat-temp-message {
+    background: rgba(8, 6, 4, 0.85);
+    border-left: 3px solid rgba(212, 175, 55, 0.6);
+    padding: 6px 10px;
+    margin-bottom: 4px;
+    color: var(--color-text-primary);
+    font-size: 13px;
+    font-family: var(--font-primary);
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.9);
+    opacity: 1;
+    transition: opacity 2.5s ease-out;
+    word-wrap: break-word;
+}
+
+.chat-temp-message.fading {
+    opacity: 0;
+}
+
+/* Full Chat (Open Mode) */
+.chat-full {
+    width: 600px;
+    background: rgba(8, 6, 4, 0.92);
+    border: 2px solid var(--color-border);
+    border-radius: var(--border-radius);
+    padding: 10px;
+}
+
+/* Chat History */
+.chat-history {
+    height: 350px;
+    overflow-y: auto;
+    margin-bottom: 10px;
+    padding: 5px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: var(--border-radius);
+}
+
+.chat-history-content {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.chat-message {
+    color: var(--color-text-primary);
+    font-size: 13px;
+    font-family: var(--font-primary);
+    padding: 4px 6px;
+    word-wrap: break-word;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+.chat-message.system {
+    color: var(--color-text-accent);
+}
+
+.chat-message.emote {
+    color: #ffda66;
+    font-style: italic;
+}
+
+.chat-message.ooc {
+    color: #b0b0b0;
+}
+
+.chat-message .sender {
+    font-weight: bold;
+    color: var(--color-text-accent);
+}
+
+.chat-message .timestamp {
+    color: var(--color-text-hint);
+    font-size: 11px;
+    margin-right: 4px;
+}
+
+/* Input Area */
+.chat-input-area {
+    position: relative;
+}
+
+.chat-input {
+    width: 100%;
+    background: rgba(18, 14, 10, 0.9);
+    border: 2px solid var(--color-border);
+    border-radius: var(--border-radius);
+    color: var(--color-text-primary);
+    font-family: var(--font-primary);
+    font-size: 13px;
+    padding: 8px 10px;
+    outline: none;
+    transition: border-color var(--transition-fast);
+}
+
+.chat-input:focus {
+    border-color: var(--color-border-highlight);
+}
+
+.chat-hint {
+    position: absolute;
+    bottom: -18px;
+    left: 0;
+    color: var(--color-text-hint);
+    font-size: 11px;
+    font-family: var(--font-primary);
+}
+
+/* Command Suggestions */
+.chat-suggestions {
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    right: 0;
+    max-height: 200px;
+    overflow-y: auto;
+    background: rgba(16, 12, 8, 0.95);
+    border: 2px solid var(--color-border);
+    border-radius: var(--border-radius);
+    margin-bottom: 5px;
+}
+
+.chat-suggestions-content {
+    padding: 5px;
+}
+
+.chat-suggestion-item {
+    padding: 6px 8px;
+    color: var(--color-text-secondary);
+    font-size: 12px;
+    font-family: var(--font-primary);
+    cursor: pointer;
+    border-radius: 2px;
+    transition: background var(--transition-fast);
+}
+
+.chat-suggestion-item:hover,
+.chat-suggestion-item.selected {
+    background: rgba(212, 175, 55, 0.2);
+    color: var(--color-text-accent);
+}
+
+.chat-suggestion-item .cmd {
+    font-weight: bold;
+    color: var(--color-text-accent);
+}
+
+.chat-suggestion-item .desc {
+    color: var(--color-text-hint);
+    font-size: 11px;
+}
+
+/* Scrollbar for history */
+.chat-history::-webkit-scrollbar {
+    width: 8px;
+}
+
+.chat-history::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.3);
+}
+
+.chat-history::-webkit-scrollbar-thumb {
+    background: rgba(212, 175, 55, 0.4);
+    border-radius: 4px;
+}
+
+.chat-history::-webkit-scrollbar-thumb:hover {
+    background: rgba(212, 175, 55, 0.6);
+}
+</style>

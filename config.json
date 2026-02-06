@@ -1,5 +1,6 @@
 {
-    "nickname": "MilkiWinky",
+    "ui_backend": "playwright",
+    "nickname": "MilkiWinky11111",
     "resolution": "1920x1080",
     "available_resolutions": [
         "800x600",
@@ -7,7 +8,7 @@
         "1280x720",
         "1920x1080"
     ],
-    "camera_sensitivity": 0.9880418181419373,
+    "camera_sensitivity": 1,
     "invert_mouse_x": true,
     "invert_mouse_y": false,
     "third_person_camera": true,
