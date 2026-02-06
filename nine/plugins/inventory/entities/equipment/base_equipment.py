@@ -7,8 +7,9 @@
 - Требования для экипировки
 - Прочность
 """
+from __future__ import annotations
 
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 from dataclasses import dataclass, field
 
 from nine.plugins.inventory.entities.base import Item

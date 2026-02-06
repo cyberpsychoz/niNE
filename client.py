@@ -13,11 +13,14 @@ from direct.showbase.ShowBase import ShowBase
 from direct.task import Task
 from panda3d.core import (
     CardMaker,
+    ClockObject,
     LColor,
     loadPrcFileData,
     NodePath,
     LVector3,
 )
+
+globalClock = ClockObject.getGlobalClock()
 
 from nine.core.camera_controller import CameraController
 from nine.core.events import EventManager
@@ -42,10 +45,13 @@ class GameClient(ShowBase):
         console_handler = logging.StreamHandler()
         console_handler.setFormatter(log_formatter)
 
+        # Configure root logger so ALL module logs go to file and console
+        root_logger = logging.getLogger()
+        root_logger.setLevel(logging.INFO)
+        root_logger.addHandler(file_handler)
+        root_logger.addHandler(console_handler)
+
         self.logger = logging.getLogger(__name__)
-        self.logger.setLevel(logging.INFO)
-        self.logger.addHandler(file_handler)
-        self.logger.addHandler(console_handler)
 
         try:
             self.asyncio_loop = asyncio.get_running_loop()
@@ -150,6 +156,22 @@ class GameClient(ShowBase):
                 self.logger.info("WebView UI initialized successfully (browser mode)")
             except Exception as e:
                 self.logger.error(f"Failed to initialize WebView UI: {e}")
+                self.logger.info("Falling back to DirectGUI")
+                from nine.ui.manager import UIManager
+                from nine.ui.loading_screen import LoadingScreen
+                self.ui = UIManager(self, callbacks)
+                self.loading_screen = LoadingScreen(self.ui)
+                self.loading_screen.hide()
+        elif ui_backend == "playwright":
+            try:
+                from nine.ui.playwright_manager import PlaywrightUIManager
+                self.ui = PlaywrightUIManager(self, callbacks)
+                self.ui.create_overlay()
+                self.ui.show_main_menu()
+                self.loading_screen = None
+                self.logger.info("Playwright UI initialized successfully")
+            except Exception as e:
+                self.logger.error(f"Failed to initialize Playwright UI: {e}")
                 self.logger.info("Falling back to DirectGUI")
                 from nine.ui.manager import UIManager
                 from nine.ui.loading_screen import LoadingScreen

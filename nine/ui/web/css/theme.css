@@ -1,0 +1,105 @@
+/*
+ * niNE Theme - Baldur's Gate 1 inspired
+ * Dark fantasy aesthetic with gold accents
+ */
+
+/* Fonts */
+@font-face {
+    font-family: 'Press Start 2P';
+    font-weight: 400;
+    font-style: normal;
+    src: url('../../../assets/fonts/PressStart2P.ttf') format('truetype');
+}
+
+@font-face {
+    font-family: 'Orbitron';
+    font-weight: 400;
+    font-style: normal;
+    src: url('../../../assets/fonts/Orbitron.ttf') format('truetype');
+}
+
+/* CSS Variables - BG1 Style */
+:root {
+    /* Colors */
+    --color-bg-primary: rgba(20, 15, 10, 0.95);      /* Dark brown */
+    --color-bg-secondary: rgba(40, 30, 20, 0.9);     /* Lighter brown */
+    --color-bg-overlay: rgba(0, 0, 0, 0.8);          /* Overlay */
+
+    --color-text-primary: #f0e6d2;                   /* Parchment white */
+    --color-text-secondary: #c9b896;                 /* Faded parchment */
+    --color-text-accent: #d4af37;                    /* Gold */
+
+    --color-border: #8b7355;                         /* Brown border */
+    --color-border-highlight: #d4af37;               /* Gold border */
+
+    --color-button-bg: rgba(60, 45, 30, 0.9);
+    --color-button-hover: rgba(80, 60, 40, 0.95);
+    --color-button-active: rgba(100, 75, 50, 1);
+
+    /* Fonts */
+    --font-primary: 'Orbitron', 'Press Start 2P', monospace;
+    --font-secondary: 'Press Start 2P', monospace;
+
+    /* Sizes */
+    --spacing-xs: 8px;
+    --spacing-sm: 12px;
+    --spacing-md: 16px;
+    --spacing-lg: 24px;
+    --spacing-xl: 32px;
+
+    --border-radius: 4px;
+    --border-width: 2px;
+
+    /* Transitions */
+    --transition-fast: 0.15s ease;
+    --transition-normal: 0.3s ease;
+    --transition-slow: 0.5s ease;
+}
+
+/* Base styles */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+
+    /* CRITICAL: Transparent background for overlay */
+    background: transparent;
+
+    font-family: var(--font-primary);
+    color: var(--color-text-primary);
+
+    /* Disable text selection */
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+/* App container */
+#app {
+    width: 100%;
+    height: 100%;
+    position: relative;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+    width: 12px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--color-bg-primary);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: var(--border-radius);
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--color-border-highlight);
+}

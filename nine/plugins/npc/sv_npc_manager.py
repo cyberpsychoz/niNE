@@ -693,7 +693,7 @@ class NPCManager:
         """
         states = list(self._npc_network_data.values())
         if states:
-            self.logger.info(f"[NPC_MANAGER] get_npc_states returning {len(states)} NPCs: {[s.get('entity_id', '')[:8] for s in states]}")
+            self.logger.debug(f"[NPC_MANAGER] get_npc_states returning {len(states)} NPCs: {[s.get('entity_id', '')[:8] for s in states]}")
         return states
 
     def get_npc_pawn_states(self) -> List[Dict]:

@@ -1,0 +1,85 @@
+/*
+ * Animations
+ */
+
+/* Fade in/out */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes fadeOut {
+    from {
+        opacity: 1;
+    }
+    to {
+        opacity: 0;
+    }
+}
+
+.fade-in {
+    animation: fadeIn var(--transition-normal) ease-in;
+}
+
+.fade-out {
+    animation: fadeOut var(--transition-normal) ease-out;
+}
+
+/* Slide animations */
+@keyframes slideInFromTop {
+    from {
+        transform: translateY(-100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+@keyframes slideOutToTop {
+    from {
+        transform: translateY(0);
+        opacity: 1;
+    }
+    to {
+        transform: translateY(-100%);
+        opacity: 0;
+    }
+}
+
+.slide-in-top {
+    animation: slideInFromTop var(--transition-slow) ease-out;
+}
+
+.slide-out-top {
+    animation: slideOutToTop var(--transition-slow) ease-in;
+}
+
+/* Glow effect */
+@keyframes glow {
+    0%, 100% {
+        box-shadow: 0 0 8px rgba(212, 175, 55, 0.3);
+    }
+    50% {
+        box-shadow: 0 0 16px rgba(212, 175, 55, 0.6);
+    }
+}
+
+.glow {
+    animation: glow 2s ease-in-out infinite;
+}
+
+/* Temporary message fade out */
+.chat-temp-message {
+    opacity: 1;
+    transition: opacity 2.5s ease-out;
+}
+
+.chat-temp-message.fade-out {
+    opacity: 0;
+}
