@@ -87,12 +87,67 @@ class InGameMenu {
     }
 
     /**
-     * Disconnect from server.
+     * Disconnect from server - show inline confirmation.
      */
     onDisconnect() {
-        if (confirm('Are you sure you want to disconnect?')) {
+        this.showDisconnectConfirm();
+    }
+
+    /**
+     * Show inline disconnect confirmation overlay.
+     * Replaces confirm() which silently returns false in offscreen CEF.
+     */
+    showDisconnectConfirm() {
+        // Don't stack multiple overlays
+        if (document.getElementById('disconnect-confirm-overlay')) return;
+
+        const overlay = document.createElement('div');
+        overlay.id = 'disconnect-confirm-overlay';
+        overlay.style.cssText = 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; ' +
+            'background: rgba(0, 0, 0, 0.7); display: flex; flex-direction: column; ' +
+            'align-items: center; justify-content: center; z-index: 100; gap: 20px;';
+
+        const message = document.createElement('p');
+        message.textContent = 'Are you sure you want to disconnect?';
+        message.style.cssText = 'color: #fff; font-size: 18px; margin: 0;';
+
+        const btnRow = document.createElement('div');
+        btnRow.style.cssText = 'display: flex; gap: 16px;';
+
+        const yesBtn = document.createElement('button');
+        yesBtn.className = 'bg1-button bg1-button-primary';
+        yesBtn.textContent = 'YES';
+        yesBtn.addEventListener('click', () => {
             console.log('[InGameMenu] Disconnecting...');
             PythonAPI.disconnect();
+        });
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.className = 'bg1-button';
+        cancelBtn.textContent = 'CANCEL';
+        cancelBtn.addEventListener('click', () => {
+            this.hideDisconnectConfirm();
+        });
+
+        btnRow.appendChild(yesBtn);
+        btnRow.appendChild(cancelBtn);
+        overlay.appendChild(message);
+        overlay.appendChild(btnRow);
+
+        const screenContent = this.element ? this.element.querySelector('.screen-content') : null;
+        if (screenContent) {
+            screenContent.style.position = 'relative';
+            screenContent.appendChild(overlay);
+        }
+    }
+
+    /**
+     * Hide the inline disconnect confirmation overlay.
+     */
+    hideDisconnectConfirm() {
+        const overlay = document.getElementById('disconnect-confirm-overlay');
+        if (overlay) {
+            overlay.remove();
         }
     }
 

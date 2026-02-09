@@ -127,6 +127,9 @@ class ChatWindow {
         this.chatFull.style.display = 'block';
         this.tempMessagesContainer.style.display = 'none';
 
+        // Block game input while chat is open
+        PythonAPI.setChatActive(true);
+
         // Focus input
         this.input.focus();
 
@@ -145,6 +148,9 @@ class ChatWindow {
         this.isOpen = false;
         this.chatFull.style.display = 'none';
         this.tempMessagesContainer.style.display = 'block';
+
+        // Restore game input
+        PythonAPI.setChatActive(false);
 
         // Clear input
         this.input.value = '';

@@ -87,6 +87,11 @@ class GameClient(ShowBase):
         self.player_id = -1
         self.is_connected = False
         self.is_server = False  # Plugins check this
+
+        # Buffer for events that arrive before plugins are loaded.
+        # Server sends world_config, character_sheet, etc. BEFORE welcome,
+        # but plugins load in the welcome handler. Buffer these and replay.
+        self._pre_plugin_event_buffer = []
         self.character_name = name
         self.client_uuid = client_uuid if client_uuid else self._get_or_create_uuid()
 
@@ -109,6 +114,8 @@ class GameClient(ShowBase):
             "connect": self.open_login_menu, "exit": self.exit_game,
             "attempt_login": self.attempt_login, "close_login_menu": self.close_login_menu,
             "settings": self.show_settings_menu,
+            "select_character": self._select_character_from_ui,
+            "create_character": self._create_character_from_ui,
         }
 
         # Choose UI backend from config
@@ -184,6 +191,9 @@ class GameClient(ShowBase):
             self.ui = UIManager(self, callbacks)
             self.loading_screen = LoadingScreen(self.ui)
             self.loading_screen.hide()  # Скрыт по умолчанию
+        # Flag for plugins to check — skip DirectGUI creation when web UI is active
+        self.ui_is_web = ui_backend in ("cef", "playwright", "webview")
+
         self.event_manager.subscribe("client_send_chat_message", self.send_chat_packet)
         self.event_manager.subscribe("client_item_use", self.send_item_use_packet)
         self.event_manager.subscribe("client_item_drop", self.send_item_drop_packet)
@@ -201,7 +211,6 @@ class GameClient(ShowBase):
         )
 
         # --- Final Initializations ---
-        self.plugin_manager.load_plugins()
         self.map_model = None
         self.logger.info("Client initialized.")
 
@@ -386,6 +395,7 @@ class GameClient(ShowBase):
         if self.input_task:
             self.taskMgr.remove(self.input_task)
             self.input_task = None
+        self.taskMgr.remove("update-movement")
         for key in self.keyMap: self.keyMap[key] = False
 
     def enable_game_input(self):
@@ -398,6 +408,9 @@ class GameClient(ShowBase):
         # Start interpolation task for other players
         if not self.taskMgr.hasTaskNamed("interpolate-players"):
             self.taskMgr.add(self.interpolate_other_players_task, "interpolate-players")
+        # Start client-side animation prediction
+        if not self.taskMgr.hasTaskNamed("update-movement"):
+            self.taskMgr.add(self.update_movement_task, "update-movement")
 
     def send_input_task(self, task):
         """Periodically sends the current input state to the server (server-authoritative)."""
@@ -415,127 +428,46 @@ class GameClient(ShowBase):
         return current + diff * factor
 
     def update_movement_task(self, task):
-        """Client-side prediction movement task for dev mode with Source-like physics."""
+        """Client-side animation prediction — reads local input to animate immediately."""
         if not self.is_connected or not self.player_actor or self.in_game_menu_active:
             return Task.cont
 
-        if not self.camera_controller:
+        if not self.camera_controller or not self.player_actor_model:
             return Task.cont
 
-        from math import atan2, degrees
-
-        dt = globalClock.getDt()
-
-        # Initialize dev mode state with velocity-based physics
+        # Initialize prediction state
         if not hasattr(self, '_dev_state'):
             self._dev_state = {
-                'velocity': LVector3(0, 0, 0),
-                'current_heading': 0.0,
                 'current_anim_rate': 1.0,
-                'send_timer': 0.0,  # Rate limit network sends
             }
 
-        # === Movement parameters (same as server) ===
-        walk_speed = 1.25
-        run_speed = 2.5
-        ground_accel = 8.0
-        friction = 6.0
-        stop_speed = 0.5
-        rotation_speed = 12.0
-
-        # Build input from WASD
-        input_x = 0
-        input_y = 0
-        if self.keyMap["w"]: input_y += 1
-        if self.keyMap["s"]: input_y -= 1
-        if self.keyMap["a"]: input_x -= 1
-        if self.keyMap["d"]: input_x += 1
-
+        # Read local input to determine animation (no position changes)
+        has_input = (self.keyMap["w"] or self.keyMap["s"] or
+                     self.keyMap["a"] or self.keyMap["d"])
         is_running = self.keyMap.get("shift", False)
-        has_input = input_x != 0 or input_y != 0
 
-        velocity = self._dev_state['velocity']
-        wish_speed = run_speed if is_running else walk_speed
-
-        # Apply friction
-        speed = velocity.length()
-        if speed > 0.01:
-            if not has_input:
-                # Full friction when not moving
-                control = max(speed, stop_speed)
-                drop = control * friction * dt
-                new_speed = max(speed - drop, 0)
-                velocity *= (new_speed / speed) if speed > 0 else 0
-            else:
-                # Reduced friction when moving
-                control = max(speed, stop_speed)
-                drop = control * friction * dt * 0.3
-                new_speed = max(speed - drop, 0)
-                velocity *= (new_speed / speed) if speed > 0 else 0
-
-        # Accelerate towards input direction
+        # Determine target animation from local input
         if has_input:
-            move_dir = self.camera_controller.get_movement_vector(input_x, input_y)
-            move_dir.normalize()
-
-            # Source-like acceleration
-            current_speed = velocity.dot(move_dir)
-            add_speed = wish_speed - current_speed
-            if add_speed > 0:
-                accel_speed = min(ground_accel * wish_speed * dt, add_speed)
-                velocity += move_dir * accel_speed
-
-        self._dev_state['velocity'] = velocity
-
-        # Check if moving
-        speed = velocity.length()
-        is_moving = speed > 0.1
-
-        # Update animation
-        if is_moving:
             target_anim = "run_forward" if is_running else "walk_forward"
-            if self.player_actor_model.getCurrentAnim() != target_anim:
-                self.player_actor_model.loop(target_anim)
-
-            speed_ratio = min(speed / run_speed, 1.0)
-            target_anim_rate = 0.5 + (speed_ratio * 0.5)
-            if abs(target_anim_rate - self._dev_state['current_anim_rate']) > 0.05:
-                self._dev_state['current_anim_rate'] = target_anim_rate
-                self.player_actor_model.setPlayRate(target_anim_rate, target_anim)
-
-            # Move player
-            self.player_actor.setPos(self.player_actor.getPos() + velocity * dt)
-
-            # Smooth rotation towards velocity direction
-            vel_dir = LVector3(velocity)
-            vel_dir.normalize()
-            target_heading = degrees(atan2(-vel_dir.x, vel_dir.y)) + 180
-            current_heading = self._dev_state['current_heading']
-            new_heading = self._lerp_angle(current_heading, target_heading, rotation_speed * dt)
-            self._dev_state['current_heading'] = new_heading
-            self.player_actor.setH(new_heading)
         else:
-            if self.player_actor_model.getCurrentAnim() != "idle":
-                self.player_actor_model.loop("idle")
-                self._dev_state['current_anim_rate'] = 1.0
+            target_anim = "idle"
 
-        # Rate limit network sends (20 times per second max)
-        self._dev_state['send_timer'] += dt
-        if self._dev_state['send_timer'] >= 0.05:
-            self._dev_state['send_timer'] = 0.0
+        # Track logical animation state to avoid redundant transitions
+        # (resolved names may be identical when model has limited animations)
+        last_state = getattr(self.player_actor_model, '_last_anim_state', None)
+        if target_anim != last_state:
+            self.player_actor_model._last_anim_state = target_anim
+            self._safe_loop(self.player_actor_model, target_anim)
+            self._dev_state['current_anim_rate'] = 1.0
 
-            pos = self.player_actor.getPos()
-            rot = self.player_actor.getHpr()
-
-            move_data = {
-                "type": "move",
-                "pos": [pos.x, pos.y, pos.z],
-                "rot": [rot.x, rot.y, rot.z],
-                "vel": [velocity.x, velocity.y, velocity.z],
-                "is_moving": is_moving,
-                "is_running": is_running
-            }
-            self.asyncio_loop.create_task(send_message(self.writer, move_data))
+        # Adjust animation playback rate for movement
+        if has_input:
+            target_rate = 0.8 if is_running else 0.6
+            if abs(target_rate - self._dev_state['current_anim_rate']) > 0.05:
+                self._dev_state['current_anim_rate'] = target_rate
+                resolved = self._resolve_anim(self.player_actor_model, target_anim)
+                if resolved:
+                    self.player_actor_model.setPlayRate(target_rate, resolved)
 
         return Task.cont
 
@@ -583,6 +515,34 @@ class GameClient(ShowBase):
 
         return Task.cont
 
+    def _select_character_from_ui(self, character_uuid):
+        """Handle character selection from web UI."""
+        self.logger.info(f"Character selected from UI: {character_uuid}")
+        self.send_message({
+            "type": "character_select",
+            "character_uuid": character_uuid
+        })
+
+    def _create_character_from_ui(self, data: dict):
+        """Handle character creation from web UI."""
+        self.logger.info(f"Character creation from UI: {data.get('name', data.get('character_name', '?'))}")
+        self.send_message({
+            "type": "character_create",
+            "character_name": data.get("name", data.get("character_name", "")),
+            "gender": data.get("gender", "male"),
+            "race": data.get("race", "human"),
+            "class": data.get("class_name", "fighter"),
+            "background": data.get("background", ""),
+            "faction": data.get("faction", "neutral"),
+            "strength": data.get("strength", 10),
+            "dexterity": data.get("dexterity", 10),
+            "constitution": data.get("constitution", 10),
+            "intelligence": data.get("intelligence", 10),
+            "wisdom": data.get("wisdom", 10),
+            "charisma": data.get("charisma", 10),
+            "skills": data.get("skills", {}),
+        })
+
     def attempt_login(self):
         credentials = self.ui.get_login_credentials()
         ip_str = credentials.get("ip", "localhost:9009")
@@ -606,16 +566,22 @@ class GameClient(ShowBase):
 
         self.ui.hide_login_menu()
         # Показываем экран загрузки
-        self.loading_screen.set_title("ПОДКЛЮЧЕНИЕ")
-        self.loading_screen.set_status("Подключение к серверу...")
-        self.loading_screen.set_progress(0.1)
-        self.loading_screen.show()
+        if self.loading_screen:
+            self.loading_screen.set_title("ПОДКЛЮЧЕНИЕ")
+            self.loading_screen.set_status("Подключение к серверу...")
+            self.loading_screen.set_progress(0.1)
+            self.loading_screen.show()
+        else:
+            self.ui.show_loading_screen("Подключение к серверу...")
         self.asyncio_loop.create_task(self.connect_and_read(host, port))
 
     def on_successful_connection(self):
         # Обновляем экран загрузки
-        self.loading_screen.set_status("Авторизация...")
-        self.loading_screen.set_progress(0.3)
+        if self.loading_screen:
+            self.loading_screen.set_status("Авторизация...")
+            self.loading_screen.set_progress(0.3)
+        else:
+            self.ui.update_loading_progress(0.3, "Авторизация...")
 
         if self.dev_mode:
             auth_data = {"type": "dev_auth", "name": self.character_name, "uuid": self.client_uuid}
@@ -630,11 +596,71 @@ class GameClient(ShowBase):
         # Clear password from memory after sending
         self.password = ""
 
+    def _build_anim_map(self, actor):
+        """Build a mapping from expected animation names to actual ones in the model."""
+        anim_names = actor.getAnimNames()
+        anim_set = set(anim_names)
+        self.logger.info(f"Available animations: {sorted(anim_names)}")
+
+        # Known aliases: expected_name -> possible actual names in model
+        aliases = {
+            "idle": ["idle"],
+            "walk_forward": ["walk_forward"],
+            "walk_backward": ["walk_backward"],
+            "run_forward": ["run_forward"],
+            "strafe_left": ["strafe_left", "left_strafe"],
+            "strafe_right": ["strafe_right", "right_strafe"],
+        }
+
+        anim_map = {}
+        fallback = anim_names[0] if anim_names else None
+
+        for expected_name, candidates in aliases.items():
+            matched = False
+            for candidate in candidates:
+                if candidate in anim_set:
+                    anim_map[expected_name] = candidate
+                    matched = True
+                    break
+            if not matched:
+                anim_map[expected_name] = fallback
+                if fallback:
+                    self.logger.warning(f"Animation '{expected_name}' not found, using fallback '{fallback}'")
+
+        return anim_map
+
+    def _resolve_anim(self, actor, anim_name):
+        """Resolve a logical animation name to the actual one in the model."""
+        anim_map = getattr(actor, '_anim_map', None)
+        return anim_map.get(anim_name, anim_name) if anim_map else anim_name
+
+    def _safe_loop(self, actor, anim_name):
+        """Loop an animation using the anim map, falling back if needed."""
+        resolved = self._resolve_anim(actor, anim_name)
+        if resolved:
+            actor.loop(resolved)
+
     def load_actor(self, player_id, color, is_local_player=False):
         # Model contains embedded animations: idle, walk_forward, walk_backward, run_forward, strafe_left, strafe_right
-        actor = Actor("nine/assets/models/base.bam")
+        model_paths = [
+            "nine/assets/models/base.bam",
+            "nine/assets/models/player2.bam",
+        ]
+        actor = None
+        for model_path in model_paths:
+            try:
+                actor = Actor(model_path)
+                self.logger.info(f"Loaded actor model: {model_path}")
+                break
+            except Exception as e:
+                self.logger.warning(f"Failed to load {model_path}: {e}")
+        if actor is None:
+            raise RuntimeError("Could not load any player model")
         actor.set_scale(0.3)
-        actor.setColor(color)
+        actor.setColorScale(color)
+
+        # Build animation name map and store on actor for later use
+        actor._anim_map = self._build_anim_map(actor)
 
         # Create wrapper node for positioning to avoid root motion jitter
         # We move the wrapper, actor stays at origin relative to it
@@ -646,7 +672,7 @@ class GameClient(ShowBase):
         actor.setPos(0, 0, 0)
 
         # Start with idle animation
-        actor.loop("idle")
+        self._safe_loop(actor, "idle")
 
         if is_local_player:
             self.player_actor = wrapper
@@ -689,6 +715,14 @@ class GameClient(ShowBase):
             # Third-person: показываем модель
             self.player_actor_model.show()
 
+    def _post_or_buffer_event(self, event_name, event_data):
+        """Post event if plugins loaded, otherwise buffer for replay after welcome."""
+        if self.plugin_manager.loaded_plugins:
+            self.event_manager.post(event_name, event_data)
+        else:
+            self._pre_plugin_event_buffer.append((event_name, event_data))
+            self.logger.debug(f"Buffered event '{event_name}' (plugins not loaded yet)")
+
     def handle_network_data(self, data: dict):
         msg_type = data.get("type")
 
@@ -719,16 +753,14 @@ class GameClient(ShowBase):
             # Персонаж успешно создан - обновляем список
             character = data.get("character")
             self.logger.info(f"Character created: {character.get('character_name')}")
-            # Запрашиваем обновлённый список
+            # Запрашиваем обновлённый список (show_character_select handles navigation)
             self.send_message({"type": "character_list_request"})
-            # Скрываем экран создания, показываем выбор
-            self.ui.hide_character_create()
 
         elif msg_type == "character_create_failed":
             # Создание персонажа не удалось
             reason = data.get("reason", "Unknown error")
             self.logger.warning(f"Character create failed: {reason}")
-            # TODO: Показать сообщение об ошибке в UI создания
+            self.ui.send_to_js("character_create_failed", {"reason": reason})
 
         elif msg_type == "character_deleted":
             # Персонаж удалён - запрашиваем обновлённый список
@@ -737,9 +769,25 @@ class GameClient(ShowBase):
             self.send_message({"type": "character_list_request"})
 
         elif msg_type == "welcome":
+            # Load plugins on first connection
+            if not self.plugin_manager.loaded_plugins:
+                self.plugin_manager.load_plugins()
+
+            # Replay buffered events (world_config, character_sheet, etc.
+            # arrive BEFORE welcome due to server message ordering)
+            if self._pre_plugin_event_buffer:
+                self.logger.info(f"Replaying {len(self._pre_plugin_event_buffer)} buffered events after plugin load")
+                for event_name, event_data in self._pre_plugin_event_buffer:
+                    self.logger.info(f"  Replaying: {event_name}")
+                    self.event_manager.post(event_name, event_data)
+                self._pre_plugin_event_buffer.clear()
+
             # Скрываем экран загрузки
-            self.loading_screen.set_progress(1.0)
-            self.loading_screen.hide()
+            if self.loading_screen:
+                self.loading_screen.set_progress(1.0)
+                self.loading_screen.hide()
+            else:
+                self.ui.hide_loading_screen()
 
             # Переходим в игровое состояние (скрывает меню и уведомляет плагины)
             self.current_character = data.get("character_data")
@@ -755,8 +803,12 @@ class GameClient(ShowBase):
                 self.player_actor = None
 
             # Загружаем актёра (TODO: использовать модель из character_data)
-            self.load_actor(self.player_id, LColor(0.5, 0.8, 0.5, 1), is_local_player=True)
-            self.player_actor.setPos(*data["pos"])
+            try:
+                self.load_actor(self.player_id, LColor(0.5, 0.8, 0.5, 1), is_local_player=True)
+            except Exception as e:
+                self.logger.error(f"Failed to load player actor: {e}")
+            if self.player_actor:
+                self.player_actor.setPos(*data["pos"])
             self.camera_controller = CameraController(
                 self, self.camera, self.win, self.player_actor,
                 sensitivity=self.camera_sensitivity,
@@ -793,28 +845,39 @@ class GameClient(ShowBase):
 
         elif msg_type == "world_config":
             # Обновляем экран загрузки
-            self.loading_screen.set_title("ЗАГРУЗКА МИРА")
-            self.loading_screen.set_status("Загрузка карты...")
-            self.loading_screen.set_progress(0.5)
+            if self.loading_screen:
+                self.loading_screen.set_title("ЗАГРУЗКА МИРА")
+                self.loading_screen.set_status("Загрузка карты...")
+                self.loading_screen.set_progress(0.5)
+            else:
+                self.ui.show_loading_screen("Загрузка карты...")
+                self.ui.update_loading_progress(0.5)
 
             # Загружаем карту
             map_config = data.get("map", {})
             map_model = map_config.get("model", "nine/assets/models/maps/map.bam")
             self._load_map(map_model)
 
-            self.loading_screen.set_status("Настройка освещения...")
-            self.loading_screen.set_progress(0.7)
+            if self.loading_screen:
+                self.loading_screen.set_status("Настройка освещения...")
+                self.loading_screen.set_progress(0.7)
+            else:
+                self.ui.update_loading_progress(0.7, "Настройка освещения...")
 
             # Передаём плагинам для обработки освещения и скайбокса
-            self.event_manager.post("world_config", data)
+            self._post_or_buffer_event("world_config", data)
             self.logger.info("World config received and applied")
 
-            self.loading_screen.set_status("Ожидание персонажа...")
-            self.loading_screen.set_progress(0.9)
+            # Скрываем экран загрузки - мир готов
+            if self.loading_screen:
+                self.loading_screen.set_progress(1.0)
+                self.loading_screen.hide()
+            else:
+                self.ui.hide_loading_screen()
 
         elif msg_type == "inventory_update":
             # Передаём плагину инвентаря
-            self.event_manager.post("inventory_update", data)
+            self._post_or_buffer_event("inventory_update", data)
 
         elif msg_type == "world_state":
             import time
@@ -851,30 +914,41 @@ class GameClient(ShowBase):
                     wrapper.setHpr(*rot)
 
                 # Update animations from server state
-                if actor_model:
+                # Skip animation for local player — client-side prediction handles it
+                if actor_model and is_other_player:
                     anim_state = p_info.get("anim_state", "idle")
                     speed_ratio = p_info.get("speed_ratio", 0.0)
 
-                    current_anim = actor_model.getCurrentAnim()
-                    if current_anim != anim_state:
-                        actor_model.loop(anim_state)
+                    # Track logical animation state (resolved names may be identical
+                    # when model has limited animations — comparing getCurrentAnim()
+                    # would never detect transitions)
+                    last_state = getattr(actor_model, '_last_anim_state', None)
+                    if anim_state != last_state:
+                        actor_model._last_anim_state = anim_state
+                        resolved_anim = self._resolve_anim(actor_model, anim_state)
+                        if resolved_anim:
+                            actor_model.loop(resolved_anim)
 
                     # Sync animation speed with movement speed
-                    if anim_state != "idle" and speed_ratio > 0:
+                    resolved_anim = self._resolve_anim(actor_model, anim_state)
+                    if resolved_anim and anim_state != "idle" and speed_ratio > 0:
                         anim_rate = 0.3 + (speed_ratio * 0.7)
-                        actor_model.setPlayRate(anim_rate, anim_state)
-                    else:
-                        actor_model.setPlayRate(1.0, anim_state)
+                        actor_model.setPlayRate(anim_rate, resolved_anim)
+                    elif resolved_anim:
+                        actor_model.setPlayRate(1.0, resolved_anim)
 
             # Post world_state_received event for NPC renderer and other plugins
-            self.event_manager.post("world_state_received", data)
+            self._post_or_buffer_event("world_state_received", data)
         else:
-            self.event_manager.post(msg_type, data)
+            self._post_or_buffer_event(msg_type, data)
 
     def cleanup_game_state(self):
         self.logger.info("Connection closed. Cleaning up game state.")
         self.disable_game_input()
-        self.loading_screen.hide()
+        if self.loading_screen:
+            self.loading_screen.hide()
+        else:
+            self.ui.hide_loading_screen()
 
         # Stop interpolation task
         if self.taskMgr.hasTaskNamed("interpolate-players"):
@@ -907,9 +981,13 @@ class GameClient(ShowBase):
 
         self.player_id = -1
         self.is_connected = False
+        self._pre_plugin_event_buffer.clear()
 
         # Уведомляем плагины об отключении ПЕРЕД уничтожением UI
         self.event_manager.post("client_disconnected", {})
+
+        # Unload plugins on disconnect
+        self.plugin_manager.unload_plugins()
 
         self.ui.destroy_all()
         if not self.dev_mode:
@@ -949,7 +1027,8 @@ class GameClient(ShowBase):
         except Exception as e:
             self.logger.error(f"Connection error: {e}")
             # Скрываем экран загрузки при ошибке
-            self.loading_screen.hide()
+            if self.loading_screen:
+                self.loading_screen.hide()
             self.ui.show_main_menu()
         finally:
             self.is_connected = False
@@ -962,7 +1041,10 @@ class GameClient(ShowBase):
         self.userExit()
 
     def is_chat_active(self) -> bool:
-        # Проверяем реальное состояние чата (устанавливается плагином)
+        # Web UI sets this flag via webview_api.set_chat_active()
+        if getattr(self, '_web_chat_active', False):
+            return True
+        # DirectGUI fallback
         if hasattr(self, 'chat_window') and self.chat_window:
             return self.chat_window.is_open()
         return False
@@ -989,8 +1071,11 @@ class GameClient(ShowBase):
         """Отключается от сервера и возвращается в меню."""
         self.disconnect_from_server()
 
-    def send_chat_packet(self, message: str):
-        if message.strip():
+    def send_chat_packet(self, message):
+        # Accept both str and dict (for backwards compatibility)
+        if isinstance(message, dict):
+            message = message.get("message", "")
+        if message and message.strip():
             self.asyncio_loop.create_task(send_message(self.writer, {"type": "chat_message", "message": message}))
 
     def send_item_use_packet(self, data: dict):
@@ -1024,7 +1109,7 @@ class GameClient(ShowBase):
 
         self.asyncio_loop.create_task(send_message(self.writer, message))
 
-    def open_login_menu(self): self.ui.show_login_menu(default_ip="localhost:9009", default_name=self.character_name)
+    def open_login_menu(self): self.ui.show_login_menu(default_ip="localhost:9009", default_name=self.user_config.get("nickname", self.character_name))
     def close_login_menu(self): self.ui.hide_login_menu(); self.ui.show_main_menu()
     def show_settings_menu(self): self.ui.show_settings_menu(self)
 

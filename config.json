@@ -1,7 +1,7 @@
 {
-    "ui_backend": "playwright",
-    "nickname": "MilkiWinky11111",
-    "resolution": "1920x1080",
+    "ui_backend": "cef",
+    "nickname": "MilkiWinky",
+    "resolution": "800x600",
     "available_resolutions": [
         "800x600",
         "1024x768",
@@ -14,7 +14,7 @@
     "third_person_camera": true,
     "fov": 70,
     "ps1_effect_enabled": true,
-    "ps1_effect_resolution": 2,
+    "ps1_effect_resolution": 1,
     "audio_master_volume": 65,
     "audio_bgm_volume": 69,
     "audio_sfx_volume": 21,

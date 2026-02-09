@@ -61,9 +61,10 @@ class DMPanelClientModule(PluginModule, DirectObject):
         self.event_manager.subscribe("dm_role_check_result", self._on_role_check)
         self.event_manager.subscribe("game_state_changed", self._on_game_state_changed)
 
-        # Клавиши
-        self.accept("f2", self.toggle_panel)
-        self.accept("escape", self.on_escape)
+        # Клавиши (only for DirectGUI mode)
+        if not self.app.ui_is_web:
+            self.accept("f2", self.toggle_panel)
+            self.accept("escape", self.on_escape)
 
         self.logger.info("DM Panel клиентский модуль загружен")
 

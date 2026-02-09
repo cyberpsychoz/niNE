@@ -5,6 +5,7 @@
 class MainMenu {
     constructor(params = {}) {
         this.params = params;
+        this.backgrounds = params.backgrounds || [];
         this.element = null;
         console.log('[MainMenu] Created');
     }
@@ -24,10 +25,25 @@ class MainMenu {
         // Get element reference
         this.element = document.getElementById('main-menu-screen');
 
+        // Set random background
+        this._setBackground();
+
         // Attach event listeners
         this.attachEventListeners();
 
         console.log('[MainMenu] Rendered');
+    }
+
+    /**
+     * Set a random background image from available backgrounds.
+     */
+    _setBackground() {
+        if (!this.element || this.backgrounds.length === 0) return;
+        const bg = this.backgrounds[Math.floor(Math.random() * this.backgrounds.length)];
+        this.element.style.backgroundImage = `url('${bg}')`;
+        this.element.style.backgroundSize = 'cover';
+        this.element.style.backgroundPosition = 'center';
+        console.log(`[MainMenu] Background set: ${bg}`);
     }
 
     /**

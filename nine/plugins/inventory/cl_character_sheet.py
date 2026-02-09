@@ -119,7 +119,7 @@ class CharacterSheetClientModule(PluginModule, DirectObject):
         # Tooltip
         self.tooltip_frame: Optional[DirectFrame] = None
 
-        # Подписки
+        # Подписки (always — forwarding handles web UI data caching)
         self.event_manager.subscribe("inventory_update", self.on_inventory_update)
         self.event_manager.subscribe("equipment_update", self.on_equipment_update)
         self.event_manager.subscribe("character_sheet", self.on_character_sheet_update)
@@ -128,9 +128,10 @@ class CharacterSheetClientModule(PluginModule, DirectObject):
         self.event_manager.subscribe("open_character_sheet_tab", self._on_open_to_tab)
         self.event_manager.subscribe("quest_list", self._on_quest_list_update)
 
-        # Клавиши
-        self.accept("i", self.toggle_character_sheet)
-        self.accept("escape", self.on_escape)
+        # Only bind keys and allow opening when NOT using web UI
+        if not self.app.ui_is_web:
+            self.accept("i", self.toggle_character_sheet)
+            self.accept("escape", self.on_escape)
 
         self.logger.info("Клиентский модуль листа персонажа загружен")
 
@@ -165,6 +166,8 @@ class CharacterSheetClientModule(PluginModule, DirectObject):
     def _on_quest_list_update(self, data: dict):
         """Обновление списка квестов."""
         self.quests_data = data.get("quests", [])
+        if self.app.ui_is_web:
+            return
         if self.is_open and self.current_tab == "quests":
             self._refresh_content()
 
@@ -183,6 +186,9 @@ class CharacterSheetClientModule(PluginModule, DirectObject):
         self.inventory_items = data.get("inventory", [])
         self.max_slots = data.get("max_slots", 20)
 
+        if self.app.ui_is_web:
+            return  # Web UI handles display via event forwarding
+
         if self.is_open and self.current_tab == "inventory":
             self._refresh_content()
 
@@ -190,12 +196,18 @@ class CharacterSheetClientModule(PluginModule, DirectObject):
         """Обновление экипировки от сервера."""
         self.equipment_slots = data.get("slots", {})
 
+        if self.app.ui_is_web:
+            return
+
         if self.is_open and self.current_tab == "equipment":
             self._refresh_content()
 
     def on_character_sheet_update(self, data: dict):
         """Обновление данных персонажа от сервера."""
         self.character_data = data.get("character", {})
+
+        if self.app.ui_is_web:
+            return
 
         if self.is_open:
             # Обновляем текущую вкладку если она зависит от данных персонажа

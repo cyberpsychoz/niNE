@@ -45,8 +45,22 @@ class WebViewAPI:
         # Combat events
         event_manager.subscribe("combat_started", self._on_combat_started)
         event_manager.subscribe("combat_ended", self._on_combat_ended)
+        event_manager.subscribe("combat_turn_start", self._on_combat_turn_start)
+        event_manager.subscribe("combat_action_result", self._on_combat_action_result)
+        event_manager.subscribe("combat_round_start", self._on_combat_round_start)
 
-        # Character events
+        # Character/inventory events
+        event_manager.subscribe("character_sheet", self._on_character_sheet)
+        event_manager.subscribe("inventory_update", self._on_inventory_update)
+        event_manager.subscribe("equipment_update", self._on_equipment_update)
+
+        # Conditions
+        event_manager.subscribe("conditions_update", self._on_conditions_update)
+
+        # Game state
+        event_manager.subscribe("game_state_changed", self._on_game_state_changed)
+
+        # World state
         event_manager.subscribe("world_state_received", self._on_world_state)
 
         logger.info("Subscribed to game events")
@@ -56,14 +70,10 @@ class WebViewAPI:
     # ============================================================
 
     def exit_game(self):
-        """Exit the game (called from JavaScript)."""
+        """Exit the game (called from main thread via _dispatch_js_call)."""
         logger.info("Exit game called from JavaScript")
         if "exit" in self.callbacks:
-            # Schedule exit in main thread to avoid threading issues with Playwright
-            def do_exit(task):
-                self.callbacks["exit"]()
-                return task.done
-            self.app.taskMgr.doMethodLater(0.1, do_exit, "exit-game")
+            self.callbacks["exit"]()
         else:
             logger.warning("No exit callback registered")
 
@@ -127,35 +137,41 @@ class WebViewAPI:
 
     def save_settings(self, settings: Dict[str, Any]):
         """
-        Save settings (called from JavaScript).
+        Save settings (called from main thread via _dispatch_js_call).
 
         Args:
             settings: Dictionary of settings to save
         """
         logger.info(f"Saving settings from JavaScript: {settings}")
 
-        # Update user_config
-        self.app.user_config.update(settings)
-
-        # Save to config.json
+        # Thread-safe update of user_config
+        lock = getattr(self.manager, '_config_lock', None)
+        if lock:
+            lock.acquire()
         try:
-            import json
-            with open("config.json", "w") as f:
-                json.dump(self.app.user_config, f, indent=4)
-            logger.info("Settings saved successfully")
+            self.app.user_config.update(settings)
 
-            # Apply some settings immediately
-            if "camera_sensitivity" in settings:
-                self.app.camera_sensitivity = settings["camera_sensitivity"]
-            if "invert_mouse_x" in settings:
-                self.app.invert_mouse_x = settings["invert_mouse_x"]
-            if "invert_mouse_y" in settings:
-                self.app.invert_mouse_y = settings["invert_mouse_y"]
-            if "fov" in settings:
-                self.app.fov = settings["fov"]
+            # Save to config.json
+            try:
+                import json
+                with open("config.json", "w") as f:
+                    json.dump(self.app.user_config, f, indent=4)
+                logger.info("Settings saved successfully")
+            except Exception as e:
+                logger.error(f"Failed to save settings: {e}")
+        finally:
+            if lock:
+                lock.release()
 
-        except Exception as e:
-            logger.error(f"Failed to save settings: {e}")
+        # Apply some settings immediately (main thread, no lock needed)
+        if "camera_sensitivity" in settings:
+            self.app.camera_sensitivity = settings["camera_sensitivity"]
+        if "invert_mouse_x" in settings:
+            self.app.invert_mouse_x = settings["invert_mouse_x"]
+        if "invert_mouse_y" in settings:
+            self.app.invert_mouse_y = settings["invert_mouse_y"]
+        if "fov" in settings:
+            self.app.fov = settings["fov"]
 
     def send_chat_message(self, message: str):
         """
@@ -165,8 +181,21 @@ class WebViewAPI:
             message: Chat message text
         """
         logger.info(f"Chat message from JavaScript: {message}")
-        # Отправляем событие для отправки на сервер
-        self.app.event_manager.post("client_send_chat_message", {"message": message})
+        # Post as plain string (same format as chat plugin cl_ui.py)
+        self.app.event_manager.post("client_send_chat_message", message)
+
+    def set_chat_active(self, active: bool):
+        """Set chat active state (called from JavaScript when chat opens/closes)."""
+        self.app._web_chat_active = bool(active)
+        logger.debug(f"Chat active: {active}")
+
+    def select_character(self, character_uuid: str):
+        """Select a character to play (called from JavaScript)."""
+        logger.info(f"Select character: {character_uuid}")
+        if "select_character" in self.callbacks:
+            self.callbacks["select_character"](character_uuid)
+        else:
+            logger.warning("No select_character callback registered")
 
     def disconnect(self):
         """Disconnect from server (called from JavaScript)."""
@@ -175,6 +204,15 @@ class WebViewAPI:
             self.app.disconnect_from_server()
         else:
             logger.warning("No disconnect_from_server method found")
+
+    def get_settings(self):
+        """Return current settings (called from JavaScript)."""
+        logger.info("get_settings called from JavaScript")
+        lock = getattr(self.manager, '_config_lock', None)
+        if lock:
+            with lock:
+                return dict(self.app.user_config)
+        return dict(self.app.user_config)
 
     def hide_in_game_menu(self):
         """Hide in-game menu and resume game (called from JavaScript)."""
@@ -241,3 +279,66 @@ class WebViewAPI:
     def _on_world_state(self, data: Dict[str, Any]):
         """Forward world state to JavaScript."""
         self.manager.send_to_js("world_state", data)
+
+    def _on_combat_turn_start(self, data: Dict[str, Any]):
+        """Forward combat turn start to JavaScript."""
+        self.manager.send_to_js("combat_turn_start", data)
+
+    def _on_combat_action_result(self, data: Dict[str, Any]):
+        """Forward combat action result to JavaScript."""
+        self.manager.send_to_js("combat_action_result", data)
+
+    def _on_combat_round_start(self, data: Dict[str, Any]):
+        """Forward combat round start to JavaScript."""
+        self.manager.send_to_js("combat_round_start", data)
+
+    def _on_character_sheet(self, data: Dict[str, Any]):
+        """Forward character sheet data to JavaScript."""
+        self.manager.send_to_js("character_sheet", data)
+
+    def _on_inventory_update(self, data: Dict[str, Any]):
+        """Forward inventory update to JavaScript."""
+        self.manager.send_to_js("inventory_update", data)
+
+    def _on_equipment_update(self, data: Dict[str, Any]):
+        """Forward equipment update to JavaScript."""
+        self.manager.send_to_js("equipment_update", data)
+
+    def _on_conditions_update(self, data: Dict[str, Any]):
+        """Forward conditions update to JavaScript."""
+        self.manager.send_to_js("conditions_update", data)
+
+    def _on_game_state_changed(self, data: Dict[str, Any]):
+        """Forward game state change to JavaScript."""
+        from enum import Enum
+        # Convert enum values to strings for JSON serialization
+        safe_data = {}
+        for k, v in data.items():
+            safe_data[k] = v.name if isinstance(v, Enum) else v
+        self.manager.send_to_js("game_state_changed", safe_data)
+
+    # ============================================================
+    # New JS -> Python methods
+    # ============================================================
+
+    def create_character(self, data: dict):
+        """Create a character (called from JavaScript)."""
+        logger.info(f"Create character from JavaScript: {data}")
+        if "create_character" in self.callbacks:
+            self.callbacks["create_character"](data)
+        else:
+            logger.warning("No create_character callback registered")
+
+    def request_character_list(self):
+        """Request character list from server (called from JavaScript)."""
+        logger.info("Request character list from JavaScript")
+        if hasattr(self.app, 'send_message'):
+            self.app.send_message({"type": "character_list_request"})
+
+    def combat_action(self, action: str, target: str = ""):
+        """Execute combat action (called from JavaScript)."""
+        logger.info(f"Combat action from JavaScript: {action} target={target}")
+        self.app.event_manager.post("combat_player_action", {
+            "action": action,
+            "target": target,
+        })

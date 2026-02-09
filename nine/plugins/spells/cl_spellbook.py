@@ -56,8 +56,9 @@ class SpellbookClientModule(PluginModule, DirectObject):
         # Загружаем данные заклинаний
         self._load_spells_data()
 
-        # Биндим клавишу K
-        self.accept("k", self.toggle_spellbook)
+        # Биндим клавишу K (only for DirectGUI mode)
+        if not self.app.ui_is_web:
+            self.accept("k", self.toggle_spellbook)
 
         # Подписки на события
         self.event_manager.subscribe("character_sheet", self._on_character_update)

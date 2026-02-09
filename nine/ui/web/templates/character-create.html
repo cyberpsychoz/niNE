@@ -1,78 +1,23 @@
 <div class="screen fade-in" id="character-create-screen">
-    <div class="screen-content" style="min-width: 700px; max-width: 900px;">
+    <div class="screen-content" style="min-width: 780px; max-width: 900px;">
         <h1 class="screen-title">CREATE CHARACTER</h1>
         <p class="screen-subtitle">D&D 5e Character Creation</p>
 
         <div class="divider"></div>
 
-        <!-- Character creation form -->
-        <div class="char-create-form">
-            <!-- Name -->
-            <div class="form-group">
-                <label class="form-label">Character Name:</label>
-                <input type="text" id="input-char-name" class="bg1-input" placeholder="Enter name" maxlength="50" />
-            </div>
+        <!-- Step indicator -->
+        <div class="wizard-steps" id="wizard-steps"></div>
 
-            <!-- Race -->
-            <div class="form-group">
-                <label class="form-label">Race:</label>
-                <select id="input-race" class="bg1-input">
-                    <option value="human">Human</option>
-                    <option value="elf">Elf</option>
-                    <option value="dwarf">Dwarf</option>
-                    <option value="halfling">Halfling</option>
-                    <option value="dragonborn">Dragonborn</option>
-                    <option value="gnome">Gnome</option>
-                    <option value="half-elf">Half-Elf</option>
-                    <option value="half-orc">Half-Orc</option>
-                    <option value="tiefling">Tiefling</option>
-                </select>
-            </div>
-
-            <!-- Class -->
-            <div class="form-group">
-                <label class="form-label">Class:</label>
-                <select id="input-class" class="bg1-input">
-                    <option value="fighter">Fighter</option>
-                    <option value="wizard">Wizard</option>
-                    <option value="rogue">Rogue</option>
-                    <option value="cleric">Cleric</option>
-                    <option value="ranger">Ranger</option>
-                    <option value="paladin">Paladin</option>
-                    <option value="barbarian">Barbarian</option>
-                    <option value="bard">Bard</option>
-                    <option value="druid">Druid</option>
-                    <option value="monk">Monk</option>
-                    <option value="sorcerer">Sorcerer</option>
-                    <option value="warlock">Warlock</option>
-                </select>
-            </div>
-
-            <!-- Background (optional for now) -->
-            <div class="form-group">
-                <label class="form-label">Background (Optional):</label>
-                <input type="text" id="input-background" class="bg1-input" placeholder="e.g., Noble, Soldier" />
-            </div>
-        </div>
+        <!-- Wizard content (rendered dynamically per step) -->
+        <div class="wizard-content" id="wizard-content"></div>
 
         <div class="divider"></div>
 
-        <!-- Action buttons -->
-        <div class="button-group button-group-horizontal">
-            <button class="bg1-button bg1-button-primary" id="btn-create-char">
-                CREATE
-            </button>
-
-            <button class="bg1-button" id="btn-cancel">
-                CANCEL
-            </button>
+        <!-- Navigation -->
+        <div class="wizard-nav">
+            <button class="bg1-button" id="btn-wizard-back">BACK</button>
+            <button class="bg1-button" id="btn-wizard-cancel">CANCEL</button>
+            <button class="bg1-button bg1-button-primary" id="btn-wizard-next">NEXT</button>
         </div>
     </div>
 </div>
-
-<style>
-.char-create-form {
-    max-width: 600px;
-    margin: 0 auto;
-}
-</style>

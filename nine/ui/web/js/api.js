@@ -154,6 +154,35 @@ class PythonAPI {
     }
 
     /**
+     * Set chat active state (blocks game input while chat is open).
+     * @param {boolean} active - Whether chat is open
+     */
+    static async setChatActive(active) {
+        const api = this.getApi();
+        if (!api) return;
+        try {
+            await api.set_chat_active({ active: !!active });
+        } catch (error) {
+            console.error('[API] Error calling set_chat_active:', error);
+        }
+    }
+
+    /**
+     * Select a character to play.
+     * @param {string} characterUuid - Character UUID
+     */
+    static async selectCharacter(characterUuid) {
+        console.log(`[API] Calling Python: select_character(${characterUuid})`);
+        const api = this.getApi();
+        if (!api) return;
+        try {
+            await api.select_character(characterUuid);
+        } catch (error) {
+            console.error('[API] Error calling select_character:', error);
+        }
+    }
+
+    /**
      * Disconnect from server.
      */
     static async disconnect() {
@@ -164,6 +193,21 @@ class PythonAPI {
             await api.disconnect();
         } catch (error) {
             console.error('[API] Error calling disconnect:', error);
+        }
+    }
+
+    /**
+     * Get current settings from Python.
+     */
+    static async getSettings() {
+        console.log('[API] Calling Python: get_settings()');
+        const api = this.getApi();
+        if (!api) return {};
+        try {
+            return await api.get_settings();
+        } catch (error) {
+            console.error('[API] Error calling get_settings:', error);
+            return {};
         }
     }
 
@@ -198,6 +242,37 @@ class PythonAPI {
     }
 
     /**
+     * Create a character.
+     * @param {Object} data - Character data {name, race, class_name, background}
+     */
+    static async createCharacter(data) {
+        console.log('[API] Calling Python: create_character()', data);
+        const api = this.getApi();
+        if (!api) return;
+        try {
+            await api.create_character(data);
+        } catch (error) {
+            console.error('[API] Error calling create_character:', error);
+        }
+    }
+
+    /**
+     * Execute a combat action.
+     * @param {string} action - Action ID (attack, dash, dodge, etc.)
+     * @param {string} target - Target entity ID (optional)
+     */
+    static async combatAction(action, target = '') {
+        console.log(`[API] Calling Python: combat_action(${action}, ${target})`);
+        const api = this.getApi();
+        if (!api) return;
+        try {
+            await api.combat_action(action, target);
+        } catch (error) {
+            console.error('[API] Error calling combat_action:', error);
+        }
+    }
+
+    /**
      * Close WebViewer.
      */
     static async closeWebPage() {
@@ -219,8 +294,6 @@ class PythonAPI {
  * @param {Object} message - Message from Python {type: "event_type", data: {...}}
  */
 window.receiveFromPython = function(message) {
-    console.log('[API] Received from Python:', message);
-
     const { type, data } = message;
 
     // Dispatch custom event

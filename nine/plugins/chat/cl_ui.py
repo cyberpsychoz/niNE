@@ -49,31 +49,35 @@ class ChatUIModule(PluginModule, DirectObject):
     def on_load(self):
         self.logger.info("Клиентский модуль UI чата загружен")
 
-        # Загружаем конфиг из папки плагина
-        self.config = _load_config(self.plugin_path)
+        self.ui_window = None
 
-        # Инициализация UI с конфигом из плагина
-        self.ui_window = ChatWindow(self.app.ui, config=self.config)
-
-        # Callback для отправки сообщений
-        self.ui_window.on_send_callback = self.send_chat_message
-
-        # Подписываемся на события
+        # Подписываемся на события (always — web UI handles display via forwarding)
         self.event_manager.subscribe("chat_broadcast", self.on_chat_broadcast)
         self.event_manager.subscribe("client_disconnected", self.on_disconnect)
         self.event_manager.subscribe("game_state_changed", self.on_game_state_changed)
 
-        # Keybindings
-        self.accept('t', self.on_chat_key)
-        self.accept('escape', self.on_escape_key)
+        # Only create DirectGUI chat when NOT using web UI
+        if not self.app.ui_is_web:
+            # Загружаем конфиг из папки плагина
+            self.config = _load_config(self.plugin_path)
 
-        # Предоставляем методы клиенту
-        self.app.is_chat_active = self.is_active
-        self.app.chat_window = self.ui_window
+            # Инициализация UI с конфигом из плагина
+            self.ui_window = ChatWindow(self.app.ui, config=self.config)
 
-        # Скрываем чат при старте если мы в меню
-        if self.app.ui.game_state == GameState.MENU:
-            self._hide_chat_ui()
+            # Callback для отправки сообщений
+            self.ui_window.on_send_callback = self.send_chat_message
+
+            # Keybindings
+            self.accept('t', self.on_chat_key)
+            self.accept('escape', self.on_escape_key)
+
+            # Предоставляем методы клиенту
+            self.app.is_chat_active = self.is_active
+            self.app.chat_window = self.ui_window
+
+            # Скрываем чат при старте если мы в меню
+            if self.app.ui.game_state == GameState.MENU:
+                self._hide_chat_ui()
 
     def on_unload(self):
         # Отписываемся от клавиш
@@ -90,10 +94,10 @@ class ChatUIModule(PluginModule, DirectObject):
             self.ui_window.destroy()
             self.ui_window = None
 
-        # Очищаем ссылки
-        if hasattr(self.app, 'is_chat_active'):
+        # Очищаем ссылки (only if set as instance attributes by on_load)
+        if 'is_chat_active' in vars(self.app):
             del self.app.is_chat_active
-        if hasattr(self.app, 'chat_window'):
+        if 'chat_window' in vars(self.app):
             del self.app.chat_window
 
         self.logger.info("Клиентский модуль UI чата выгружен")
@@ -144,6 +148,9 @@ class ChatUIModule(PluginModule, DirectObject):
 
     def on_chat_broadcast(self, data: dict):
         """Обработка входящего сообщения от сервера."""
+        if self.app.ui_is_web:
+            return  # Web UI handles display via event forwarding
+
         sender = data.get('from_name', 'Unknown')
         message = data.get('message', '')
         chat_type = data.get('chat_type', 'ic')
