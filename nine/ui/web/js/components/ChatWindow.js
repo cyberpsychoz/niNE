@@ -1,9 +1,11 @@
 /**
- * Chat Window Component - Garry's Mod style
+ * Chat Window Component — Garry's Mod style RP chat.
  *
  * Two modes:
- * - Closed: Temporary messages with fade-out (10s show + 2.5s fade)
- * - Open: Full history + input field
+ * - Closed: floating text messages with fade-out (10s + 2.5s), no box
+ * - Open:   history panel + input + command suggestions
+ *
+ * Faithfully reproduces the DirectGUI ChatWindow from nine/ui/chat_window.py.
  */
 
 class ChatWindow {
@@ -18,8 +20,8 @@ class ChatWindow {
         // Temporary messages (closed mode)
         this.tempMessages = [];
         this.maxTempMessages = 10;
-        this.messageShowTime = 10000; // 10 seconds
-        this.fadeDuration = 2500; // 2.5 seconds
+        this.messageShowTime = 10000;
+        this.fadeDuration = 2500;
 
         // Input history (arrow up/down)
         this.inputHistory = [];
@@ -27,453 +29,439 @@ class ChatWindow {
         this.maxInputHistory = 50;
         this.currentInputBackup = '';
 
-        // Command suggestions
+        // Full command list from CHAT_COMMANDS_CLIENT
         this.commands = {
-            'me': '/me <action> — action in first person',
-            'it': '/it <text> — impersonal action',
-            'looc': '/looc <text> — local OOC chat',
-            'ooc': '/ooc <text> — global OOC chat',
-            'help': '/help — show command list',
-            'pos': '/pos — show your coordinates',
-            'give': '/give <id> [amount] — give item',
-            'startcombat': '/startcombat [radius] — start combat (DM)',
-            'endcombat': '/endcombat — end combat (DM)',
-            'spawnnpc': '/spawnnpc <template> [x y z] — spawn NPC (DM)',
+            'me':             '/me <действие> — действие от первого лица',
+            'it':             '/it <текст> — безличное действие',
+            'looc':           '/looc <текст> — локальный OOC чат',
+            'ooc':            '/ooc <текст> — глобальный OOC чат',
+            'help':           '/help — показать список команд',
+            'pos':            '/pos — показать свои координаты',
+            'whoami':         '/whoami — показать имя и ID',
+            'myrole':         '/myrole — показать свою роль',
+            'setrole':        '/setrole <role> — установить роль',
+            'give':           '/give <id> [кол-во] — выдать предмет',
+            'spawn':          '/spawn <id> [кол-во] — заспавнить предмет',
+            'items':          '/items — список предметов',
+            'spawnnpc':       '/spawnnpc <шаблон> [x y z] — заспавнить NPC',
+            'listnpcs':       '/listnpcs — список активных NPC',
+            'removenpc':      '/removenpc <id> — удалить NPC',
+            'startcombat':    '/startcombat [радиус] — начать бой',
+            'endcombat':      '/endcombat — завершить бой',
+            'nextturn':       '/nextturn — следующий ход',
+            'spectator':      '/spectator — режим спектатора',
+            'charsetmodel':   '/charsetmodel <модель> — изменить модель',
+            'charsetfaction': '/charsetfaction <фракция> — изменить фракцию',
+            'music':          '/music <play|stop|track> — музыка',
+            'ambient':        '/ambient <set|stop> — эмбиент',
         };
         this.currentSuggestions = [];
         this.selectedSuggestion = -1;
+        this.maxSuggestions = 6;
 
-        console.log('[ChatWindow] Created');
+        // Game state
+        this.gameState = 'MENU';
     }
 
     async render() {
-        // Load template
         const response = await fetch('templates/chat-window.html');
         const html = await response.text();
 
-        // Insert into DOM (doesn't replace app, adds to body)
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = html;
-        document.body.appendChild(tempDiv.firstElementChild);
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = html;
+        // Append only the style and the chat-window div
+        while (wrapper.firstChild) {
+            document.body.appendChild(wrapper.firstChild);
+        }
 
-        // Get element references
         this.element = document.getElementById('chat-window');
-        this.tempMessagesContainer = document.getElementById('chat-temp-messages');
+        this.hintBar = document.getElementById('chat-hint-bar');
+        this.tempContainer = document.getElementById('chat-temp-messages');
         this.chatFull = document.getElementById('chat-full');
         this.historyContent = document.getElementById('chat-history-content');
-        this.historyContainer = document.getElementById('chat-history');
+        this.historyScroll = document.getElementById('chat-history');
         this.input = document.getElementById('chat-input');
-        this.suggestionsContainer = document.getElementById('chat-suggestions');
+        this.suggestionsEl = document.getElementById('chat-suggestions');
         this.suggestionsContent = document.getElementById('chat-suggestions-content');
 
-        // Attach event listeners
-        this.attachEventListeners();
+        this._attachEvents();
 
-        // Listen for messages from Python
-        this.pythonMessageHandler = this._handlePythonMessage.bind(this);
-        window.addEventListener('python-message', this.pythonMessageHandler);
+        this.pythonHandler = this._onPythonMessage.bind(this);
+        window.addEventListener('python-message', this.pythonHandler);
 
         console.log('[ChatWindow] Rendered');
     }
 
-    attachEventListeners() {
-        // Input field
-        this.input.addEventListener('keydown', (e) => this._onInputKeyDown(e));
+    // ================================================================
+    // Events
+    // ================================================================
+
+    _attachEvents() {
+        this.input.addEventListener('keydown', (e) => this._onKeyDown(e));
         this.input.addEventListener('input', () => this._onInputChange());
+
+        // Close on blur (small delay so click on suggestion works)
         this.input.addEventListener('blur', () => {
-            // Delay to allow clicking suggestions
-            setTimeout(() => {
-                if (this.isOpen) {
-                    this.close();
-                }
-            }, 100);
+            setTimeout(() => { if (this.isOpen) this.close(); }, 150);
         });
 
-        // Global key listener for T to open chat
-        this.globalKeyHandler = (e) => {
+        // Global T key to open
+        this._globalKey = (e) => {
+            if (this.gameState === 'MENU' || this.gameState === 'CHARACTER_SELECT') return;
+            if (document.activeElement.tagName === 'INPUT' ||
+                document.activeElement.tagName === 'TEXTAREA') return;
+
             if (e.key === 't' || e.key === 'T') {
-                // Don't open if already typing in another input
-                if (document.activeElement.tagName === 'INPUT' ||
-                    document.activeElement.tagName === 'TEXTAREA') {
-                    return;
-                }
                 e.preventDefault();
                 this.open();
             }
         };
-        document.addEventListener('keydown', this.globalKeyHandler);
+        document.addEventListener('keydown', this._globalKey);
 
         console.log('[ChatWindow] Event listeners attached');
     }
 
-    /**
-     * Handle messages from Python.
-     */
-    _handlePythonMessage(event) {
+    _onPythonMessage(event) {
         const { type, data } = event.detail;
+        if (type === 'chat_message') this.addMessage(data);
+        else if (type === 'game_state_changed') this._onGameState(data);
+    }
 
-        if (type === 'chat_message') {
-            this.addMessage(data);
+    _onGameState(data) {
+        const s = data.new_state || data.state || '';
+        this.gameState = s;
+
+        if (s === 'IN_GAME') {
+            if (this.hintBar && !this.isOpen) this.hintBar.style.display = 'block';
+            if (this.element) this.element.style.display = '';
+        } else {
+            if (this.hintBar) this.hintBar.style.display = 'none';
+            if (this.isOpen) this.close();
         }
     }
 
-    /**
-     * Open chat (show history + input).
-     */
+    // ================================================================
+    // Open / Close
+    // ================================================================
+
     open() {
         if (this.isOpen) return;
-
         this.isOpen = true;
-        this.chatFull.style.display = 'block';
-        this.tempMessagesContainer.style.display = 'none';
 
-        // Block game input while chat is open
+        this.tempContainer.style.display = 'none';
+        if (this.hintBar) this.hintBar.style.display = 'none';
+        this.chatFull.classList.add('open');
+
         PythonAPI.setChatActive(true);
 
-        // Focus input
+        this._rebuildHistory();
         this.input.focus();
-
-        // Scroll to bottom
         this._scrollToBottom();
-
-        console.log('[ChatWindow] Opened');
     }
 
-    /**
-     * Close chat (hide history + input, show temp messages).
-     */
     close() {
         if (!this.isOpen) return;
-
         this.isOpen = false;
-        this.chatFull.style.display = 'none';
-        this.tempMessagesContainer.style.display = 'block';
 
-        // Restore game input
+        this.chatFull.classList.remove('open');
+        this.tempContainer.style.display = '';
+        if (this.hintBar && this.gameState === 'IN_GAME') {
+            this.hintBar.style.display = 'block';
+        }
+
         PythonAPI.setChatActive(false);
 
-        // Clear input
         this.input.value = '';
         this.input.blur();
-
-        // Hide suggestions
         this._hideSuggestions();
-
-        // Reset input history
         this.inputHistoryIndex = -1;
         this.currentInputBackup = '';
-
-        console.log('[ChatWindow] Closed');
     }
 
-    /**
-     * Add a message to chat.
-     * @param {Object} data - {sender, text, chat_type, is_system}
-     */
+    // ================================================================
+    // Messages
+    // ================================================================
+
     addMessage(data) {
-        const messageData = {
-            sender: data.sender || 'System',
-            text: data.text || '',
-            chatType: data.chat_type || 'ic',
-            isSystem: data.is_system || false,
-            timestamp: Date.now()
+        const chatType = data.chat_type || 'ic';
+        const msg = {
+            sender: data.from_name || data.sender || '',
+            text: data.message || data.text || '',
+            chatType: chatType,
+            isSystem: data.is_system || chatType === 'system',
+            formattedMessage: data.formatted_message || null,
+            timestamp: Date.now(),
         };
 
-        // Add to history
-        this.messageHistory.push(messageData);
-        if (this.messageHistory.length > this.maxHistory) {
-            this.messageHistory.shift();
-        }
+        this.messageHistory.push(msg);
+        if (this.messageHistory.length > this.maxHistory) this.messageHistory.shift();
 
-        // If chat is open, add to history display
         if (this.isOpen) {
-            this._addMessageToHistory(messageData);
+            this._appendHistoryMsg(msg);
         } else {
-            // Add as temporary message
-            this._addTemporaryMessage(messageData);
+            this._addTempMsg(msg);
         }
     }
 
-    /**
-     * Add message to history display.
-     */
-    _addMessageToHistory(data) {
-        const messageEl = this._createMessageElement(data);
-        this.historyContent.appendChild(messageEl);
-
-        // Scroll to bottom
+    _appendHistoryMsg(msg) {
+        const el = this._buildMsgEl(msg, 'chat-msg');
+        this.historyContent.appendChild(el);
         this._scrollToBottom();
     }
 
-    /**
-     * Add temporary message (fade out after time).
-     */
-    _addTemporaryMessage(data) {
-        const messageEl = this._createMessageElement(data, true);
-        messageEl.classList.add('chat-temp-message');
+    _addTempMsg(msg) {
+        const el = this._buildMsgEl(msg, 'chat-temp-msg');
+        this.tempContainer.appendChild(el);
+        this.tempMessages.push(el);
 
-        this.tempMessagesContainer.appendChild(messageEl);
-        this.tempMessages.push(messageEl);
-
-        // Remove old messages if too many
         while (this.tempMessages.length > this.maxTempMessages) {
-            const oldMsg = this.tempMessages.shift();
-            oldMsg.remove();
+            this.tempMessages.shift().remove();
         }
 
-        // Fade out after show time
         setTimeout(() => {
-            messageEl.classList.add('fading');
-
-            // Remove after fade duration
+            el.classList.add('fading');
             setTimeout(() => {
-                messageEl.remove();
-                const index = this.tempMessages.indexOf(messageEl);
-                if (index > -1) {
-                    this.tempMessages.splice(index, 1);
-                }
+                el.remove();
+                const i = this.tempMessages.indexOf(el);
+                if (i > -1) this.tempMessages.splice(i, 1);
             }, this.fadeDuration);
         }, this.messageShowTime);
     }
 
     /**
-     * Create message HTML element.
+     * Build a message DOM element.
+     * Matches _format_message_for_display from chat_window.py.
      */
-    _createMessageElement(data, isTemp = false) {
+    _buildMsgEl(msg, baseClass) {
         const div = document.createElement('div');
-        div.className = isTemp ? 'chat-temp-message' : 'chat-message';
+        div.className = baseClass;
 
-        // Add type class
-        if (data.isSystem) {
-            div.classList.add('system');
-        } else if (data.chatType === 'emote' || data.chatType === 'it') {
-            div.classList.add('emote');
-        } else if (data.chatType === 'ooc' || data.chatType === 'looc') {
-            div.classList.add('ooc');
-        }
-
-        // Format message
+        const sender = this._esc(msg.sender);
+        const text = this._esc(msg.text);
+        const fmt = msg.formattedMessage ? this._esc(msg.formattedMessage) : null;
         let html = '';
 
-        // Add timestamp for history
-        if (!isTemp) {
-            const time = new Date(data.timestamp);
-            const timeStr = `${time.getHours().toString().padStart(2, '0')}:${time.getMinutes().toString().padStart(2, '0')}`;
-            html += `<span class="timestamp">[${timeStr}]</span> `;
-        }
+        if (msg.isSystem) {
+            div.classList.add('msg-system');
+            html = `<span class="chat-system-star">*</span> ${text}`;
 
-        // Format based on type
-        if (data.isSystem) {
-            html += `<span style="color: #d4af37;">${data.text}</span>`;
-        } else if (data.chatType === 'emote' || data.chatType === 'me') {
-            html += `<span class="sender">${data.sender}</span> ${data.text}`;
-        } else if (data.chatType === 'it') {
-            html += `<span style="color: #ffda66;">${data.text}</span>`;
-        } else if (data.chatType === 'ooc') {
-            html += `<span style="color: #e63939;">[OOC]</span> <span class="sender">${data.sender}:</span> ${data.text}`;
-        } else if (data.chatType === 'looc') {
-            html += `<span style="color: #e63939;">[LOOC]</span> <span class="sender">${data.sender}:</span> ${data.text}`;
+        } else if (msg.chatType === 'emote' || msg.chatType === 'me') {
+            div.classList.add('msg-emote');
+            html = fmt || `<span class="chat-emote-stars">**</span><span class="chat-sender">${sender}</span> ${text}`;
+
+        } else if (msg.chatType === 'it') {
+            div.classList.add('msg-it');
+            html = fmt || `<span class="chat-emote-stars">**</span>${text}`;
+
+        } else if (msg.chatType === 'looc') {
+            div.classList.add('msg-looc');
+            html = `<span class="chat-tag-looc">[LOOC]</span> <span class="chat-sender">${sender}:</span> ${text}`;
+
+        } else if (msg.chatType === 'ooc') {
+            div.classList.add('msg-ooc');
+            html = `<span class="chat-tag-ooc">[OOC]</span> <span class="chat-sender">${sender}:</span> ${text}`;
+
         } else {
-            // Normal IC message
-            html += `<span class="sender">${data.sender}:</span> ${data.text}`;
+            div.classList.add('msg-ic');
+            html = `<span class="chat-sender">${sender}:</span> ${text}`;
         }
 
         div.innerHTML = html;
         return div;
     }
 
-    /**
-     * Handle input keydown.
-     */
-    _onInputKeyDown(e) {
+    _esc(s) {
+        if (!s) return '';
+        const d = document.createElement('div');
+        d.textContent = s;
+        return d.innerHTML;
+    }
+
+    // ================================================================
+    // Input handling
+    // ================================================================
+
+    _onKeyDown(e) {
         if (e.key === 'Enter') {
             e.preventDefault();
-            this._sendMessage();
+            this._send();
         } else if (e.key === 'Escape') {
             e.preventDefault();
             this.close();
         } else if (e.key === 'ArrowUp') {
             e.preventDefault();
-            this._navigateInputHistory(-1);
+            this._historyNav(-1);
         } else if (e.key === 'ArrowDown') {
             e.preventDefault();
-            this._navigateInputHistory(1);
+            this._historyNav(1);
         } else if (e.key === 'Tab') {
             e.preventDefault();
-            this._selectSuggestion();
+            e.shiftKey ? this._shiftTab() : this._tab();
         }
     }
 
-    /**
-     * Handle input change (for command suggestions).
-     */
     _onInputChange() {
-        const text = this.input.value;
-
-        // Show suggestions for commands starting with /
-        if (text.startsWith('/')) {
-            const cmdPart = text.slice(1).toLowerCase();
-            this._updateSuggestions(cmdPart);
-        } else {
-            this._hideSuggestions();
+        const v = this.input.value;
+        if (v.startsWith('/')) {
+            const parts = v.slice(1).split(/\s+/);
+            // Show suggestions only while typing command name (no space after it yet)
+            if (parts.length <= 1) {
+                this._updateSuggestions(parts[0].toLowerCase());
+                return;
+            }
         }
+        this._hideSuggestions();
     }
 
-    /**
-     * Update command suggestions.
-     */
+    _send() {
+        const text = this.input.value.trim();
+        if (!text) return;
+
+        this.inputHistory.push(text);
+        if (this.inputHistory.length > this.maxInputHistory) this.inputHistory.shift();
+        this.inputHistoryIndex = -1;
+
+        PythonAPI.sendChatMessage(text);
+        this.input.value = '';
+        this.close();
+    }
+
+    // ================================================================
+    // Input history (arrow up/down)
+    // ================================================================
+
+    _historyNav(dir) {
+        if (!this.inputHistory.length) return;
+
+        if (this.inputHistoryIndex === -1) {
+            this.currentInputBackup = this.input.value;
+        }
+
+        this.inputHistoryIndex += dir;
+        if (this.inputHistoryIndex < -1) this.inputHistoryIndex = -1;
+        if (this.inputHistoryIndex >= this.inputHistory.length) {
+            this.inputHistoryIndex = this.inputHistory.length - 1;
+        }
+
+        this.input.value = this.inputHistoryIndex === -1
+            ? this.currentInputBackup
+            : this.inputHistory[this.inputHistory.length - 1 - this.inputHistoryIndex];
+    }
+
+    // ================================================================
+    // Command suggestions
+    // ================================================================
+
     _updateSuggestions(filter) {
         this.currentSuggestions = [];
-
-        // Find matching commands
         for (const [cmd, desc] of Object.entries(this.commands)) {
             if (cmd.startsWith(filter) || filter === '') {
                 this.currentSuggestions.push({ cmd, desc });
             }
+            if (this.currentSuggestions.length >= this.maxSuggestions) break;
         }
 
         if (this.currentSuggestions.length > 0) {
-            this._showSuggestions();
+            this.selectedSuggestion = -1;
+            this._renderSuggestions();
+            this.suggestionsEl.classList.add('visible');
         } else {
             this._hideSuggestions();
         }
     }
 
-    /**
-     * Show command suggestions.
-     */
-    _showSuggestions() {
+    _renderSuggestions() {
         this.suggestionsContent.innerHTML = '';
-        this.selectedSuggestion = -1;
-
-        this.currentSuggestions.forEach((item, index) => {
+        this.currentSuggestions.forEach((item, i) => {
             const div = document.createElement('div');
             div.className = 'chat-suggestion-item';
-            div.innerHTML = `<span class="cmd">/${item.cmd}</span> — <span class="desc">${item.desc}</span>`;
-
+            if (i === this.selectedSuggestion) div.classList.add('selected');
+            div.innerHTML = `<span class="cmd">/${item.cmd}</span><span class="desc">${item.desc}</span>`;
             div.addEventListener('click', () => {
                 this.input.value = `/${item.cmd} `;
                 this.input.focus();
                 this._hideSuggestions();
             });
-
             this.suggestionsContent.appendChild(div);
         });
-
-        this.suggestionsContainer.style.display = 'block';
     }
 
-    /**
-     * Hide command suggestions.
-     */
     _hideSuggestions() {
-        this.suggestionsContainer.style.display = 'none';
+        this.suggestionsEl.classList.remove('visible');
         this.currentSuggestions = [];
         this.selectedSuggestion = -1;
     }
 
     /**
-     * Select suggestion with Tab.
+     * Tab — cycle forward. If only one match, insert immediately.
+     * If on last item, insert. Otherwise advance selection.
      */
-    _selectSuggestion() {
-        if (this.currentSuggestions.length === 0) return;
+    _tab() {
+        if (!this.currentSuggestions.length) return;
 
-        // Auto-complete first suggestion
-        const first = this.currentSuggestions[0];
-        this.input.value = `/${first.cmd} `;
+        // Single match → insert right away
+        if (this.currentSuggestions.length === 1) {
+            this.selectedSuggestion = 0;
+            this._insertSuggestion();
+            return;
+        }
+
+        if (this.selectedSuggestion === -1) {
+            this.selectedSuggestion = 0;
+        } else {
+            const next = this.selectedSuggestion + 1;
+            if (next >= this.currentSuggestions.length) {
+                this._insertSuggestion();
+                return;
+            }
+            this.selectedSuggestion = next;
+        }
+        this._renderSuggestions();
+    }
+
+    /**
+     * Shift-Tab — cycle backward, wrap around.
+     */
+    _shiftTab() {
+        if (!this.currentSuggestions.length) return;
+
+        if (this.selectedSuggestion <= 0) {
+            this.selectedSuggestion = this.currentSuggestions.length - 1;
+        } else {
+            this.selectedSuggestion--;
+        }
+        this._renderSuggestions();
+    }
+
+    _insertSuggestion() {
+        if (this.selectedSuggestion < 0) return;
+        const item = this.currentSuggestions[this.selectedSuggestion];
+        this.input.value = `/${item.cmd} `;
+        this.input.focus();
         this._hideSuggestions();
     }
 
-    /**
-     * Navigate input history with arrow keys.
-     */
-    _navigateInputHistory(direction) {
-        if (this.inputHistory.length === 0) return;
+    // ================================================================
+    // Helpers
+    // ================================================================
 
-        // Backup current input if starting navigation
-        if (this.inputHistoryIndex === -1) {
-            this.currentInputBackup = this.input.value;
-        }
-
-        // Navigate
-        this.inputHistoryIndex += direction;
-
-        // Clamp
-        if (this.inputHistoryIndex < -1) {
-            this.inputHistoryIndex = -1;
-        }
-        if (this.inputHistoryIndex >= this.inputHistory.length) {
-            this.inputHistoryIndex = this.inputHistory.length - 1;
-        }
-
-        // Update input
-        if (this.inputHistoryIndex === -1) {
-            this.input.value = this.currentInputBackup;
-        } else {
-            this.input.value = this.inputHistory[this.inputHistory.length - 1 - this.inputHistoryIndex];
-        }
-    }
-
-    /**
-     * Send message.
-     */
-    _sendMessage() {
-        const text = this.input.value.trim();
-        if (!text) return;
-
-        // Add to input history
-        this.inputHistory.push(text);
-        if (this.inputHistory.length > this.maxInputHistory) {
-            this.inputHistory.shift();
-        }
-        this.inputHistoryIndex = -1;
-
-        // Send to Python
-        console.log(`[ChatWindow] Sending message: ${text}`);
-        PythonAPI.sendChatMessage(text);
-
-        // Clear input
-        this.input.value = '';
-
-        // Close chat
-        this.close();
-    }
-
-    /**
-     * Scroll history to bottom.
-     */
     _scrollToBottom() {
-        this.historyContainer.scrollTop = this.historyContainer.scrollHeight;
+        this.historyScroll.scrollTop = this.historyScroll.scrollHeight;
     }
 
-    /**
-     * Rebuild history display (when opening chat).
-     */
     _rebuildHistory() {
         this.historyContent.innerHTML = '';
-
-        // Show last N messages
         const start = Math.max(0, this.messageHistory.length - 100);
         for (let i = start; i < this.messageHistory.length; i++) {
-            this._addMessageToHistory(this.messageHistory[i]);
+            this._appendHistoryMsg(this.messageHistory[i]);
         }
     }
 
-    /**
-     * Clean up and destroy the component.
-     */
     destroy() {
-        document.removeEventListener('keydown', this.globalKeyHandler);
-        window.removeEventListener('python-message', this.pythonMessageHandler);
-
-        if (this.element) {
-            this.element.remove();
-            this.element = null;
-        }
-
-        console.log('[ChatWindow] Destroyed');
+        document.removeEventListener('keydown', this._globalKey);
+        window.removeEventListener('python-message', this.pythonHandler);
+        if (this.element) { this.element.remove(); this.element = null; }
     }
 }
 
-// ChatWindow is persistent, not managed by router
 window.ChatWindow = ChatWindow;
