@@ -363,10 +363,14 @@ class ActionBar(PluginModule):
 
     def _on_combat_started(self, data: dict):
         """Обрабатывает начало боя."""
+        if self.app.ui_is_web:
+            return  # Web UI handles display via GameHUD
         self._create_ui()
 
     def _on_combat_ended(self, data: dict):
         """Обрабатывает окончание боя."""
+        if self.app.ui_is_web:
+            return
         self._destroy_ui()
 
         # Отвязываем горячие клавиши
@@ -377,14 +381,16 @@ class ActionBar(PluginModule):
         """Обрабатывает начало хода."""
         is_my_turn = data.get("is_player", False)
         resources = data.get("resources", {})
-
         self.movement_speed = resources.get("movement", 30.0)
+
+        if self.app.ui_is_web:
+            return  # Web UI handles display via GameHUD
         self._update_resources(resources)
         self._set_enabled(is_my_turn)
 
     def _on_action_result(self, data: dict):
         """Обрабатывает результат действия."""
-        # Обновляем ресурсы после действия
+        # Обновляем ресурсы после действия (state tracking for all backends)
         result = data.get("result", {})
 
         if result.get("success"):
@@ -403,6 +409,9 @@ class ActionBar(PluginModule):
             # Обновляем движение если был Dash
             if action_id == "dash" and "new_movement" in result:
                 self.movement_remaining = result["new_movement"]
+
+            if self.app.ui_is_web:
+                return  # Web UI handles display via GameHUD
 
             self._update_resources({
                 "movement": self.movement_remaining,

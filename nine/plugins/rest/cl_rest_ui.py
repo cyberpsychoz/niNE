@@ -238,6 +238,8 @@ class RestUIClientModule(PluginModule, DirectObject):
 
     def _on_show_rest_dialog(self, data: dict):
         """Запрос на показ диалога отдыха."""
+        if self.app.ui_is_web:
+            return  # Web UI handles rest dialogs
         rest_type = data.get("rest_type", "short")
         self.show_rest_dialog(rest_type)
 

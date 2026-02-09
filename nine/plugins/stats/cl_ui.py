@@ -149,11 +149,12 @@ class StatsUIModule(PluginModule):
         new_state = data.get("new_state")
 
         if new_state == GameState.MENU:
-            self.hide_hud()
-            self.destroy_ui()
             self._cached_character = None
+            if not self.app.ui_is_web:
+                self.hide_hud()
+                self.destroy_ui()
         elif new_state == GameState.IN_GAME:
-            if self._cached_character:
+            if self._cached_character and not self.app.ui_is_web:
                 self._apply_character_data(self._cached_character)
 
     def create_ui(self):
@@ -256,6 +257,9 @@ class StatsUIModule(PluginModule):
         """Обновление данных персонажа от сервера."""
         character = data.get("character", {})
         self._cached_character = character
+
+        if self.app.ui_is_web:
+            return  # Web UI handles display via GameHUD
 
         # Если в меню - только кешируем
         if hasattr(self.app, 'ui') and hasattr(self.app.ui, 'game_state'):

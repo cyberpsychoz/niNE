@@ -21,7 +21,13 @@ async def read_messages(reader: asyncio.StreamReader, message_handler):
             if not payload:
                 break
             data = json.loads(payload.decode("utf-8"))
-            message_handler(data)
+            try:
+                message_handler(data)
+            except Exception as e:
+                import traceback
+                print(f"Error handling message {data.get('type', '?')}: {e}")
+                traceback.print_exc()
+                # Continue reading — don't kill the loop for handler errors
         except (asyncio.IncompleteReadError, ConnectionResetError):
             print("Connection lost.")
             break

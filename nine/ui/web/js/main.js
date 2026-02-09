@@ -6,6 +6,8 @@ console.log('[Main] niNE Web UI starting...');
 
 // Global chat window instance (persistent)
 window.chatWindow = null;
+// Global game HUD instance (persistent)
+window.gameHUD = null;
 
 // Wait for DOM ready
 document.addEventListener('DOMContentLoaded', async () => {
@@ -15,13 +17,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.chatWindow = new ChatWindow();
     await window.chatWindow.render();
 
-    // Show main menu by default
-    window.router.navigate('main-menu');
+    // Initialize persistent game HUD
+    window.gameHUD = new GameHUD();
+    await window.gameHUD.init();
 
-    console.log('[Main] niNE Web UI initialized');
+    // Do NOT navigate here - Python side controls initial navigation
+    // via show_main_menu() which also passes background images.
+    // Navigating here would cause a double-render flash.
+
+    console.log('[Main] niNE Web UI initialized, waiting for Python navigation');
 });
 
-// Debug: Log all Python messages
+// Debug: Log Python messages (skip frequent events)
 window.addEventListener('python-message', (event) => {
-    console.log('[Main] Python message:', event.detail);
+    const type = event.detail && event.detail.type;
+    if (type !== 'world_state') {
+        console.log('[Main] Python message:', type);
+    }
 });

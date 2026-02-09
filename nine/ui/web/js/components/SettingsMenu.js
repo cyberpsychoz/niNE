@@ -24,8 +24,8 @@ class SettingsMenu {
         // Get element reference
         this.element = document.getElementById('settings-menu-screen');
 
-        // Load current settings from params
-        this.loadSettings();
+        // Load current settings from params (with async fallback)
+        await this.loadSettings();
 
         // Attach event listeners
         this.attachEventListeners();
@@ -33,14 +33,27 @@ class SettingsMenu {
         // Attach slider value updates
         this.attachSliderListeners();
 
+        // Replace native <select> with custom dropdowns (CEF offscreen fix)
+        if (window.initCustomSelects) initCustomSelects();
+
         console.log('[SettingsMenu] Rendered');
     }
 
     /**
-     * Load settings from params or use defaults.
+     * Load settings from params, falling back to Python API.
      */
-    loadSettings() {
-        const settings = this.params.settings || {};
+    async loadSettings() {
+        let settings = this.params.settings;
+        if (!settings) {
+            try {
+                settings = await PythonAPI.getSettings();
+                console.log('[SettingsMenu] Settings loaded from Python API');
+            } catch (e) {
+                console.warn('[SettingsMenu] Failed to load settings from API:', e);
+                settings = {};
+            }
+        }
+        if (!settings) settings = {};
 
         // General
         this.setInputValue('setting-nickname', settings.nickname || 'Player');
@@ -183,7 +196,7 @@ class SettingsMenu {
     /**
      * Collect and save settings.
      */
-    saveSettings() {
+    async saveSettings() {
         const settings = {
             // General
             nickname: document.getElementById('setting-nickname').value.trim(),
@@ -208,11 +221,12 @@ class SettingsMenu {
 
         console.log('[SettingsMenu] Saving settings:', settings);
 
-        // Call Python API to save
-        PythonAPI.saveSettings(settings);
-
-        // Visual feedback
-        this.showSaveConfirmation();
+        try {
+            await PythonAPI.saveSettings(settings);
+            this.showSaveConfirmation();
+        } catch (e) {
+            console.error('[SettingsMenu] Save failed:', e);
+        }
     }
 
     /**

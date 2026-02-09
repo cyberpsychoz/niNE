@@ -40,8 +40,9 @@ class QuestLogClientModule(PluginModule, DirectObject):
         self._selected_quest: Optional[dict] = None
         self._current_filter: str = "active"
 
-        # Биндим клавишу J
-        self.accept("j", self.toggle_quest_log)
+        # Биндим клавишу J (only for DirectGUI mode)
+        if not self.app.ui_is_web:
+            self.accept("j", self.toggle_quest_log)
 
         # Подписки на события
         self.event_manager.subscribe("quest_list", self._on_quest_list)

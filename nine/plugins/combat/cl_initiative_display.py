@@ -278,6 +278,9 @@ class InitiativeDisplay(PluginModule):
         self.participants_data = data.get("participants", [])
         self.turn_order = data.get("turn_order", [])
 
+        if self.app.ui_is_web:
+            return  # Web UI handles display via GameHUD
+
         self._create_ui()
         self._update_participants_list()
 
@@ -285,13 +288,17 @@ class InitiativeDisplay(PluginModule):
 
     def _on_combat_ended(self, data: dict):
         """Обрабатывает окончание боя."""
-        self._destroy_ui()
         self.participants_data = []
         self.turn_order = []
         self.current_turn_entity = None
+        if self.app.ui_is_web:
+            return
+        self._destroy_ui()
 
     def _on_turn_start(self, data: dict):
         """Обрабатывает начало нового хода."""
+        if self.app.ui_is_web:
+            return
         entity_id = data.get("entity_id")
         round_num = data.get("round", 1)
 
@@ -303,6 +310,8 @@ class InitiativeDisplay(PluginModule):
 
     def _on_action_result(self, data: dict):
         """Обрабатывает результат действия (обновление HP)."""
+        if self.app.ui_is_web:
+            return
         result = data.get("result", {})
 
         target_id = data.get("target_id")

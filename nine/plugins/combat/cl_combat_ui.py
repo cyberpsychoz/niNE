@@ -55,6 +55,8 @@ class CombatUI(PluginModule):
 
     def _show_turn_indicator(self, entity_name: str, is_my_turn: bool):
         """Показывает индикатор чьего хода."""
+        if self.app.ui_is_web:
+            return  # Web UI handles display via event forwarding
         self._hide_turn_indicator()
 
         if is_my_turn:
@@ -154,6 +156,8 @@ class CombatUI(PluginModule):
 
     def _show_message(self, text: str, color: tuple = (1, 1, 1, 1), duration: float = 2.0):
         """Показывает временное сообщение на экране."""
+        if self.app.ui_is_web:
+            return  # Web UI handles display via event forwarding
         msg = OnscreenText(
             text=text,
             pos=(0, 0.3),
@@ -180,6 +184,8 @@ class CombatUI(PluginModule):
 
     def _show_combat_start_banner(self):
         """Показывает баннер начала боя."""
+        if self.app.ui_is_web:
+            return
         banner = OnscreenText(
             text="БОЙ НАЧАЛСЯ!",
             pos=(0, 0),
@@ -196,6 +202,8 @@ class CombatUI(PluginModule):
 
     def _show_combat_end_banner(self, reason: str):
         """Показывает баннер окончания боя."""
+        if self.app.ui_is_web:
+            return
         if reason == "VICTORY":
             text = "ПОБЕДА!"
             color = (0.2, 1.0, 0.2, 1)

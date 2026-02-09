@@ -30,10 +30,11 @@ class ConditionDisplayClientModule(PluginModule, DirectObject):
         # ID локального игрока
         self._local_player_id: Optional[str] = None
 
-        # Создаём UI
-        self._create_ui()
+        # Only create DirectGUI when not using web UI
+        if not self.app.ui_is_web:
+            self._create_ui()
 
-        # Подписки на события
+        # Подписки на события (always — forwarding handles web UI)
         self.event_manager.subscribe("conditions_update", self._on_conditions_update)
         self.event_manager.subscribe("character_selected", self._on_character_selected)
         self.event_manager.subscribe("game_state_changed", self._on_game_state_changed)
@@ -137,6 +138,9 @@ class ConditionDisplayClientModule(PluginModule, DirectObject):
 
         self._entity_conditions[entity_id] = conditions
 
+        if self.app.ui_is_web:
+            return  # Web UI handles display via GameHUD
+
         # Обновляем UI если это локальный игрок
         if entity_id == self._local_player_id:
             self._update_condition_display()
@@ -151,16 +155,25 @@ class ConditionDisplayClientModule(PluginModule, DirectObject):
             "entity_id": char_uuid,
         })
 
-        self._update_condition_display()
+        if not self.app.ui_is_web:
+            self._update_condition_display()
 
     def _on_game_state_changed(self, data: dict):
         """Изменение состояния игры."""
         state = data.get("state", "")
 
+        if self.app.ui_is_web:
+            if state == "disconnected":
+                self._entity_conditions.clear()
+                self._local_player_id = None
+            return
+
         if state == "playing":
-            self._condition_frame.show()
+            if self._condition_frame:
+                self._condition_frame.show()
         elif state == "disconnected":
-            self._condition_frame.hide()
+            if self._condition_frame:
+                self._condition_frame.hide()
             self._entity_conditions.clear()
             self._local_player_id = None
 

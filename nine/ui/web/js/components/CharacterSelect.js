@@ -71,12 +71,12 @@ class CharacterSelect {
         this.characters.forEach((char) => {
             const card = document.createElement('div');
             card.className = 'character-card';
-            card.dataset.charId = char.id;
+            card.dataset.charId = char.uuid;
 
             card.innerHTML = `
-                <div class="name">${char.name}</div>
+                <div class="name">${char.character_name}</div>
                 <div class="details">
-                    ${char.race} ${char.class_name} — Level ${char.level || 1}
+                    ${char.race} ${char.class || ''} — Level ${char.level || 1}
                 </div>
             `;
 
@@ -96,7 +96,7 @@ class CharacterSelect {
 
         // Update UI
         document.querySelectorAll('.character-card').forEach(card => {
-            if (card.dataset.charId === String(char.id)) {
+            if (card.dataset.charId === String(char.uuid)) {
                 card.classList.add('selected');
             } else {
                 card.classList.remove('selected');
@@ -111,9 +111,8 @@ class CharacterSelect {
         // Select button
         this.selectBtn.addEventListener('click', () => {
             if (this.selectedCharacter) {
-                console.log('[CharacterSelect] Character selected:', this.selectedCharacter.id);
-                // TODO: Send to Python
-                // PythonAPI.selectCharacter(this.selectedCharacter.id);
+                console.log('[CharacterSelect] Character selected:', this.selectedCharacter.uuid);
+                PythonAPI.selectCharacter(this.selectedCharacter.uuid);
             }
         });
 
