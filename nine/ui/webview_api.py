@@ -187,6 +187,10 @@ class WebViewAPI:
     def set_chat_active(self, active: bool):
         """Set chat active state (called from JavaScript when chat opens/closes)."""
         self.app._web_chat_active = bool(active)
+        # Reset movement keys to prevent stuck walking when chat opens
+        if active and hasattr(self.app, 'keyMap'):
+            for key in self.app.keyMap:
+                self.app.keyMap[key] = False
         logger.debug(f"Chat active: {active}")
 
     def select_character(self, character_uuid: str):
