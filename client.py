@@ -384,8 +384,8 @@ class GameClient(ShowBase):
         self.logger.info(f"Map collision setup: {total_polys} wall polygons for camera")
 
     def update_key_map(self, key, state):
-        # Блокируем ввод движения когда чат открыт
-        if self.is_chat_active():
+        # Block key-down when chat is open, but allow key-up to prevent stuck keys
+        if self.is_chat_active() and state:
             return
         self.keyMap[key] = state
 
