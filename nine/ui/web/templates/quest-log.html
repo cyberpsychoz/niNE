@@ -1,0 +1,31 @@
+<!-- Quest Log Panel - persistent overlay -->
+<div id="quest-log-panel" class="panel-overlay hidden">
+    <div class="panel-container panel-wide">
+        <!-- Header -->
+        <div class="panel-header">
+            <span class="panel-title">Журнал заданий</span>
+            <button class="panel-close-btn" id="ql-close-btn">&times;</button>
+        </div>
+
+        <!-- Filter Buttons -->
+        <div class="ql-filters" id="ql-filters">
+            <button class="ql-filter-btn active" data-filter="active">Активные</button>
+            <button class="ql-filter-btn" data-filter="available">Доступные</button>
+            <button class="ql-filter-btn" data-filter="completed">Завершённые</button>
+            <button class="ql-filter-btn" data-filter="all">Все</button>
+        </div>
+
+        <!-- Two-column layout -->
+        <div class="ql-content">
+            <!-- Left: Quest List -->
+            <div class="ql-quest-list" id="ql-quest-list">
+                <div class="ql-empty-message">Нет заданий</div>
+            </div>
+
+            <!-- Right: Quest Details -->
+            <div class="ql-quest-detail" id="ql-quest-detail">
+                <div class="ql-detail-placeholder">Выберите задание</div>
+            </div>
+        </div>
+    </div>
+</div>

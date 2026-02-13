@@ -1,9 +1,58 @@
 /*
  * niNE Theme - Baldur's Gate 1 inspired
- * Dark fantasy aesthetic with gold accents
+ * Dark fantasy aesthetic with gold accents, stone UI
  */
 
-/* Fonts */
+/* Fonts — all loaded locally (no external @import) */
+@font-face {
+    font-family: 'Cinzel';
+    font-weight: 400;
+    font-style: normal;
+    src: url('/assets/fonts/Cinzel-Regular.ttf') format('truetype');
+}
+
+@font-face {
+    font-family: 'Cinzel';
+    font-weight: 600;
+    font-style: normal;
+    src: url('/assets/fonts/Cinzel-SemiBold.ttf') format('truetype');
+}
+
+@font-face {
+    font-family: 'Cinzel';
+    font-weight: 700;
+    font-style: normal;
+    src: url('/assets/fonts/Cinzel-Bold.ttf') format('truetype');
+}
+
+@font-face {
+    font-family: 'Cinzel Decorative';
+    font-weight: 400;
+    font-style: normal;
+    src: url('/assets/fonts/CinzelDecorative-Regular.ttf') format('truetype');
+}
+
+@font-face {
+    font-family: 'Cinzel Decorative';
+    font-weight: 700;
+    font-style: normal;
+    src: url('/assets/fonts/CinzelDecorative-Bold.ttf') format('truetype');
+}
+
+@font-face {
+    font-family: 'MedievalSharp';
+    font-weight: 400;
+    font-style: normal;
+    src: url('/assets/fonts/MedievalSharp.ttf') format('truetype');
+}
+
+@font-face {
+    font-family: 'Obelisk';
+    font-weight: 400;
+    font-style: normal;
+    src: url('/assets/fonts/Obelisk.ttf') format('truetype');
+}
+
 @font-face {
     font-family: 'Press Start 2P';
     font-weight: 400;
@@ -32,13 +81,14 @@
     --color-border: #8b7355;                         /* Brown border */
     --color-border-highlight: #d4af37;               /* Gold border */
 
-    --color-button-bg: rgba(60, 45, 30, 0.9);
-    --color-button-hover: rgba(80, 60, 40, 0.95);
-    --color-button-active: rgba(100, 75, 50, 1);
+    --color-button-bg: #3c2d1e;
+    --color-button-hover: #50402a;
+    --color-button-active: #644b32;
 
     /* Fonts */
-    --font-primary: 'Orbitron', 'Press Start 2P', monospace;
-    --font-secondary: 'Press Start 2P', monospace;
+    --font-primary: 'Cinzel', 'Orbitron', serif;
+    --font-secondary: 'Cinzel Decorative', 'Cinzel', serif;
+    --font-gothic: 'Obelisk', 'MedievalSharp', 'Cinzel Decorative', serif;
 
     /* Sizes */
     --spacing-xs: 8px;
@@ -61,6 +111,19 @@
     margin: 0;
     padding: 0;
     box-sizing: border-box;
+}
+
+/* CRITICAL: Reset native button appearance so CSS colors actually apply.
+   Without this, Chromium/CEF renders platform-native blue/gray buttons. */
+button {
+    appearance: none;
+    -webkit-appearance: none;
+    background: none;
+    border: none;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    padding: 0;
 }
 
 html, body {

@@ -200,47 +200,90 @@ app.run()
 
 ```
 nine/assets/models/
-├── base.bam          # Основная модель
-├── player.glb          # Исходник (для редактирования)
-└── source/             # Исходные файлы
+├── base.bam              # Основная модель (7 анимаций, 65 Mixamo joints)
+├── player2.bam           # Дополнительная модель (совместимый скелет)
+├── anims/                # Индивидуальные файлы анимаций (из base.bam)
+│   ├── idle.bam          # 252 кадра
+│   ├── walk_forward.bam  # 33 кадра
+│   ├── walk_backward.bam # 38 кадров
+│   ├── run_forward.bam   # 21 кадр
+│   ├── left_strafe.bam   # 21 кадр
+│   ├── right_strafe.bam  # 21 кадр
+│   └── t-pose.bam        # 3 кадра
+└── source/               # Исходные файлы
     ├── character.fbx
     ├── anim_idle.fbx
-    ├── anim_run.fbx
     └── ...
 ```
 
-## Использование в коде
+## Shared Animation Pipeline
 
-После конвертации обнови `client.py`:
+### Проблема
 
-```python
-def load_actor(self, player_id, color, is_local_player=False):
-    actor = Actor("nine/assets/models/base.bam")
-    actor.setScale(0.01)  # Подобрать под размер
-    actor.setColor(color)
-    actor.reparentTo(self.render)
-    actor.loop("idle")
-    # ...
-```
+Panda3D `Actor.loadAnims({"walk": "multi-anim.bam"})` использует `AnimBundleNode.findAnimBundle()` внутри, который **всегда** возвращает **первый** AnimBundle из файла. Если в BAM файле несколько анимаций, все имена получают одну и ту же анимацию.
 
-И `world.py` для правильных имён анимаций:
+### Решение: Split Animation Files
 
-```python
-anim_state = "idle"
-if self.character_controller.is_moving:
-    anim_state = "run"  # или "running" - как назвал в Blender
-```
+Анимации из `base.bam` разбиты на индивидуальные BAM файлы в `nine/assets/models/anims/`. Каждый файл содержит ровно один `AnimBundle`.
+
+**Как это работает:**
+
+1. `base.bam` содержит все анимации (idle, walk_forward, run_forward и т.д.)
+2. Скрипт извлекает каждый `AnimBundle` через `AnimControl.getAnim()`:
+   ```python
+   source = Actor("base.bam")
+   for name in source.getAnimNames():
+       control = source.getAnimControl(name)
+       bundle = control.getAnim()
+       node = AnimBundleNode(name, bundle)
+       NodePath(node).writeBamFile(f"anims/{name}.bam")
+   ```
+3. `cl_npc_renderer.py` загружает индивидуальные файлы:
+   ```python
+   actor.loadAnims({
+       "idle": "nine/assets/models/anims/idle.bam",
+       "walk_forward": "nine/assets/models/anims/walk_forward.bam",
+       "run_forward": "nine/assets/models/anims/run_forward.bam",
+       ...
+   })
+   ```
+
+### Добавление новой модели
+
+1. Скачать модель с Mixamo-совместимым скелетом (65 joints)
+2. Конвертировать через `tools/model_tool.py` или `gltf2bam` в BAM
+3. Добавить маппинг в `cl_npc_renderer.py`:
+   ```python
+   MODEL_FILE_MAP = {
+       "human_male": "nine/assets/models/player2.bam",
+       "my_new_model": "nine/assets/models/my_model.bam",
+   }
+   ```
+4. Анимации загрузятся автоматически из `anims/` при совместимом скелете
+
+### Добавление новых анимаций
+
+1. Добавить анимацию в base.bam (через Blender)
+2. Перезапустить скрипт разбивки для создания нового `.bam` файла
+3. Добавить имя в `SHARED_ANIMS` в `cl_npc_renderer.py`:
+   ```python
+   SHARED_ANIMS = [
+       "idle", "walk_forward", "walk_backward",
+       "run_forward", "left_strafe", "right_strafe",
+       "new_animation",  # <-- добавить здесь
+   ]
+   ```
 
 ## Советы
 
 ### Именование анимаций
 Называй Actions в Blender так же, как будешь использовать в коде:
 - `idle`
-- `run`
-- `walk`
-- `back`
-- `strafe_left`
-- `strafe_right`
+- `walk_forward`
+- `walk_backward`
+- `run_forward`
+- `left_strafe`
+- `right_strafe`
 
 ### Размер модели
 Mixamo модели обычно ~180 единиц высотой (сантиметры).
@@ -257,14 +300,21 @@ Mixamo модели обычно ~180 единиц высотой (сантим�
 | Анимации не видны | Проверь что экспортировал All Actions |
 | Модель слишком большая | Уменьши scale в коде или в Blender |
 | Анимация дёргается | Проверь Keyframe Reduction: none при скачивании |
+| Все анимации одинаковые | Используй split animation files, а не loadAnims с multi-anim BAM |
+| T-поза у NPC | Проверь совместимость скелета (65 Mixamo joints) |
 
 ## Быстрый чеклист
 
-- [ ] Скачал персонажа в T-pose (FBX)
-- [ ] Скачал анимации Without Skin, In Place, 30 FPS
-- [ ] Импортировал всё в Blender
-- [ ] Переименовал Actions понятно
-- [ ] Применил трансформации (Ctrl+A)
-- [ ] Экспортировал в GLB
-- [ ] Конвертировал в BAM через gltf2bam
+### Новая модель (с общими анимациями):
+- [ ] Модель имеет Mixamo-совместимый скелет (65 joints)
+- [ ] Конвертировал в BAM
+- [ ] Добавил в `MODEL_FILE_MAP` в `cl_npc_renderer.py`
+- [ ] Анимации из `anims/` загрузились автоматически
+- [ ] Проверил в игре
+
+### Новые анимации:
+- [ ] Скачал анимацию Without Skin, In Place, 30 FPS
+- [ ] Добавил в base.bam через Blender
+- [ ] Запустил скрипт разбивки анимаций
+- [ ] Добавил имя в `SHARED_ANIMS`
 - [ ] Проверил в игре

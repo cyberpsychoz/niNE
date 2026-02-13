@@ -298,6 +298,13 @@ class InventoryServerModule(PluginModule):
                 "description": getattr(entity, 'DESCRIPTION', ''),
                 "category": getattr(entity, 'CATEGORY', 'misc'),
                 "icon": getattr(entity, 'ICON', ''),
+                "rarity": getattr(entity, 'RARITY', 'common'),
+                "weight": getattr(entity, 'WEIGHT', 0.0),
+                "droppable": getattr(entity, 'DROPPABLE', True),
+                "can_equip": hasattr(entity, 'EQUIPMENT_SLOT') and getattr(entity, 'EQUIPMENT_SLOT', None) is not None,
+                "can_use": getattr(entity, 'CATEGORY', 'misc') == 'consumable',
+                "tooltip": entity.get_tooltip() if hasattr(entity, 'get_tooltip') else '',
+                "value": entity.get_value() if hasattr(entity, 'get_value') else 0,
             }
             items.append(item_data)
 

@@ -277,7 +277,7 @@ class NPCManager:
                         "behavior": "PATROL",
                         "aggro_radius": 8.0,
                         "attack_range": 2.0,
-                        "move_speed": 1.2
+                        "move_speed": 0.6
                     },
                     "CombatComponent": {
                         "hp_max": 22,
@@ -295,6 +295,21 @@ class NPCManager:
                         "interaction_prompt": "Поговорить"
                     }
                 },
+                "living": {
+                    "has_needs": True,
+                    "has_personality": True,
+                    "personality": {
+                        "traits": ["brave", "loyal"],
+                        "courage": 0.8,
+                        "aggression": 0.4
+                    },
+                    "has_schedule": True,
+                    "schedule": [
+                        {"hour_start": 6, "hour_end": 22, "activity": "patrolling"},
+                        {"hour_start": 22, "hour_end": 6, "activity": "sleeping",
+                         "location": [0, -5, 0]}
+                    ]
+                },
                 "tags": ["humanoid", "guard"]
             },
             "goblin": {
@@ -302,10 +317,12 @@ class NPCManager:
                 "model": "goblin",
                 "components": {
                     "AIComponent": {
-                        "behavior": "NEUTRAL",
+                        "behavior": "WANDER",
                         "aggro_radius": 5.0,
                         "attack_range": 1.5,
-                        "move_speed": 1.5
+                        "move_speed": 0.7,
+                        "wander_radius": 6.0,
+                        "wander_interval": 4.0
                     },
                     "CombatComponent": {
                         "hp_max": 7,
@@ -325,6 +342,16 @@ class NPCManager:
                         "gold": 5
                     }
                 },
+                "living": {
+                    "has_needs": True,
+                    "has_personality": True,
+                    "personality": {
+                        "traits": ["cowardly", "greedy"],
+                        "courage": 0.2,
+                        "aggression": 0.6,
+                        "greed": 0.8
+                    }
+                },
                 "tags": ["humanoid", "monster", "goblinoid"]
             },
             "merchant": {
@@ -333,7 +360,7 @@ class NPCManager:
                 "components": {
                     "AIComponent": {
                         "behavior": "IDLE",
-                        "move_speed": 1.0
+                        "move_speed": 0.5
                     },
                     "CombatComponent": {
                         "hp_max": 10,
@@ -355,6 +382,21 @@ class NPCManager:
                         "gold": 100
                     }
                 },
+                "living": {
+                    "has_needs": True,
+                    "has_personality": True,
+                    "personality": {
+                        "traits": ["honest", "patient"],
+                        "kindness": 0.7,
+                        "greed": 0.6
+                    },
+                    "has_schedule": True,
+                    "schedule": [
+                        {"hour_start": 8, "hour_end": 20, "activity": "trading"},
+                        {"hour_start": 20, "hour_end": 8, "activity": "sleeping",
+                         "location": [0, -5, 0]}
+                    ]
+                },
                 "tags": ["humanoid", "merchant", "npc"]
             },
             "skeleton": {
@@ -365,7 +407,7 @@ class NPCManager:
                         "behavior": "NEUTRAL",
                         "aggro_radius": 4.0,
                         "attack_range": 1.5,
-                        "move_speed": 1.2
+                        "move_speed": 0.6
                     },
                     "CombatComponent": {
                         "hp_max": 13,
@@ -451,10 +493,18 @@ class NPCManager:
 
         self.logger.info(f"Spawned NPC '{template_id}' at ({x:.1f}, {y:.1f}, {z:.1f}) [unified={self._unified_mode}]")
 
-        # Отправляем событие спавна
+        # Apply personality trait modifiers to AI parameters
+        living_data = template.get("living", {})
+        personality_data = living_data.get("personality", {})
+        if personality_data:
+            self._apply_trait_modifiers(entity, personality_data)
+
+        # Post spawn event (npc_id for living systems, entity_id for legacy)
         self.event_manager.post("npc_spawned", {
             "entity_id": entity.id,
+            "npc_id": entity.id,
             "template_id": template_id,
+            "template_data": template,
             "position": {"x": x, "y": y, "z": z, "rotation": rotation}
         })
 
@@ -543,8 +593,8 @@ class NPCManager:
         # Physics (for collision)
         ai_data = components_data.get("AIComponent", {})
         entity.add_component(UnifiedPhysicsComponent(
-            walk_speed=ai_data.get("move_speed", 1.5),
-            run_speed=ai_data.get("move_speed", 1.5) * 1.5,
+            walk_speed=ai_data.get("move_speed", 0.6),
+            run_speed=ai_data.get("move_speed", 0.6) * 1.5,
             has_collision=True
         ))
 
@@ -570,11 +620,34 @@ class NPCManager:
                 state=UnifiedAIState.IDLE,
                 aggro_radius=ai_data.get("aggro_radius", 10.0),
                 attack_range=ai_data.get("attack_range", 2.0),
-                move_speed=ai_data.get("move_speed", 1.5)
+                move_speed=ai_data.get("move_speed", 0.6)
             ))
 
         # Also add legacy components for backward compatibility with NPC systems
         self._add_legacy_components(entity, template, x, y, z, rotation, overrides)
+
+    def _apply_trait_modifiers(self, entity: Entity, personality_data: dict):
+        """Modify AI parameters based on personality traits."""
+        ai = entity.get_component(AIComponent)
+        if not ai:
+            return
+        traits = [t.lower() for t in personality_data.get("traits", [])]
+
+        if "brave" in traits:
+            ai.aggro_radius *= 1.3
+        if "cowardly" in traits:
+            ai.aggro_radius *= 0.5
+            ai.leash_radius *= 0.5
+        if "lazy" in traits:
+            ai.move_speed *= 0.7
+            ai.patrol_wait_time *= 2.0
+        if "patient" in traits:
+            ai.patrol_wait_time *= 1.5
+        if "curious" in traits:
+            ai.wander_radius *= 1.5
+
+        if traits:
+            self.logger.debug(f"Applied trait modifiers {traits} to {entity.id[:8]}")
 
     def despawn_npc(self, entity_id: str) -> bool:
         """
@@ -603,7 +676,7 @@ class NPCManager:
         if self.async_pathfinder:
             self.async_pathfinder.cancel_request(entity_id)
 
-        self.event_manager.post("npc_despawned", {"entity_id": entity_id})
+        self.event_manager.post("npc_despawned", {"entity_id": entity_id, "npc_id": entity_id})
         self.logger.info(f"Despawned NPC {entity_id[:8]}")
 
         return True
@@ -919,24 +992,33 @@ class NPCManager:
         self._spawn_test_npcs()
 
     def _spawn_test_npcs(self):
-        """Спавнит тестовых NPC."""
-        # Торговец
-        self.spawn_npc("merchant", x=5.0, y=0.0, z=1.0)
+        """Spawn test NPCs for alpha demonstration."""
+        # Merchant (IDLE with occasional wander at shop area)
+        self.spawn_npc("merchant", x=5.0, y=0.0, z=0.0)
 
-        # Патрульный страж
-        guard = self.spawn_npc("guard", x=10.0, y=5.0, z=1.0)
+        # Patrol guard #1 (4-point patrol route)
+        guard = self.spawn_npc("guard", x=10.0, y=5.0, z=0.0)
         if guard:
             ai = guard.get_component(AIComponent)
             if ai:
                 ai.patrol_points = [
-                    (10.0, 5.0, 1.0),
-                    (15.0, 5.0, 1.0),
-                    (15.0, 10.0, 1.0),
-                    (10.0, 10.0, 1.0)
+                    (10.0, 5.0, 0.0),
+                    (15.0, 5.0, 0.0),
+                    (15.0, 10.0, 0.0),
+                    (10.0, 10.0, 0.0)
                 ]
 
-        # Гоблин враг (отключено - вызывает автоматический бой)
-        # self.spawn_npc("goblin", x=-5.0, y=-5.0, z=1.0)
+        # Patrol guard #2 (different route, opposite side)
+        guard2 = self.spawn_npc("guard", x=-10.0, y=5.0, z=0.0)
+        if guard2:
+            ai2 = guard2.get_component(AIComponent)
+            if ai2:
+                ai2.patrol_points = [
+                    (-10.0, 5.0, 0.0),
+                    (-10.0, 10.0, 0.0),
+                    (-5.0, 10.0, 0.0),
+                    (-5.0, 5.0, 0.0)
+                ]
 
     def _on_player_update(self, data: dict):
         """Обновляет кэш данных игроков."""
@@ -951,7 +1033,7 @@ class NPCManager:
         pos = data.get("position", {})
         x = pos.get("x", 0)
         y = pos.get("y", 0)
-        z = pos.get("z", 1)
+        z = pos.get("z", 0)
         rotation = pos.get("rotation", 0)
 
         self.logger.info(f"[NPC_MANAGER] Спавним NPC: template={template_id}, pos=({x}, {y}, {z})")
@@ -1040,6 +1122,10 @@ class NPCManager:
         combat = entity.get_component(CombatComponent)
         ai = entity.get_component(AIComponent)
 
+        faction = entity.get_component(FactionComponent)
+        interaction = entity.get_component(InteractionComponent)
+        inventory = entity.get_component(InventoryComponent)
+
         data = {
             "entity_id": entity.id,
             "template_id": info.template_id if info else "",
@@ -1059,7 +1145,10 @@ class NPCManager:
             "hp_current": combat.hp_current if combat else 0,
             "hp_max": combat.hp_max if combat else 0,
             "is_dead": combat.is_dead if combat else False,
-            "ai_state": ai.state.name if ai else "IDLE"
+            "ai_state": ai.state.name if ai else "IDLE",
+            "interactions": [it.name.lower() for it in interaction.interactions] if interaction else ["talk"],
+            "hostile": faction.hostile_to_players if faction else False,
+            "is_merchant": inventory.is_merchant if inventory else False,
         }
 
         self._npc_network_data[entity.id] = data

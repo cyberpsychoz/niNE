@@ -61,6 +61,21 @@ PYAPI_INJECT_JS = """
             pyCall('get_settings', {});
             return window.__pyapi_settings || {};
         },
+        equip_item: function(data) { pyCall('equip_item', data); },
+        unequip_item: function(data) { pyCall('unequip_item', data); },
+        cast_spell: function(data) { pyCall('cast_spell', data); },
+        prepare_spell: function(data) { pyCall('prepare_spell', data); },
+        unprepare_spell: function(data) { pyCall('unprepare_spell', data); },
+        quest_list_request: function(data) { pyCall('quest_list_request', data); },
+        quest_abandon: function(data) { pyCall('quest_abandon', data); },
+        spend_hit_die: function(data) { pyCall('spend_hit_die', data || {}); },
+        finish_rest: function(data) { pyCall('finish_rest', data); },
+        update_description: function(data) { pyCall('update_description', data); },
+        item_use: function(data) { pyCall('item_use', data); },
+        item_drop: function(data) { pyCall('item_drop', data); },
+        panel_closed: function() { pyCall('panel_closed', {}); },
+        interact_with: function(data) { pyCall('interact_with', data); },
+        context_menu_closed: function() { pyCall('context_menu_closed', {}); },
     };
     console.log('[CEF] pyapi bridge injected');
 })();
@@ -100,6 +115,10 @@ class CEFUIManager:
         # Input handler (separate DirectObject to avoid conflicts with game)
         self._input = DirectObject()
         self._input_paused = False
+
+        # Panel state tracking (so escape can close panels before toggling in-game menu)
+        # None = no panel open, str = name of open panel
+        self._panel_open = None
 
         # Page loaded flag
         self._page_loaded = False
@@ -281,10 +300,9 @@ class CEFUIManager:
                     try:
                         size = width * height * 4
                         raw = ctypes.string_at(buffer, size)
-                        # BGRA -> RGBA: swap B and R channels
+                        # CEF gives BGRA pixels; Panda3D's setRamImage with
+                        # F_rgba also expects BGRA byte order — no channel swap needed.
                         arr = np.frombuffer(raw, dtype=np.uint8).copy()
-                        arr = arr.reshape(-1, 4)
-                        arr[:, [0, 2]] = arr[:, [2, 0]]
                         # Flip vertically for Panda3D (bottom-up)
                         arr = arr.reshape(height, width, 4)
                         arr = arr[::-1]
@@ -398,6 +416,9 @@ class CEFUIManager:
         self.app.taskMgr.add(self._update_texture, "cef-texture")
         self.app.taskMgr.add(self._mouse_move, "cef-mouse-move")
 
+        # Listen for window resize events
+        self.app.accept("window-event", self._on_window_event)
+
         # Setup input handlers
         self._setup_input()
 
@@ -501,6 +522,41 @@ class CEFUIManager:
             self.api.combat_action(args.get('action', ''), args.get('target', ''))
         elif method == 'set_chat_active':
             self.api.set_chat_active(args.get('active', False))
+        elif method == 'equip_item':
+            self.api.equip_item(args)
+        elif method == 'unequip_item':
+            self.api.unequip_item(args)
+        elif method == 'cast_spell':
+            self.api.cast_spell(args)
+        elif method == 'prepare_spell':
+            self.api.prepare_spell(args)
+        elif method == 'unprepare_spell':
+            self.api.unprepare_spell(args)
+        elif method == 'quest_list_request':
+            self.api.quest_list_request(args)
+        elif method == 'quest_abandon':
+            self.api.quest_abandon(args)
+        elif method == 'spend_hit_die':
+            self.api.spend_hit_die(args)
+        elif method == 'finish_rest':
+            self.api.finish_rest(args)
+        elif method == 'update_description':
+            self.api.update_description(args)
+        elif method == 'item_use':
+            self.api.item_use(args)
+        elif method == 'item_drop':
+            self.api.item_drop(args)
+        elif method == 'panel_closed':
+            self._panel_open = None
+            cc = getattr(self.app, 'camera_controller', None)
+            if cc:
+                cc.resume()
+        elif method == 'interact_with':
+            self.api.interact_with(args)
+        elif method == 'context_menu_closed':
+            pass  # JS-only state cleanup
+        else:
+            logger.warning(f"Unknown JS call: {method}")
 
     # ================================================================
     # Tasks
@@ -528,6 +584,32 @@ class CEFUIManager:
 
         return Task.cont
 
+    def _on_window_event(self, window):
+        """Handle Panda3D window resize — update CEF browser and texture."""
+        if window != self.app.win:
+            return
+        props = window.getProperties()
+        new_w = props.getXSize()
+        new_h = props.getYSize()
+        if new_w == self.width and new_h == self.height:
+            return
+        if new_w < 1 or new_h < 1:
+            return
+
+        self.width = new_w
+        self.height = new_h
+        logger.info(f"Window resized to {new_w}x{new_h}, updating CEF")
+
+        # Recreate the Panda3D texture at new size
+        self.texture.setup2dTexture(
+            self.width, self.height,
+            Texture.T_unsigned_byte, Texture.F_rgba
+        )
+
+        # Tell CEF the viewport size changed so it re-renders
+        if self._browser_host:
+            self._browser_host.contents.was_resized(self._browser_host)
+
     # ================================================================
     # Input
     # ================================================================
@@ -544,7 +626,7 @@ class CEFUIManager:
         self.app.buttonThrowers[0].node().setKeystrokeEvent('cef-keystroke')
         self._input.accept('cef-keystroke', self._on_keystroke)
 
-        for key in ['enter', 'backspace', 'tab', 'escape', 'delete',
+        for key in ['enter', 'backspace', 'escape', 'delete',
                      'home', 'end', 'arrow_up', 'arrow_down',
                      'arrow_left', 'arrow_right']:
             self._input.accept(key, self._on_special_key, [key])
@@ -558,6 +640,17 @@ class CEFUIManager:
 
         for key in ['arrow_left', 'arrow_right', 'home', 'end']:
             self._input.accept(f'control-shift-{key}', self._on_ctrl_shift_key, [key])
+
+        # Panel toggle shortcuts (handled Python-side because CEF offscreen
+        # doesn't reliably produce event.key for RAWKEYDOWN on Linux)
+        self._input.accept('i', self._on_panel_key, ['character-sheet'])
+        self._input.accept('k', self._on_panel_key, ['spellbook'])
+        self._input.accept('j', self._on_panel_key, ['quest-log'])
+
+        # Combat hotkeys (also Python-side for same reason)
+        for key in ['1', '2', '3', '4', '5']:
+            self._input.accept(key, self._on_combat_hotkey, [key])
+        self._input.accept('e', self._on_combat_hotkey, ['e'])
 
         logger.info("CEF input handlers registered")
 
@@ -671,6 +764,10 @@ class CEFUIManager:
     }
 
     def _on_special_key(self, key):
+        # Don't forward escape to CEF when a panel is open
+        # (handle_escape in client.py manages panel closing)
+        if key == 'escape' and self._panel_open:
+            return
         vk = self._VK_MAP.get(key)
         if vk is not None:
             self._send_key(vk)
@@ -694,6 +791,58 @@ class CEFUIManager:
                 vk, 0,
                 header.EVENTFLAG_CONTROL_DOWN | header.EVENTFLAG_SHIFT_DOWN
             )
+
+    def _on_panel_key(self, panel_name):
+        """Handle panel toggle shortcut from Panda3D input."""
+        # Don't toggle panels when chat is active
+        if getattr(self.app, '_web_chat_active', False):
+            return
+        # Don't toggle panels when in menu (not in game)
+        from nine.core.game_state import GameState
+        if self.game_state != GameState.IN_GAME:
+            return
+        # Don't toggle panels when in-game menu is active
+        if getattr(self.app, 'in_game_menu_active', False):
+            return
+        # Track panel state
+        if self._panel_open == panel_name:
+            self._panel_open = None
+            # Resume camera (re-lock cursor)
+            cc = getattr(self.app, 'camera_controller', None)
+            if cc:
+                cc.resume()
+        else:
+            self._panel_open = panel_name
+            # Pause camera (show cursor for panel interaction)
+            cc = getattr(self.app, 'camera_controller', None)
+            if cc:
+                cc.pause()
+        self.send_to_js("toggle_panel", {"panel": panel_name})
+
+    def _on_combat_hotkey(self, key):
+        """Handle combat hotkey from Panda3D input."""
+        if getattr(self.app, '_web_chat_active', False):
+            return
+        from nine.core.game_state import GameState
+        if self.game_state != GameState.IN_GAME:
+            return
+        if self._panel_open:
+            return
+        if getattr(self.app, 'in_game_menu_active', False):
+            return
+        self.send_to_js("combat_hotkey", {"key": key})
+
+    def _close_active_panel(self):
+        """Close any open panel. Returns True if a panel was closed."""
+        if self._panel_open:
+            self._panel_open = None
+            self.send_to_js("close_panel", {})
+            # Resume camera (re-lock cursor)
+            cc = getattr(self.app, 'camera_controller', None)
+            if cc:
+                cc.resume()
+            return True
+        return False
 
     # ================================================================
     # Input Pause/Resume
@@ -729,7 +878,7 @@ class CEFUIManager:
             backgrounds = [
                 f"/assets/materials/textures/backgrounds/{f.name}"
                 for f in bg_dir.iterdir()
-                if f.suffix.lower() in ('.jpg', '.jpeg', '.png', '.webp')
+                if f.suffix.lower() in ('.jpg', '.jpeg', '.png', '.webp', '.gif')
             ]
         self.send_to_js("navigate", {
             "screen": "main-menu",
@@ -779,6 +928,8 @@ class CEFUIManager:
         self.send_to_js("navigate", {"screen": "hidden"})
 
     def show_in_game_menu(self, client=None):
+        self._panel_open = None  # Clear panel state when entering menu
+        self.send_to_js("close_panel", {})
         self.send_to_js("navigate", {"screen": "in-game-menu"})
 
     def hide_in_game_menu(self):

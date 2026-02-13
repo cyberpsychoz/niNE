@@ -68,23 +68,65 @@ For backward compatibility, the NPC plugin still supports:
 
 ### AI Behaviors (`AIBehavior` enum)
 
-- `IDLE` - Stands still, doesn't move
-- `PATROL` - Follows patrol points
-- `WANDER` - Random movement in area
-- `HOSTILE` - Attacks players on sight
+- `IDLE` - Stands still, doesn't move (with occasional wander every ~8s, 30% chance)
+- `PATROL` - Follows patrol points with configurable wait times
+- `WANDER` - Random movement within `wander_radius` from spawn point
+- `HOSTILE` - Attacks players on sight within `aggro_radius`
 - `FOLLOW` - Follows a target entity
 - `FLEE` - Flees from threats
-- `SCHEDULE` - Follows a daily schedule
+- `SCHEDULE` - Follows a daily schedule (linked to game time system)
+- `NEUTRAL` - Doesn't attack first, defends if provoked
 
 ### AI States (`AIState` enum)
 
-- `IDLE` - Resting
+- `IDLE` - Resting (wanders occasionally)
 - `MOVING` - Moving to a destination
 - `ATTACKING` - In attack range, attacking target
 - `PURSUING` - Chasing a target
 - `FLEEING` - Running away
 - `INTERACTING` - Interacting with player/object
 - `DEAD` - NPC is dead
+
+### AI LOD System
+
+Distance-based throttling of AI updates to support 300+ NPCs:
+
+| LOD Level | Distance | Think Interval |
+|-----------|----------|----------------|
+| NEAR | 0-30m | 0.5s |
+| MEDIUM | 30-60m | 1.0s |
+| FAR | 60-100m | 2.0s |
+| SLEEPING | 100m+ | 5.0s |
+
+**Important:** When no players are connected, all NPCs are treated as `NEAR` (not SLEEPING). This ensures guards patrol and NPCs behave correctly even before players join.
+
+### Behavior Overrides (Living World Integration)
+
+The AI system supports dynamic behavior overrides from the Living World systems:
+
+- `npc_urgent_need` event → overrides current behavior (SEEK_FOOD, SEEK_REST, FLEE)
+- `npc_activity_changed` event → schedule-driven overrides (sleeping, eating, socializing)
+
+Override priorities: urgent needs > schedule > default behavior.
+
+### Trait Modifiers
+
+NPC personality traits modify AI parameters at spawn time:
+
+| Trait | Effect |
+|-------|--------|
+| `brave` | aggro_radius * 1.3 |
+| `cowardly` | aggro_radius * 0.5, leash_radius * 0.5 |
+| `lazy` | move_speed * 0.7, patrol_wait_time * 2.0 |
+| `patient` | patrol_wait_time * 1.5 |
+| `curious` | wander_radius * 1.5 |
+
+### Wander Behavior
+
+IDLE NPCs periodically wander to add life to the world:
+- Every ~8 seconds, 30% chance to pick a random point
+- Wander distance: 0.5-2.0 units from spawn point
+- `wander_center` saved at first wander to prevent drift
 
 ### Combat Integration
 
@@ -184,36 +226,57 @@ world_state = {
 
 ## NPC Templates
 
-Templates are defined in `sv_npc_manager.py`:
+Templates are defined in `sv_npc_manager.py`. Templates now include `living` data for integration with the Living World systems:
 
 ```python
-"goblin": {
-    "display_name": "Goblin",
-    "model": "goblin",
+"guard": {
+    "display_name": "Town Guard",
+    "model": "human_male",
     "components": {
         "AIComponent": {
-            "behavior": "HOSTILE",
-            "aggro_radius": 12.0,
+            "behavior": "PATROL",
+            "aggro_radius": 8.0,
             "attack_range": 1.5,
-            "move_speed": 1.5
+            "move_speed": 1.2,
+            "patrol_points": [[5.0, 5.0, 0.0], [-5.0, 5.0, 0.0], ...]
         },
         "CombatComponent": {
-            "hp_max": 7,
-            "hp_current": 7,
-            "armor_class": 15,
-            "attack_bonus": 4,
-            "damage_dice": "1d6",
-            "damage_bonus": 2,
-            "cr": 0.25
+            "hp_max": 22, "hp_current": 22,
+            "armor_class": 16, "attack_bonus": 4,
+            "damage_dice": "1d8", "damage_bonus": 2, "cr": 0.5
         },
         "FactionComponent": {
-            "faction_id": "monsters",
-            "hostile_to_players": True
+            "faction_id": "town",
+            "hostile_to_players": False
         }
     },
-    "tags": ["humanoid", "monster", "goblinoid"]
+    "living": {
+        "has_needs": True,
+        "has_personality": True,
+        "personality": {
+            "traits": ["brave", "loyal"],
+            "courage": 0.8,
+            "aggression": 0.4
+        },
+        "has_schedule": True,
+        "schedule": [
+            {"hour_start": 6, "hour_end": 22, "activity": "patrolling"},
+            {"hour_start": 22, "hour_end": 6, "activity": "sleeping", "location": [0, -5, 0]}
+        ]
+    },
+    "tags": ["humanoid", "guard", "town"]
 }
 ```
+
+### Available Templates
+
+| Template | Behavior | Living | Description |
+|----------|----------|--------|-------------|
+| `guard` | PATROL | needs, personality (brave/loyal), schedule | Town guard with patrol route |
+| `guard_south` | PATROL | needs, personality (brave/patient), schedule | Second patrol guard |
+| `goblin` | WANDER | needs, personality (cowardly/greedy) | Wandering goblin scout |
+| `merchant` | IDLE | needs, personality (charismatic/patient), schedule | Town merchant |
+| `skeleton` | HOSTILE | — | Undead skeleton |
 
 ## Chat Commands
 

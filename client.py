@@ -59,6 +59,17 @@ class GameClient(ShowBase):
             self.asyncio_loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.asyncio_loop)
 
+        # Apply saved resolution BEFORE creating the window
+        try:
+            with open("config.json") as f:
+                _cfg = json.load(f)
+            res = _cfg.get("resolution", "")
+            if "x" in res:
+                w, h = res.split("x")
+                loadPrcFileData("", f"win-size {w} {h}")
+        except Exception:
+            pass
+
         ShowBase.__init__(self)
         self.disableMouse()
 
@@ -301,12 +312,64 @@ class GameClient(ShowBase):
 
         except Exception as e:
             self.logger.error(f"Failed to load map {model_path}: {e}")
-            # Fallback: simple ground plane
-            cm = CardMaker("ground")
-            cm.setFrame(-100, 100, -100, 100)
-            self.map_model = self.render.attachNewNode(cm.generate())
-            self.map_model.setP(-90)
-            self.map_model.setColor(0.2, 0.25, 0.2, 1)
+            # Fallback: procedural test level
+            self._generate_test_level()
+
+    def _generate_test_level(self):
+        """Generates a visual test level matching the server's _create_test_map() layout.
+
+        The server creates collision boxes at specific positions — this renders
+        visible cubes at the exact same positions so visuals match collision.
+        """
+        from panda3d.core import CardMaker, LColor
+
+        self.logger.info("Generating procedural test level...")
+
+        # Root node for the entire test level
+        self.map_model = self.render.attachNewNode("test_level")
+
+        # --- Ground platform (large flat plane) ---
+        cm = CardMaker("ground")
+        cm.setFrame(-50, 50, -50, 50)
+        ground = self.map_model.attachNewNode(cm.generate())
+        ground.setP(-90)
+        ground.setPos(0, 0, 0)
+        ground.setColor(0.3, 0.35, 0.25, 1)
+
+        # --- Blocks matching server _create_test_map() ---
+        # Format: (name, (cx, cy, bottom_z), (width, depth, height), color)
+        # Position is center-bottom, same as server's _create_collision_box.
+        test_blocks = [
+            ("block_red",   (5, 0, 0),    (2, 2, 2),      LColor(0.7, 0.3, 0.3, 1)),
+            ("block_green", (-5, 3, 0),   (1.5, 1.5, 3),  LColor(0.3, 0.6, 0.3, 1)),
+            ("block_blue",  (0, 8, 0),    (3, 1, 1.5),    LColor(0.3, 0.3, 0.7, 1)),
+            ("wall_north",  (0, 15, 0),   (20, 0.5, 3),   LColor(0.5, 0.5, 0.5, 1)),
+            ("wall_south",  (0, -15, 0),  (20, 0.5, 3),   LColor(0.5, 0.5, 0.5, 1)),
+            ("wall_east",   (15, 0, 0),   (0.5, 15, 3),   LColor(0.5, 0.5, 0.5, 1)),
+            ("wall_west",   (-15, 0, 0),  (0.5, 15, 3),   LColor(0.5, 0.5, 0.5, 1)),
+            ("step_1",      (8, -5, 0),   (2, 2, 0.3),    LColor(0.6, 0.5, 0.4, 1)),
+            ("step_2",      (8, -8, 0),   (2, 2, 0.6),    LColor(0.6, 0.5, 0.4, 1)),
+            ("step_3",      (8, -11, 0),  (2, 2, 1.0),    LColor(0.6, 0.5, 0.4, 1)),
+        ]
+
+        # rgbCube is centered at origin: extends (-0.5,-0.5,-0.5) to (0.5,0.5,0.5).
+        # To match server box (center-bottom, width/depth/height):
+        #   scale = (width, depth, height)
+        #   pos   = (cx, cy, bottom_z + height/2)
+        for name, pos, size, color in test_blocks:
+            try:
+                cube = self.loader.loadModel("models/misc/rgbCube")
+                if not cube:
+                    continue
+            except Exception:
+                continue
+
+            cube.reparentTo(self.map_model)
+            cube.setScale(size[0], size[1], size[2])
+            cube.setPos(pos[0], pos[1], pos[2] + size[2] / 2)
+            cube.setColor(color)
+
+        self.logger.info(f"Test level generated: ground + {len(test_blocks)} blocks (matching server collision)")
 
     def _setup_map_collision(self):
         """Настраивает коллизии карты для камеры."""
@@ -405,9 +468,12 @@ class GameClient(ShowBase):
             # Always use server-authoritative movement (send input state to server)
             # Dev mode only affects connection behavior, not movement model
             self.input_task = self.taskMgr.add(self.send_input_task, "send-input-task")
-        # Start interpolation task for other players
+        # Start interpolation tasks
         if not self.taskMgr.hasTaskNamed("interpolate-players"):
             self.taskMgr.add(self.interpolate_other_players_task, "interpolate-players")
+        if not self.taskMgr.hasTaskNamed("interpolate-local-player"):
+            self._local_player_target = None
+            self.taskMgr.add(self._interpolate_local_player_task, "interpolate-local-player")
         # Start client-side animation prediction
         if not self.taskMgr.hasTaskNamed("update-movement"):
             self.taskMgr.add(self.update_movement_task, "update-movement")
@@ -512,6 +578,43 @@ class GameClient(ShowBase):
             target_rot = state.get('target_rot', [current_rot, 0, 0])[0]
             new_rot = self._lerp_angle(current_rot, target_rot, 10.0 * dt)
             wrapper.setH(new_rot)
+
+        return Task.cont
+
+    def _interpolate_local_player_task(self, task):
+        """Smoothly interpolate the local player's position from server updates."""
+        import time
+        dt = globalClock.getDt()
+        state = getattr(self, '_local_player_target', None)
+        if not state or not self.player_actor:
+            return Task.cont
+
+        current_pos = self.player_actor.getPos()
+        target_pos = state['target_pos']
+        vel = state.get('vel', LVector3(0, 0, 0))
+
+        # Predict position based on velocity and time since last update
+        time_since = time.time() - state.get('last_update', time.time())
+        predicted_pos = LVector3(target_pos) + vel * min(time_since, 0.1)
+
+        diff = predicted_pos - current_pos
+        dist = diff.length()
+
+        if dist < 0.01:
+            new_pos = predicted_pos
+        elif dist > 5.0:
+            new_pos = predicted_pos  # Teleport if too far
+        else:
+            lerp_speed = min(20.0, 8.0 + dist * 5.0)
+            new_pos = current_pos + diff * min(lerp_speed * dt, 1.0)
+
+        self.player_actor.setPos(new_pos)
+
+        # Smooth rotation
+        current_rot = self.player_actor.getH()
+        target_rot = state.get('target_rot', [current_rot, 0, 0])[0]
+        new_rot = self._lerp_angle(current_rot, target_rot, 15.0 * dt)
+        self.player_actor.setH(new_rot)
 
         return Task.cont
 
@@ -908,10 +1011,13 @@ class GameClient(ShowBase):
                         'last_update': time.time(),
                     }
                 else:
-                    # Server-authoritative mode: directly set own position
-                    # (applies to both normal and dev clients now)
-                    wrapper.setPos(*pos)
-                    wrapper.setHpr(*rot)
+                    # Store target for smooth interpolation (same as other players)
+                    self._local_player_target = {
+                        'target_pos': LVector3(*pos),
+                        'target_rot': rot,
+                        'vel': LVector3(*vel),
+                        'last_update': time.time(),
+                    }
 
                 # Update animations from server state
                 # Skip animation for local player — client-side prediction handles it
@@ -1050,8 +1156,14 @@ class GameClient(ShowBase):
         return False
 
     def handle_escape(self):
+        from nine.core.game_state import GameState
+        if self.ui.game_state != GameState.IN_GAME:
+            return
         if self.is_chat_active():
             self.event_manager.post("escape_key_pressed")
+            return
+        # Close any open panel first (character sheet, spellbook, quest log)
+        if hasattr(self.ui, '_close_active_panel') and self.ui._close_active_panel():
             return
         if self.in_game_menu_active:
             self.ui.hide_in_game_menu()

@@ -1,28 +1,28 @@
-<!-- Settings Menu - Game Configuration -->
-<div class="screen fade-in" id="settings-menu-screen">
+<!-- Settings Menu - Game Configuration (styles in css/main.css) -->
+<div class="screen fade-in decorated-screen" id="settings-menu-screen">
     <div class="settings-panel">
         <!-- Header -->
         <div class="settings-header">
-            <h1 class="settings-title">SETTINGS</h1>
+            <h1 class="settings-title">НАСТРОЙКИ</h1>
         </div>
 
         <!-- Tabs -->
         <div class="settings-tabs">
             <button class="tab-btn active" data-tab="general">
                 <span class="tab-icon">&#9881;</span>
-                General
+                Общее
             </button>
             <button class="tab-btn" data-tab="graphics">
                 <span class="tab-icon">&#9728;</span>
-                Graphics
+                Графика
             </button>
             <button class="tab-btn" data-tab="audio">
                 <span class="tab-icon">&#9835;</span>
-                Audio
+                Звук
             </button>
             <button class="tab-btn" data-tab="controls">
                 <span class="tab-icon">&#9000;</span>
-                Controls
+                Управление
             </button>
         </div>
 
@@ -32,16 +32,16 @@
             <div class="tab-content active" id="tab-general">
                 <div class="setting-row">
                     <div class="setting-info">
-                        <label class="setting-label">Nickname</label>
-                        <span class="setting-desc">Your display name in game</span>
+                        <label class="setting-label">Имя игрока</label>
+                        <span class="setting-desc">Ваше отображаемое имя в игре</span>
                     </div>
                     <input type="text" id="setting-nickname" class="setting-input" maxlength="20" />
                 </div>
 
                 <div class="setting-row">
                     <div class="setting-info">
-                        <label class="setting-label">Resolution</label>
-                        <span class="setting-desc">Game window resolution</span>
+                        <label class="setting-label">Разрешение</label>
+                        <span class="setting-desc">Разрешение игрового окна</span>
                     </div>
                     <select id="setting-resolution" class="setting-select">
                         <option value="800x600">800 x 600</option>
@@ -56,8 +56,8 @@
             <div class="tab-content" id="tab-graphics">
                 <div class="setting-row">
                     <div class="setting-info">
-                        <label class="setting-label">Field of View</label>
-                        <span class="setting-desc">Camera viewing angle</span>
+                        <label class="setting-label">Поле зрения</label>
+                        <span class="setting-desc">Угол обзора камеры</span>
                     </div>
                     <div class="setting-slider-group">
                         <input type="range" id="setting-fov" class="setting-slider"
@@ -68,8 +68,8 @@
 
                 <div class="setting-row">
                     <div class="setting-info">
-                        <label class="setting-label">PS1 Retro Effect</label>
-                        <span class="setting-desc">Enable low-poly visual style</span>
+                        <label class="setting-label">PS1 ретро-эффект</label>
+                        <span class="setting-desc">Визуальный стиль low-poly</span>
                     </div>
                     <label class="toggle">
                         <input type="checkbox" id="setting-ps1-effect" />
@@ -79,8 +79,8 @@
 
                 <div class="setting-row">
                     <div class="setting-info">
-                        <label class="setting-label">PS1 Resolution Scale</label>
-                        <span class="setting-desc">Lower = more pixelated</span>
+                        <label class="setting-label">Масштаб PS1</label>
+                        <span class="setting-desc">Меньше = больше пикселизация</span>
                     </div>
                     <div class="setting-slider-group">
                         <input type="range" id="setting-ps1-res" class="setting-slider"
@@ -94,8 +94,8 @@
             <div class="tab-content" id="tab-audio">
                 <div class="setting-row">
                     <div class="setting-info">
-                        <label class="setting-label">Master Volume</label>
-                        <span class="setting-desc">Overall game volume</span>
+                        <label class="setting-label">Общая громкость</label>
+                        <span class="setting-desc">Громкость всех звуков</span>
                     </div>
                     <div class="setting-slider-group">
                         <input type="range" id="setting-volume-master" class="setting-slider"
@@ -106,8 +106,8 @@
 
                 <div class="setting-row">
                     <div class="setting-info">
-                        <label class="setting-label">Music Volume</label>
-                        <span class="setting-desc">Background music</span>
+                        <label class="setting-label">Громкость музыки</label>
+                        <span class="setting-desc">Фоновая музыка</span>
                     </div>
                     <div class="setting-slider-group">
                         <input type="range" id="setting-volume-bgm" class="setting-slider"
@@ -118,8 +118,8 @@
 
                 <div class="setting-row">
                     <div class="setting-info">
-                        <label class="setting-label">Sound Effects</label>
-                        <span class="setting-desc">Combat and ambient sounds</span>
+                        <label class="setting-label">Звуковые эффекты</label>
+                        <span class="setting-desc">Боевые и окружающие звуки</span>
                     </div>
                     <div class="setting-slider-group">
                         <input type="range" id="setting-volume-sfx" class="setting-slider"
@@ -133,8 +133,8 @@
             <div class="tab-content" id="tab-controls">
                 <div class="setting-row">
                     <div class="setting-info">
-                        <label class="setting-label">Camera Sensitivity</label>
-                        <span class="setting-desc">Mouse look speed</span>
+                        <label class="setting-label">Чувствительность</label>
+                        <span class="setting-desc">Скорость обзора мышью</span>
                     </div>
                     <div class="setting-slider-group">
                         <input type="range" id="setting-camera-sens" class="setting-slider"
@@ -145,8 +145,8 @@
 
                 <div class="setting-row">
                     <div class="setting-info">
-                        <label class="setting-label">Invert Mouse X</label>
-                        <span class="setting-desc">Reverse horizontal look</span>
+                        <label class="setting-label">Инверсия мыши X</label>
+                        <span class="setting-desc">Обратить горизонтальный обзор</span>
                     </div>
                     <label class="toggle">
                         <input type="checkbox" id="setting-invert-x" />
@@ -156,8 +156,8 @@
 
                 <div class="setting-row">
                     <div class="setting-info">
-                        <label class="setting-label">Invert Mouse Y</label>
-                        <span class="setting-desc">Reverse vertical look</span>
+                        <label class="setting-label">Инверсия мыши Y</label>
+                        <span class="setting-desc">Обратить вертикальный обзор</span>
                     </div>
                     <label class="toggle">
                         <input type="checkbox" id="setting-invert-y" />
@@ -167,8 +167,8 @@
 
                 <div class="setting-row">
                     <div class="setting-info">
-                        <label class="setting-label">Third Person Camera</label>
-                        <span class="setting-desc">View character from behind</span>
+                        <label class="setting-label">Камера от 3-го лица</label>
+                        <span class="setting-desc">Вид на персонажа сзади</span>
                     </div>
                     <label class="toggle">
                         <input type="checkbox" id="setting-third-person" checked />
@@ -182,374 +182,12 @@
         <div class="settings-footer">
             <button class="btn btn-secondary" id="btn-back">
                 <span class="btn-icon">&#10094;</span>
-                BACK
+                НАЗАД
             </button>
             <button class="btn btn-primary" id="btn-save">
                 <span class="btn-icon">&#10003;</span>
-                SAVE
+                СОХРАНИТЬ
             </button>
         </div>
     </div>
 </div>
-
-<style>
-/* Settings Panel */
-.settings-panel {
-    background: linear-gradient(180deg,
-        rgba(30, 25, 20, 0.98) 0%,
-        rgba(20, 15, 10, 0.98) 100%
-    );
-    border: 2px solid var(--color-border);
-    border-radius: 8px;
-    width: 600px;
-    max-width: 95vw;
-    max-height: 90vh;
-    display: flex;
-    flex-direction: column;
-    box-shadow:
-        0 0 0 1px rgba(212, 175, 55, 0.1),
-        0 20px 60px rgba(0, 0, 0, 0.8);
-    overflow: hidden;
-}
-
-/* Header */
-.settings-header {
-    padding: 24px 32px 16px;
-    text-align: center;
-    border-bottom: 1px solid rgba(139, 115, 85, 0.3);
-}
-
-.settings-title {
-    font-family: var(--font-primary);
-    font-size: 24px;
-    font-weight: 700;
-    color: var(--color-text-accent);
-    letter-spacing: 4px;
-    margin: 0;
-    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
-}
-
-/* Tabs */
-.settings-tabs {
-    display: flex;
-    padding: 0 16px;
-    gap: 4px;
-    background: rgba(0, 0, 0, 0.2);
-    border-bottom: 1px solid rgba(139, 115, 85, 0.3);
-}
-
-.tab-btn {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding: 14px 12px;
-    background: transparent;
-    border: none;
-    border-bottom: 2px solid transparent;
-    color: var(--color-text-secondary);
-    font-family: var(--font-primary);
-    font-size: 12px;
-    letter-spacing: 1px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-}
-
-.tab-btn:hover {
-    color: var(--color-text-primary);
-    background: rgba(255, 255, 255, 0.02);
-}
-
-.tab-btn.active {
-    color: var(--color-text-accent);
-    border-bottom-color: var(--color-text-accent);
-}
-
-.tab-icon {
-    font-size: 14px;
-}
-
-/* Body */
-.settings-body {
-    flex: 1;
-    padding: 20px 24px;
-    overflow-y: auto;
-    min-height: 280px;
-}
-
-/* Tab Content */
-.tab-content {
-    display: none;
-}
-
-.tab-content.active {
-    display: block;
-}
-
-/* Setting Row */
-.setting-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 16px;
-    margin-bottom: 8px;
-    background: rgba(0, 0, 0, 0.25);
-    border: 1px solid rgba(139, 115, 85, 0.2);
-    border-radius: 6px;
-    transition: all 0.2s ease;
-}
-
-.setting-row:hover {
-    background: rgba(0, 0, 0, 0.35);
-    border-color: rgba(139, 115, 85, 0.4);
-}
-
-.setting-info {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    flex: 1;
-    min-width: 0;
-}
-
-.setting-label {
-    font-size: 14px;
-    color: var(--color-text-primary);
-    font-weight: 500;
-}
-
-.setting-desc {
-    font-size: 11px;
-    color: var(--color-text-secondary);
-    opacity: 0.7;
-}
-
-/* Input */
-.setting-input {
-    width: 180px;
-    padding: 10px 14px;
-    background: rgba(0, 0, 0, 0.4);
-    border: 2px solid var(--color-border);
-    border-radius: 4px;
-    color: var(--color-text-primary);
-    font-family: var(--font-primary);
-    font-size: 14px;
-    box-sizing: border-box;
-    transition: all 0.2s ease;
-}
-
-.setting-input:focus {
-    outline: none;
-    border-color: var(--color-text-accent);
-    box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.1);
-}
-
-/* Select */
-.setting-select {
-    width: 180px;
-    padding: 10px 14px;
-    background: rgba(0, 0, 0, 0.4);
-    border: 2px solid var(--color-border);
-    border-radius: 4px;
-    color: var(--color-text-primary);
-    font-family: var(--font-primary);
-    font-size: 13px;
-    cursor: pointer;
-    box-sizing: border-box;
-    transition: all 0.2s ease;
-}
-
-.setting-select:focus {
-    outline: none;
-    border-color: var(--color-text-accent);
-}
-
-.setting-select option {
-    background: #1a1510;
-    color: var(--color-text-primary);
-}
-
-/* Slider Group */
-.setting-slider-group {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    width: 180px;
-}
-
-.setting-slider {
-    flex: 1;
-    height: 6px;
-    -webkit-appearance: none;
-    appearance: none;
-    background: rgba(0, 0, 0, 0.4);
-    border: 1px solid var(--color-border);
-    border-radius: 3px;
-    cursor: pointer;
-}
-
-.setting-slider::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 18px;
-    height: 18px;
-    background: linear-gradient(180deg, #d4af37 0%, #8b7355 100%);
-    border: 2px solid var(--color-text-accent);
-    border-radius: 50%;
-    cursor: pointer;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
-    transition: all 0.2s ease;
-}
-
-.setting-slider::-webkit-slider-thumb:hover {
-    transform: scale(1.1);
-    box-shadow: 0 0 12px rgba(212, 175, 55, 0.5);
-}
-
-.setting-slider::-moz-range-thumb {
-    width: 18px;
-    height: 18px;
-    background: linear-gradient(180deg, #d4af37 0%, #8b7355 100%);
-    border: 2px solid var(--color-text-accent);
-    border-radius: 50%;
-    cursor: pointer;
-}
-
-.setting-value {
-    min-width: 40px;
-    text-align: right;
-    font-size: 14px;
-    color: var(--color-text-accent);
-    font-weight: 600;
-}
-
-/* Toggle Switch */
-.toggle {
-    position: relative;
-    display: inline-block;
-    width: 52px;
-    height: 28px;
-}
-
-.toggle input {
-    opacity: 0;
-    width: 0;
-    height: 0;
-}
-
-.toggle-slider {
-    position: absolute;
-    cursor: pointer;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.4);
-    border: 2px solid var(--color-border);
-    border-radius: 28px;
-    transition: all 0.3s ease;
-}
-
-.toggle-slider:before {
-    position: absolute;
-    content: "";
-    height: 20px;
-    width: 20px;
-    left: 2px;
-    bottom: 2px;
-    background: var(--color-text-secondary);
-    border-radius: 50%;
-    transition: all 0.3s ease;
-}
-
-.toggle input:checked + .toggle-slider {
-    background: rgba(100, 80, 40, 0.6);
-    border-color: var(--color-text-accent);
-}
-
-.toggle input:checked + .toggle-slider:before {
-    transform: translateX(24px);
-    background: var(--color-text-accent);
-    box-shadow: 0 0 8px rgba(212, 175, 55, 0.5);
-}
-
-/* Footer */
-.settings-footer {
-    display: flex;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 16px 24px;
-    background: rgba(0, 0, 0, 0.2);
-    border-top: 1px solid rgba(139, 115, 85, 0.3);
-}
-
-/* Buttons (reuse from login) */
-.btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding: 12px 24px;
-    border: 2px solid var(--color-border);
-    border-radius: 4px;
-    font-family: var(--font-primary);
-    font-size: 13px;
-    font-weight: 600;
-    letter-spacing: 2px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    box-sizing: border-box;
-}
-
-.btn-icon {
-    font-size: 12px;
-}
-
-.btn-primary {
-    background: linear-gradient(180deg,
-        rgba(100, 80, 40, 0.9) 0%,
-        rgba(70, 55, 30, 0.9) 100%
-    );
-    border-color: var(--color-text-accent);
-    color: var(--color-text-accent);
-}
-
-.btn-primary:hover {
-    background: linear-gradient(180deg,
-        rgba(120, 95, 50, 0.95) 0%,
-        rgba(90, 70, 40, 0.95) 100%
-    );
-    box-shadow: 0 0 20px rgba(212, 175, 55, 0.3);
-    transform: translateY(-1px);
-}
-
-.btn-secondary {
-    background: rgba(40, 35, 30, 0.8);
-    color: var(--color-text-secondary);
-}
-
-.btn-secondary:hover {
-    background: rgba(60, 50, 40, 0.9);
-    border-color: rgba(139, 115, 85, 0.8);
-    color: var(--color-text-primary);
-}
-
-/* Scrollbar */
-.settings-body::-webkit-scrollbar {
-    width: 8px;
-}
-
-.settings-body::-webkit-scrollbar-track {
-    background: rgba(0, 0, 0, 0.2);
-    border-radius: 4px;
-}
-
-.settings-body::-webkit-scrollbar-thumb {
-    background: var(--color-border);
-    border-radius: 4px;
-}
-
-.settings-body::-webkit-scrollbar-thumb:hover {
-    background: var(--color-text-accent);
-}
-</style>

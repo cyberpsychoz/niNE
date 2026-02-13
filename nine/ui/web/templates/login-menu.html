@@ -1,10 +1,10 @@
 <!-- Login Menu - Server Connection Screen -->
-<div class="screen fade-in" id="login-menu-screen">
+<div class="screen fade-in decorated-screen" id="login-menu-screen">
     <div class="login-panel">
         <!-- Header -->
         <div class="login-header">
-            <h1 class="login-title">CONNECTION</h1>
-            <div class="login-subtitle">Enter server details to join</div>
+            <h1 class="login-title">ПОДКЛЮЧЕНИЕ</h1>
+            <div class="login-subtitle">Введите данные сервера</div>
         </div>
 
         <!-- Decorative divider -->
@@ -20,7 +20,7 @@
             <div class="input-field">
                 <label class="input-label" for="input-ip">
                     <span class="label-icon">&#9656;</span>
-                    Server Address
+                    Адрес сервера
                 </label>
                 <input
                     type="text"
@@ -36,13 +36,13 @@
             <div class="input-field">
                 <label class="input-label" for="input-name">
                     <span class="label-icon">&#9656;</span>
-                    Character Name
+                    Имя персонажа
                 </label>
                 <input
                     type="text"
                     id="input-name"
                     class="input-text"
-                    placeholder="Enter your name"
+                    placeholder="Введите ваше имя"
                     autocomplete="off"
                     spellcheck="false"
                 />
@@ -52,14 +52,14 @@
             <div class="input-field">
                 <label class="input-label" for="input-password">
                     <span class="label-icon">&#9656;</span>
-                    Password
-                    <span class="label-hint">(optional)</span>
+                    Пароль
+                    <span class="label-hint">(необязательно)</span>
                 </label>
                 <input
                     type="password"
                     id="input-password"
                     class="input-text"
-                    placeholder="Server password"
+                    placeholder="Пароль сервера"
                     autocomplete="off"
                 />
             </div>
@@ -71,232 +71,13 @@
             <div class="login-buttons">
                 <button type="submit" class="btn btn-primary" id="btn-connect">
                     <span class="btn-icon">&#10148;</span>
-                    CONNECT
+                    ПОДКЛЮЧИТЬСЯ
                 </button>
                 <button type="button" class="btn btn-secondary" id="btn-back">
                     <span class="btn-icon">&#10094;</span>
-                    BACK
+                    НАЗАД
                 </button>
             </div>
         </form>
     </div>
 </div>
-
-<style>
-/* Login Panel */
-.login-panel {
-    background: linear-gradient(180deg,
-        rgba(30, 25, 20, 0.98) 0%,
-        rgba(20, 15, 10, 0.98) 100%
-    );
-    border: 2px solid var(--color-border);
-    border-radius: 8px;
-    padding: 40px;
-    width: 420px;
-    max-width: 90vw;
-    box-shadow:
-        0 0 0 1px rgba(212, 175, 55, 0.1),
-        0 20px 60px rgba(0, 0, 0, 0.8),
-        inset 0 1px 0 rgba(255, 255, 255, 0.05);
-}
-
-/* Header */
-.login-header {
-    text-align: center;
-    margin-bottom: 24px;
-}
-
-.login-title {
-    font-family: var(--font-primary);
-    font-size: 28px;
-    font-weight: 700;
-    color: var(--color-text-accent);
-    letter-spacing: 4px;
-    margin: 0 0 8px 0;
-    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
-}
-
-.login-subtitle {
-    font-size: 12px;
-    color: var(--color-text-secondary);
-    letter-spacing: 1px;
-}
-
-/* Ornament Divider */
-.ornament-divider {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin: 24px 0;
-    gap: 12px;
-}
-
-.ornament-line {
-    flex: 1;
-    height: 1px;
-    background: linear-gradient(90deg,
-        transparent,
-        var(--color-border) 20%,
-        var(--color-border) 80%,
-        transparent
-    );
-}
-
-.ornament-diamond {
-    width: 8px;
-    height: 8px;
-    background: var(--color-text-accent);
-    transform: rotate(45deg);
-    box-shadow: 0 0 8px rgba(212, 175, 55, 0.5);
-}
-
-/* Form */
-.login-form {
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-}
-
-/* Input Field */
-.input-field {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.input-label {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 13px;
-    color: var(--color-text-secondary);
-    letter-spacing: 1px;
-}
-
-.label-icon {
-    color: var(--color-text-accent);
-    font-size: 10px;
-}
-
-.label-hint {
-    font-size: 11px;
-    color: rgba(201, 184, 150, 0.5);
-    margin-left: auto;
-}
-
-.input-text {
-    width: 100%;
-    padding: 14px 16px;
-    background: rgba(0, 0, 0, 0.4);
-    border: 2px solid var(--color-border);
-    border-radius: 4px;
-    color: var(--color-text-primary);
-    font-family: var(--font-primary);
-    font-size: 15px;
-    letter-spacing: 0.5px;
-    transition: all 0.2s ease;
-    box-sizing: border-box;
-}
-
-.input-text:hover {
-    border-color: rgba(139, 115, 85, 0.8);
-}
-
-.input-text:focus {
-    outline: none;
-    border-color: var(--color-text-accent);
-    background: rgba(0, 0, 0, 0.5);
-    box-shadow:
-        0 0 0 3px rgba(212, 175, 55, 0.1),
-        inset 0 0 20px rgba(212, 175, 55, 0.05);
-}
-
-.input-text::placeholder {
-    color: rgba(201, 184, 150, 0.4);
-}
-
-/* Error Message */
-.login-error {
-    display: none;
-    padding: 12px 16px;
-    background: rgba(180, 60, 60, 0.2);
-    border: 1px solid rgba(180, 60, 60, 0.5);
-    border-radius: 4px;
-    color: #e07070;
-    font-size: 13px;
-    text-align: center;
-}
-
-.login-error.visible {
-    display: block;
-}
-
-/* Buttons */
-.login-buttons {
-    display: flex;
-    gap: 12px;
-    margin-top: 8px;
-}
-
-.btn {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding: 14px 20px;
-    border: 2px solid var(--color-border);
-    border-radius: 4px;
-    font-family: var(--font-primary);
-    font-size: 14px;
-    font-weight: 600;
-    letter-spacing: 2px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    box-sizing: border-box;
-}
-
-.btn-icon {
-    font-size: 12px;
-}
-
-.btn-primary {
-    background: linear-gradient(180deg,
-        rgba(100, 80, 40, 0.9) 0%,
-        rgba(70, 55, 30, 0.9) 100%
-    );
-    border-color: var(--color-text-accent);
-    color: var(--color-text-accent);
-}
-
-.btn-primary:hover {
-    background: linear-gradient(180deg,
-        rgba(120, 95, 50, 0.95) 0%,
-        rgba(90, 70, 40, 0.95) 100%
-    );
-    box-shadow:
-        0 0 20px rgba(212, 175, 55, 0.3),
-        inset 0 0 20px rgba(212, 175, 55, 0.1);
-    transform: translateY(-2px);
-}
-
-.btn-primary:active {
-    transform: translateY(0);
-    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
-}
-
-.btn-secondary {
-    background: rgba(40, 35, 30, 0.8);
-    color: var(--color-text-secondary);
-}
-
-.btn-secondary:hover {
-    background: rgba(60, 50, 40, 0.9);
-    border-color: rgba(139, 115, 85, 0.8);
-    color: var(--color-text-primary);
-}
-
-.btn-secondary:active {
-    background: rgba(50, 42, 35, 0.9);
-}
-</style>

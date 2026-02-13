@@ -60,7 +60,7 @@ class CharacterSelect {
         if (this.characters.length === 0) {
             this.characterList.innerHTML = `
                 <p style="color: var(--color-text-hint); text-align: center;">
-                    No characters found. Create your first character!
+                    Персонажи не найдены. Создайте первого персонажа!
                 </p>
             `;
             return;
@@ -76,7 +76,7 @@ class CharacterSelect {
             card.innerHTML = `
                 <div class="name">${char.character_name}</div>
                 <div class="details">
-                    ${char.race} ${char.class || ''} — Level ${char.level || 1}
+                    ${char.race} ${char.class || ''} — Уровень ${char.level || 1}
                 </div>
             `;
 

@@ -7,117 +7,117 @@
 // ==================== D&D 5e Data (mirrors sh_constants.py) ====================
 
 const DND_RACES = {
-    human:    { name: "Human",    desc: "Versatile and adaptive",       bonuses: {strength:1,dexterity:1,constitution:1,intelligence:1,wisdom:1,charisma:1}, speed: 30, features: ["extra_language","extra_skill"] },
-    elf:      { name: "Elf",      desc: "Agile and graceful",           bonuses: {dexterity:2,intelligence:1}, speed: 30, features: ["darkvision","fey_ancestry","trance"] },
-    dwarf:    { name: "Dwarf",    desc: "Tough and resilient",          bonuses: {constitution:2,wisdom:1},    speed: 25, features: ["darkvision","dwarven_resilience","stonecunning"] },
-    halfling: { name: "Halfling", desc: "Small and nimble",             bonuses: {dexterity:2,charisma:1},     speed: 25, features: ["lucky","brave","halfling_nimbleness"] },
-    orc:      { name: "Orc",      desc: "Strong and enduring",          bonuses: {strength:2,constitution:1},  speed: 30, features: ["darkvision","aggressive","powerful_build"] },
-    tiefling: { name: "Tiefling", desc: "Infernal heritage",            bonuses: {charisma:2,intelligence:1},  speed: 30, features: ["darkvision","hellish_resistance","infernal_legacy"] },
+    human:    { name: "Человек",    desc: "Универсальные и адаптивные",   bonuses: {strength:1,dexterity:1,constitution:1,intelligence:1,wisdom:1,charisma:1}, speed: 30, features: ["extra_language","extra_skill"] },
+    elf:      { name: "Эльф",      desc: "Ловкие и грациозные",           bonuses: {dexterity:2,intelligence:1}, speed: 30, features: ["darkvision","fey_ancestry","trance"] },
+    dwarf:    { name: "Дварф",    desc: "Выносливые и стойкие",          bonuses: {constitution:2,wisdom:1},    speed: 25, features: ["darkvision","dwarven_resilience","stonecunning"] },
+    halfling: { name: "Полурослик", desc: "Маленькие и проворные",       bonuses: {dexterity:2,charisma:1},     speed: 25, features: ["lucky","brave","halfling_nimbleness"] },
+    orc:      { name: "Орк",      desc: "Сильные и выносливые",          bonuses: {strength:2,constitution:1},  speed: 30, features: ["darkvision","aggressive","powerful_build"] },
+    tiefling: { name: "Тифлинг", desc: "Инфернальное наследие",          bonuses: {charisma:2,intelligence:1},  speed: 30, features: ["darkvision","hellish_resistance","infernal_legacy"] },
 };
 
 const DND_CLASSES = {
-    fighter:   { name: "Fighter",   desc: "Master of combat, using diverse weapons and tactics",                    hitDie: 10, primary: ["STR","CON"], skills: ["Acrobatics","Animal Handling","Athletics","History","Insight","Intimidation","Perception","Survival"],                              numSkills: 2, features: ["fighting_style","second_wind"] },
-    wizard:    { name: "Wizard",    desc: "Scholarly mage drawing power from arcane study",                         hitDie: 6,  primary: ["INT"],       skills: ["Arcana","History","Insight","Investigation","Medicine","Religion"],                                                                  numSkills: 2, features: ["spellcasting","arcane_recovery"] },
-    rogue:     { name: "Rogue",     desc: "Master of stealth and precision strikes",                                hitDie: 8,  primary: ["DEX"],       skills: ["Acrobatics","Athletics","Deception","Insight","Intimidation","Investigation","Perception","Performance","Persuasion","Sleight of Hand","Stealth"], numSkills: 4, features: ["expertise","sneak_attack","thieves_cant"] },
-    cleric:    { name: "Cleric",    desc: "Divine messenger carrying the will of the gods",                         hitDie: 8,  primary: ["WIS"],       skills: ["History","Insight","Medicine","Persuasion","Religion"],                                                                              numSkills: 2, features: ["spellcasting","divine_domain"] },
-    ranger:    { name: "Ranger",    desc: "Wilderness warrior, hunter and tracker",                                 hitDie: 10, primary: ["DEX","WIS"], skills: ["Animal Handling","Athletics","Insight","Investigation","Nature","Perception","Stealth","Survival"],                                   numSkills: 3, features: ["favored_enemy","natural_explorer"] },
-    paladin:   { name: "Paladin",   desc: "Holy warrior bound by a sacred oath",                                    hitDie: 10, primary: ["STR","CHA"], skills: ["Athletics","Insight","Intimidation","Medicine","Persuasion","Religion"],                                                             numSkills: 2, features: ["divine_sense","lay_on_hands"] },
-    barbarian: { name: "Barbarian", desc: "Fierce warrior of primal power",                                         hitDie: 12, primary: ["STR","CON"], skills: ["Animal Handling","Athletics","Intimidation","Nature","Perception","Survival"],                                                       numSkills: 2, features: ["rage","unarmored_defense"] },
-    bard:      { name: "Bard",      desc: "Master of songs, stories, and word magic",                               hitDie: 8,  primary: ["CHA"],       skills: ["any"],                                                                                                                              numSkills: 3, features: ["spellcasting","bardic_inspiration"] },
-    druid:     { name: "Druid",     desc: "Priest of nature, guardian of balance",                                  hitDie: 8,  primary: ["WIS"],       skills: ["Arcana","Animal Handling","Insight","Medicine","Nature","Perception","Religion","Survival"],                                          numSkills: 2, features: ["druidic","spellcasting"] },
-    monk:      { name: "Monk",      desc: "Master of martial arts and inner power",                                 hitDie: 8,  primary: ["DEX","WIS"], skills: ["Acrobatics","Athletics","History","Insight","Religion","Stealth"],                                                                   numSkills: 2, features: ["unarmored_defense","martial_arts"] },
-    sorcerer:  { name: "Sorcerer",  desc: "Mage with innate magical power",                                        hitDie: 6,  primary: ["CHA"],       skills: ["Arcana","Deception","Insight","Intimidation","Persuasion","Religion"],                                                               numSkills: 2, features: ["spellcasting","sorcerous_origin"] },
-    warlock:   { name: "Warlock",   desc: "Mage who made a pact with a powerful entity",                            hitDie: 8,  primary: ["CHA"],       skills: ["Arcana","Deception","History","Intimidation","Investigation","Nature","Religion"],                                                    numSkills: 2, features: ["otherworldly_patron","pact_magic"] },
+    fighter:   { name: "Воин",      desc: "Мастер боя, владеющий разнообразным оружием и тактиками",                hitDie: 10, primary: ["STR","CON"], skills: ["Acrobatics","Animal Handling","Athletics","History","Insight","Intimidation","Perception","Survival"],                              numSkills: 2, features: ["fighting_style","second_wind"] },
+    wizard:    { name: "Волшебник", desc: "Учёный маг, черпающий силу из изучения тайной магии",                    hitDie: 6,  primary: ["INT"],       skills: ["Arcana","History","Insight","Investigation","Medicine","Religion"],                                                                  numSkills: 2, features: ["spellcasting","arcane_recovery"] },
+    rogue:     { name: "Плут",      desc: "Мастер скрытности и точных ударов",                                     hitDie: 8,  primary: ["DEX"],       skills: ["Acrobatics","Athletics","Deception","Insight","Intimidation","Investigation","Perception","Performance","Persuasion","Sleight of Hand","Stealth"], numSkills: 4, features: ["expertise","sneak_attack","thieves_cant"] },
+    cleric:    { name: "Жрец",      desc: "Божественный посланник, несущий волю богов",                             hitDie: 8,  primary: ["WIS"],       skills: ["History","Insight","Medicine","Persuasion","Religion"],                                                                              numSkills: 2, features: ["spellcasting","divine_domain"] },
+    ranger:    { name: "Следопыт",  desc: "Воин дикой природы, охотник и следопыт",                                hitDie: 10, primary: ["DEX","WIS"], skills: ["Animal Handling","Athletics","Insight","Investigation","Nature","Perception","Stealth","Survival"],                                   numSkills: 3, features: ["favored_enemy","natural_explorer"] },
+    paladin:   { name: "Паладин",   desc: "Святой воин, связанный священной клятвой",                               hitDie: 10, primary: ["STR","CHA"], skills: ["Athletics","Insight","Intimidation","Medicine","Persuasion","Religion"],                                                             numSkills: 2, features: ["divine_sense","lay_on_hands"] },
+    barbarian: { name: "Варвар",    desc: "Свирепый воин первобытной мощи",                                        hitDie: 12, primary: ["STR","CON"], skills: ["Animal Handling","Athletics","Intimidation","Nature","Perception","Survival"],                                                       numSkills: 2, features: ["rage","unarmored_defense"] },
+    bard:      { name: "Бард",      desc: "Мастер песен, историй и магии слов",                                    hitDie: 8,  primary: ["CHA"],       skills: ["any"],                                                                                                                              numSkills: 3, features: ["spellcasting","bardic_inspiration"] },
+    druid:     { name: "Друид",     desc: "Жрец природы, хранитель равновесия",                                    hitDie: 8,  primary: ["WIS"],       skills: ["Arcana","Animal Handling","Insight","Medicine","Nature","Perception","Religion","Survival"],                                          numSkills: 2, features: ["druidic","spellcasting"] },
+    monk:      { name: "Монах",     desc: "Мастер боевых искусств и внутренней силы",                              hitDie: 8,  primary: ["DEX","WIS"], skills: ["Acrobatics","Athletics","History","Insight","Religion","Stealth"],                                                                   numSkills: 2, features: ["unarmored_defense","martial_arts"] },
+    sorcerer:  { name: "Чародей",   desc: "Маг с врождённой магической силой",                                     hitDie: 6,  primary: ["CHA"],       skills: ["Arcana","Deception","Insight","Intimidation","Persuasion","Religion"],                                                               numSkills: 2, features: ["spellcasting","sorcerous_origin"] },
+    warlock:   { name: "Колдун",    desc: "Маг, заключивший договор с могущественной сущностью",                    hitDie: 8,  primary: ["CHA"],       skills: ["Arcana","Deception","History","Intimidation","Investigation","Nature","Religion"],                                                    numSkills: 2, features: ["otherworldly_patron","pact_magic"] },
 };
 
 const DND_BACKGROUNDS = {
-    acolyte:     { name: "Acolyte",     desc: "You spent your life serving a temple",                   skills: ["Insight","Religion"] },
-    criminal:    { name: "Criminal",    desc: "You have a criminal past",                               skills: ["Deception","Stealth"] },
-    folk_hero:   { name: "Folk Hero",   desc: "You performed a deed that saved common people",          skills: ["Animal Handling","Survival"] },
-    noble:       { name: "Noble",       desc: "You were born into a privileged family",                 skills: ["History","Persuasion"] },
-    sage:        { name: "Sage",        desc: "You dedicated your life to studying knowledge",          skills: ["Arcana","History"] },
-    soldier:     { name: "Soldier",     desc: "You served in the military",                             skills: ["Athletics","Intimidation"] },
-    charlatan:   { name: "Charlatan",   desc: "You are a master of deception and fraud",                skills: ["Deception","Sleight of Hand"] },
-    entertainer: { name: "Entertainer", desc: "You perform before audiences",                           skills: ["Acrobatics","Performance"] },
-    hermit:      { name: "Hermit",      desc: "You lived in seclusion",                                 skills: ["Medicine","Religion"] },
-    outlander:   { name: "Outlander",   desc: "You grew up far from civilization",                      skills: ["Athletics","Survival"] },
+    acolyte:     { name: "Послушник",      desc: "Вы провели жизнь, служа храму",                      skills: ["Insight","Religion"] },
+    criminal:    { name: "Преступник",     desc: "У вас криминальное прошлое",                          skills: ["Deception","Stealth"] },
+    folk_hero:   { name: "Народный герой", desc: "Вы совершили подвиг, спасший простых людей",          skills: ["Animal Handling","Survival"] },
+    noble:       { name: "Дворянин",       desc: "Вы родились в привилегированной семье",               skills: ["History","Persuasion"] },
+    sage:        { name: "Мудрец",         desc: "Вы посвятили жизнь изучению знаний",                  skills: ["Arcana","History"] },
+    soldier:     { name: "Солдат",         desc: "Вы служили в армии",                                  skills: ["Athletics","Intimidation"] },
+    charlatan:   { name: "Шарлатан",       desc: "Вы мастер обмана и мошенничества",                    skills: ["Deception","Sleight of Hand"] },
+    entertainer: { name: "Артист",         desc: "Вы выступаете перед публикой",                        skills: ["Acrobatics","Performance"] },
+    hermit:      { name: "Отшельник",      desc: "Вы жили в уединении",                                skills: ["Medicine","Religion"] },
+    outlander:   { name: "Чужеземец",      desc: "Вы выросли вдали от цивилизации",                    skills: ["Athletics","Survival"] },
 };
 
 const DND_SKILLS = {
-    "Athletics":       { ability: "strength" },
-    "Acrobatics":      { ability: "dexterity" },
-    "Sleight of Hand": { ability: "dexterity" },
-    "Stealth":         { ability: "dexterity" },
-    "Arcana":          { ability: "intelligence" },
-    "History":         { ability: "intelligence" },
-    "Investigation":   { ability: "intelligence" },
-    "Nature":          { ability: "intelligence" },
-    "Religion":        { ability: "intelligence" },
-    "Animal Handling": { ability: "wisdom" },
-    "Insight":         { ability: "wisdom" },
-    "Medicine":        { ability: "wisdom" },
-    "Perception":      { ability: "wisdom" },
-    "Survival":        { ability: "wisdom" },
-    "Deception":       { ability: "charisma" },
-    "Intimidation":    { ability: "charisma" },
-    "Performance":     { ability: "charisma" },
-    "Persuasion":      { ability: "charisma" },
+    "Athletics":       { ability: "strength", label: "Атлетика" },
+    "Acrobatics":      { ability: "dexterity", label: "Акробатика" },
+    "Sleight of Hand": { ability: "dexterity", label: "Ловкость рук" },
+    "Stealth":         { ability: "dexterity", label: "Скрытность" },
+    "Arcana":          { ability: "intelligence", label: "Магия" },
+    "History":         { ability: "intelligence", label: "История" },
+    "Investigation":   { ability: "intelligence", label: "Расследование" },
+    "Nature":          { ability: "intelligence", label: "Природа" },
+    "Religion":        { ability: "intelligence", label: "Религия" },
+    "Animal Handling": { ability: "wisdom", label: "Уход за животными" },
+    "Insight":         { ability: "wisdom", label: "Проницательность" },
+    "Medicine":        { ability: "wisdom", label: "Медицина" },
+    "Perception":      { ability: "wisdom", label: "Внимание" },
+    "Survival":        { ability: "wisdom", label: "Выживание" },
+    "Deception":       { ability: "charisma", label: "Обман" },
+    "Intimidation":    { ability: "charisma", label: "Запугивание" },
+    "Performance":     { ability: "charisma", label: "Выступление" },
+    "Persuasion":      { ability: "charisma", label: "Убеждение" },
 };
 
 const DND_ABILITIES = [
-    { id: "strength",     name: "Strength",     abbr: "STR" },
-    { id: "dexterity",    name: "Dexterity",    abbr: "DEX" },
-    { id: "constitution", name: "Constitution",  abbr: "CON" },
-    { id: "intelligence", name: "Intelligence",  abbr: "INT" },
-    { id: "wisdom",       name: "Wisdom",        abbr: "WIS" },
-    { id: "charisma",     name: "Charisma",      abbr: "CHA" },
+    { id: "strength",     name: "Сила",          abbr: "СИЛ" },
+    { id: "dexterity",    name: "Ловкость",      abbr: "ЛОВ" },
+    { id: "constitution", name: "Телосложение",   abbr: "ТЕЛ" },
+    { id: "intelligence", name: "Интеллект",      abbr: "ИНТ" },
+    { id: "wisdom",       name: "Мудрость",       abbr: "МДР" },
+    { id: "charisma",     name: "Харизма",        abbr: "ХАР" },
 ];
 
 const POINT_BUY_COST = { 8:0, 9:1, 10:2, 11:3, 12:4, 13:5, 14:7, 15:9 };
 const POINT_BUY_TOTAL = 27;
 
 const DND_FACTIONS = {
-    alliance: { name: "Alliance", desc: "Union of humans, elves and dwarves. Strive for order and justice.", color: "#0066CC" },
-    horde:    { name: "Horde",    desc: "Union of orcs and other warlike races. Value strength and honor.",   color: "#CC0000" },
-    neutral:  { name: "Neutral",  desc: "Free adventurers, unbound by politics.",                            color: "#999999" },
-    undead:   { name: "Undead",   desc: "Cursed beings from the dark lands. Rejected by the living.",        color: "#6600CC" },
+    alliance: { name: "Альянс",      desc: "Союз людей, эльфов и дварфов. Стремятся к порядку и справедливости.", color: "#0066CC" },
+    horde:    { name: "Орда",        desc: "Союз орков и других воинственных рас. Ценят силу и честь.",           color: "#CC0000" },
+    neutral:  { name: "Нейтральные", desc: "Свободные искатели приключений, не связанные политикой.",             color: "#999999" },
+    undead:   { name: "Нежить",      desc: "Проклятые существа из тёмных земель. Отвергнуты живыми.",             color: "#6600CC" },
 };
 
 const DND_FEATURES = {
-    extra_language:       { name: "Extra Language",         desc: "You know one additional language of your choice." },
-    extra_skill:          { name: "Extra Skill",            desc: "You gain proficiency in one additional skill of your choice." },
-    darkvision:           { name: "Darkvision",             desc: "You can see in dim light within 60 feet as if it were bright light, in shades of grey." },
-    fey_ancestry:         { name: "Fey Ancestry",           desc: "You have advantage on saves against being charmed, and magic can't put you to sleep." },
-    trance:               { name: "Trance",                 desc: "Elves don't need sleep. Instead, they meditate 4 hours/day, equivalent to 8 hours of human sleep." },
-    dwarven_resilience:   { name: "Dwarven Resilience",     desc: "You have advantage on saves against poison and resistance to poison damage." },
-    stonecunning:         { name: "Stonecunning",           desc: "On History checks related to stonework, add double proficiency bonus." },
-    lucky:                { name: "Lucky",                  desc: "When you roll a 1 on an attack, ability check, or saving throw, you can reroll and must use the new result." },
-    brave:                { name: "Brave",                  desc: "You have advantage on saves against being frightened." },
-    halfling_nimbleness:  { name: "Halfling Nimbleness",    desc: "You can move through the space of any creature that is a size larger than you." },
-    aggressive:           { name: "Aggressive",             desc: "As a bonus action, you can move up to your speed toward a visible hostile creature." },
-    powerful_build:       { name: "Powerful Build",         desc: "You count as one size larger for carrying capacity." },
-    hellish_resistance:   { name: "Hellish Resistance",     desc: "You have resistance to fire damage." },
-    infernal_legacy:      { name: "Infernal Legacy",        desc: "You know the Thaumaturgy cantrip. At 3rd level, Hellish Rebuke 1/day. At 5th, Darkness 1/day." },
-    fighting_style:       { name: "Fighting Style",         desc: "Choose a fighting style: Defense (+1 AC), Dueling (+2 damage one-handed), Archery (+2 ranged attack), Great Weapon Fighting (reroll 1-2 damage)." },
-    second_wind:          { name: "Second Wind",            desc: "As a bonus action, regain 1d10 + fighter level HP. Once per short or long rest." },
-    spellcasting:         { name: "Spellcasting",           desc: "You can cast spells using spell slots. Slots recover after a long rest." },
-    arcane_recovery:      { name: "Arcane Recovery",        desc: "Once per day during a short rest, recover spell slots with total levels up to half your wizard level (rounded up)." },
-    expertise:            { name: "Expertise",              desc: "Choose 2 proficient skills (or thieves' tools). Your proficiency bonus doubles for them." },
-    sneak_attack:         { name: "Sneak Attack",           desc: "Once per turn, deal extra 1d6 damage if you have advantage or an ally near the target." },
-    thieves_cant:         { name: "Thieves' Cant",          desc: "You know a secret language of thieves - a mix of dialect, gestures, and ciphers." },
-    divine_domain:        { name: "Divine Domain",          desc: "Choose a domain related to your deity. It grants additional spells and abilities." },
-    favored_enemy:        { name: "Favored Enemy",          desc: "Choose an enemy type. You gain advantage on Survival and Intelligence checks against them." },
-    natural_explorer:     { name: "Natural Explorer",       desc: "Choose a terrain type. You gain advantages when traveling and surviving in that environment." },
-    divine_sense:         { name: "Divine Sense",           desc: "As an action, detect celestials, fiends, and undead within 60 feet." },
-    lay_on_hands:         { name: "Lay on Hands",           desc: "You have a healing pool of paladin level x 5 HP. Touch to heal or cure disease/poison (5 points)." },
-    rage:                 { name: "Rage",                   desc: "As a bonus action, rage for 1 minute: +2 damage with strength weapons, resistance to physical damage, advantage on Strength checks." },
-    unarmored_defense:    { name: "Unarmored Defense",      desc: "Without armor, AC = 10 + DEX mod + CON mod (barbarian) or WIS mod (monk)." },
-    martial_arts:         { name: "Martial Arts",           desc: "Use DEX instead of STR for attacks. Unarmed damage 1d4. After monk weapon attack, bonus unarmed strike." },
-    druidic:              { name: "Druidic",                desc: "You know the secret language of druids. You can leave hidden messages only other druids notice." },
-    otherworldly_patron:  { name: "Otherworldly Patron",    desc: "Choose a patron: Archfey, Fiend, or Great Old One. Determines your additional abilities." },
-    pact_magic:           { name: "Pact Magic",             desc: "Your spell slots recover after a short rest, not just a long rest." },
-    bardic_inspiration:   { name: "Bardic Inspiration",     desc: "As a bonus action, give an ally a d6 to add to a check, attack, or save. Uses = CHA modifier." },
-    sorcerous_origin:     { name: "Sorcerous Origin",       desc: "Choose the source of your magic: Draconic Bloodline or Wild Magic." },
+    extra_language:       { name: "Доп. язык",                desc: "Вы знаете один дополнительный язык по вашему выбору." },
+    extra_skill:          { name: "Доп. навык",               desc: "Вы получаете владение одним дополнительным навыком по вашему выбору." },
+    darkvision:           { name: "Тёмное зрение",            desc: "Вы видите в тусклом свете на 60 футов как при ярком свете, в оттенках серого." },
+    fey_ancestry:         { name: "Наследие фей",             desc: "Вы совершаете с преимуществом спасброски от очарования, и магия не может усыпить вас." },
+    trance:               { name: "Транс",                    desc: "Эльфам не нужен сон. Вместо этого они медитируют 4 часа в день, что равноценно 8 часам сна человека." },
+    dwarven_resilience:   { name: "Дварфийская стойкость",    desc: "Вы совершаете с преимуществом спасброски от яда и имеете сопротивление к урону ядом." },
+    stonecunning:         { name: "Знание камня",             desc: "При проверках Истории, связанных с каменной кладкой, добавляйте удвоенный бонус мастерства." },
+    lucky:                { name: "Везучий",                  desc: "Когда вы выбрасываете 1 на броске атаки, проверке характеристики или спасброске, вы можете перебросить и должны использовать новый результат." },
+    brave:                { name: "Храбрый",                  desc: "Вы совершаете с преимуществом спасброски от испуга." },
+    halfling_nimbleness:  { name: "Проворство полуросликов",  desc: "Вы можете проходить через пространство существа, которое больше вас на один размер." },
+    aggressive:           { name: "Агрессивный",              desc: "Бонусным действием вы можете переместиться на расстояние до вашей скорости к видимому враждебному существу." },
+    powerful_build:       { name: "Мощное телосложение",      desc: "Вы считаетесь на один размер больше для определения грузоподъёмности." },
+    hellish_resistance:   { name: "Адское сопротивление",     desc: "Вы имеете сопротивление к урону огнём." },
+    infernal_legacy:      { name: "Инфернальное наследие",    desc: "Вы знаете заговор Чудотворство. На 3-м уровне — Адское возмездие 1/день. На 5-м — Тьма 1/день." },
+    fighting_style:       { name: "Боевой стиль",             desc: "Выберите боевой стиль: Оборона (+1 КЗ), Дуэлянт (+2 урон одноручным), Стрельба (+2 дальняя атака), Сражение большим оружием (перебрось 1-2 урона)." },
+    second_wind:          { name: "Второе дыхание",           desc: "Бонусным действием восстановите 1к10 + уровень воина ОЗ. Один раз за короткий или длинный отдых." },
+    spellcasting:         { name: "Использование заклинаний", desc: "Вы можете использовать заклинания с помощью ячеек заклинаний. Ячейки восстанавливаются после длинного отдыха." },
+    arcane_recovery:      { name: "Магическое восстановление", desc: "Один раз в день во время короткого отдыха восстановите ячейки заклинаний с суммарным уровнем до половины уровня волшебника (с округлением вверх)." },
+    expertise:            { name: "Компетентность",           desc: "Выберите 2 навыка с владением (или воровские инструменты). Ваш бонус мастерства удваивается для них." },
+    sneak_attack:         { name: "Скрытая атака",            desc: "Один раз за ход нанесите дополнительный урон 1к6, если у вас есть преимущество или союзник рядом с целью." },
+    thieves_cant:         { name: "Воровской жаргон",         desc: "Вы знаете тайный язык воров — смесь диалекта, жестов и шифров." },
+    divine_domain:        { name: "Божественный домен",       desc: "Выберите домен, связанный с вашим божеством. Он даёт дополнительные заклинания и способности." },
+    favored_enemy:        { name: "Избранный враг",           desc: "Выберите тип врага. Вы получаете преимущество на проверки Выживания и Интеллекта против них." },
+    natural_explorer:     { name: "Странник",                 desc: "Выберите тип местности. Вы получаете преимущества при путешествии и выживании в этой среде." },
+    divine_sense:         { name: "Божественное чувство",     desc: "Действием вы обнаруживаете небожителей, исчадий и нежить в пределах 60 футов." },
+    lay_on_hands:         { name: "Наложение рук",            desc: "У вас есть запас исцеления в размере уровень паладина x 5 ОЗ. Касанием исцеляйте или снимайте болезнь/яд (5 очков)." },
+    rage:                 { name: "Ярость",                   desc: "Бонусным действием впадите в ярость на 1 минуту: +2 урон оружием Силы, сопротивление физическому урону, преимущество на проверки Силы." },
+    unarmored_defense:    { name: "Защита без доспехов",      desc: "Без доспехов КЗ = 10 + мод. ЛОВ + мод. ТЕЛ (варвар) или мод. МДР (монах)." },
+    martial_arts:         { name: "Боевые искусства",         desc: "Используйте ЛОВ вместо СИЛ для атак. Безоружный урон 1к4. После атаки оружием монаха — бонусный безоружный удар." },
+    druidic:              { name: "Друидический",             desc: "Вы знаете тайный язык друидов. Вы можете оставлять скрытые послания, которые замечают только другие друиды." },
+    otherworldly_patron:  { name: "Потусторонний покровитель", desc: "Выберите покровителя: Архифея, Исчадие или Великий Древний. Определяет ваши дополнительные способности." },
+    pact_magic:           { name: "Магия договора",           desc: "Ваши ячейки заклинаний восстанавливаются после короткого отдыха, а не только после длинного." },
+    bardic_inspiration:   { name: "Бардовское вдохновение",   desc: "Бонусным действием дайте союзнику к6 для добавления к проверке, атаке или спасброску. Использований = мод. Харизмы." },
+    sorcerous_origin:     { name: "Происхождение чародея",    desc: "Выберите источник вашей магии: Драконье происхождение или Дикая магия." },
 };
 
 // ==================== Helpers ====================
@@ -131,7 +131,7 @@ function getAllSkillNames() {
 
 // ==================== Component ====================
 
-const STEP_LABELS = ["Name", "Race", "Class", "Stats", "Skills", "Background", "Faction", "Confirm"];
+const STEP_LABELS = ["Имя", "Раса", "Класс", "Хар-ки", "Навыки", "Предыстория", "Фракция", "Подтверждение"];
 
 class CharacterCreate {
     constructor(params = {}) {
@@ -172,7 +172,7 @@ class CharacterCreate {
     _handlePythonMessage(event) {
         const { type, data } = event.detail;
         if (type === 'character_create_failed') {
-            alert('Character creation failed: ' + (data.reason || 'Unknown error'));
+            alert('Ошибка создания персонажа: ' + (data.reason || 'Неизвестная ошибка'));
         }
     }
 
@@ -233,10 +233,10 @@ class CharacterCreate {
         // Next / Create button
         if (nextBtn) {
             if (this.currentStep === STEP_LABELS.length - 1) {
-                nextBtn.textContent = 'CREATE';
+                nextBtn.textContent = 'СОЗДАТЬ';
                 nextBtn.onclick = () => this.createCharacter();
             } else {
-                nextBtn.textContent = 'NEXT';
+                nextBtn.textContent = 'ДАЛЕЕ';
                 nextBtn.onclick = () => this.nextStep();
             }
         }
@@ -261,11 +261,11 @@ class CharacterCreate {
         switch (this.currentStep) {
             case 0: // Name
                 if (!this.characterData.character_name.trim()) {
-                    this._showValidation('Please enter a character name.');
+                    this._showValidation('Введите имя персонажа.');
                     return false;
                 }
                 if (this.characterData.character_name.trim().length < 2) {
-                    this._showValidation('Name must be at least 2 characters.');
+                    this._showValidation('Имя должно быть не менее 2 символов.');
                     return false;
                 }
                 return true;
@@ -276,14 +276,14 @@ class CharacterCreate {
                 const needed = cls ? cls.numSkills : 2;
                 const selected = Object.keys(this.characterData.skills).filter(k => this.characterData.skills[k] && !this._isBackgroundSkill(k));
                 if (selected.length < needed) {
-                    this._showValidation(`Select ${needed} skills (${selected.length}/${needed}).`);
+                    this._showValidation(`Выберите ${needed} навыков (${selected.length}/${needed}).`);
                     return false;
                 }
                 return true;
             }
             case 5: // Background
                 if (!this.characterData.background) {
-                    this._showValidation('Please select a background.');
+                    this._showValidation('Выберите предысторию.');
                     return false;
                 }
                 return true;
@@ -311,15 +311,15 @@ class CharacterCreate {
         container.innerHTML = `
             <div class="wizard-container">
                 <div class="form-group">
-                    <label class="form-label">Character Name:</label>
-                    <input type="text" id="input-char-name" class="bg1-input" placeholder="Enter name" maxlength="32"
+                    <label class="form-label">Имя персонажа:</label>
+                    <input type="text" id="input-char-name" class="bg1-input" placeholder="Введите имя" maxlength="32"
                         value="${this._esc(this.characterData.character_name)}" />
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Gender:</label>
+                    <label class="form-label">Пол:</label>
                     <div class="gender-toggle">
-                        <button class="gender-btn ${this.characterData.gender === 'male' ? 'selected' : ''}" data-gender="male">Male</button>
-                        <button class="gender-btn ${this.characterData.gender === 'female' ? 'selected' : ''}" data-gender="female">Female</button>
+                        <button class="gender-btn ${this.characterData.gender === 'male' ? 'selected' : ''}" data-gender="male">Муж</button>
+                        <button class="gender-btn ${this.characterData.gender === 'female' ? 'selected' : ''}" data-gender="female">Жен</button>
                     </div>
                 </div>
             </div>
@@ -378,8 +378,8 @@ class CharacterCreate {
         return `
             <div class="info-panel-title">${r.name}</div>
             <div class="info-panel-desc">${r.desc}</div>
-            <div class="info-panel-detail">Ability Bonuses: <span>${bonuses}</span></div>
-            <div class="info-panel-detail">Speed: <span>${r.speed} ft</span></div>
+            <div class="info-panel-detail">Бонусы характеристик: <span>${bonuses}</span></div>
+            <div class="info-panel-detail">Скорость: <span>${r.speed} ft</span></div>
             <div class="feature-tags">${feats}</div>
         `;
     }
@@ -420,13 +420,13 @@ class CharacterCreate {
             const info = DND_FEATURES[f] || { name: f, desc: '' };
             return `<span class="feature-tag" data-feature="${f}" title="${this._esc(info.desc)}">${info.name}</span>`;
         }).join('');
-        const skillList = c.skills[0] === 'any' ? 'Any' : c.skills.join(', ');
+        const skillList = c.skills[0] === 'any' ? 'Любой' : c.skills.map(s => DND_SKILLS[s]?.label || s).join(', ');
         return `
             <div class="info-panel-title">${c.name}</div>
             <div class="info-panel-desc">${c.desc}</div>
-            <div class="info-panel-detail">Hit Die: <span>d${c.hitDie}</span></div>
-            <div class="info-panel-detail">Primary: <span>${c.primary.join(', ')}</span></div>
-            <div class="info-panel-detail">Skills (pick ${c.numSkills}): <span>${skillList}</span></div>
+            <div class="info-panel-detail">Кость хитов: <span>d${c.hitDie}</span></div>
+            <div class="info-panel-detail">Основные: <span>${c.primary.join(', ')}</span></div>
+            <div class="info-panel-detail">Навыки (выберите ${c.numSkills}): <span>${skillList}</span></div>
             <div class="feature-tags">${feats}</div>
         `;
     }
@@ -460,7 +460,7 @@ class CharacterCreate {
             if (remaining === 0) cls = ' depleted';
             else if (remaining <= 5) cls = ' warning';
             pd.className = 'points-remaining' + cls;
-            pd.innerHTML = `<span class="points-value">${remaining}</span><span class="points-label">points remaining (of ${POINT_BUY_TOTAL})</span>`;
+            pd.innerHTML = `<span class="points-value">${remaining}</span><span class="points-label">очков осталось (из ${POINT_BUY_TOTAL})</span>`;
         }
 
         // Ability rows
@@ -485,7 +485,7 @@ class CharacterCreate {
                     <div class="ability-racial">${racial ? '+' + racial : ''}</div>
                     <div class="ability-value" style="min-width:20px;font-size:13px;">${total}</div>
                     <div class="ability-modifier">(${modStr(mod)})</div>
-                    <div class="ability-cost">cost: ${cost}</div>
+                    <div class="ability-cost">цена: ${cost}</div>
                 </div>
             `;
         }).join('');
@@ -534,8 +534,8 @@ class CharacterCreate {
         container.innerHTML = `
             <div class="wizard-container">
                 <div class="skills-header">
-                    <div style="font-size:12px;color:var(--color-text-primary);">Select class skills</div>
-                    <div class="skills-count">Selected: <span id="skills-selected-count">0</span> / ${numSkills}</div>
+                    <div style="font-size:12px;color:var(--color-text-primary);">Выберите навыки класса</div>
+                    <div class="skills-count">Выбрано: <span id="skills-selected-count">0</span> / ${numSkills}</div>
                 </div>
                 <div class="skills-list" id="skills-list"></div>
             </div>
@@ -577,7 +577,7 @@ class CharacterCreate {
             return `
                 <div class="${cls}" data-skill="${skillName}" data-bg="${isBg ? '1' : '0'}" data-available="${isAvailable ? '1' : '0'}">
                     <div class="skill-check">${(isSelected || isBg) ? '&#10003;' : ''}</div>
-                    <div class="skill-name">${skillName}${isBg ? ' (BG)' : ''}</div>
+                    <div class="skill-name">${DND_SKILLS[skillName].label || skillName}${isBg ? ' (предыстория)' : ''}</div>
                     <div class="skill-ability">${abbrUpper}</div>
                     <div class="skill-modifier">${modStr(mod)}</div>
                 </div>
@@ -622,7 +622,7 @@ class CharacterCreate {
                     ${bgKeys.map(k => `<button class="selection-btn ${k === selected ? 'selected' : ''}" data-bg="${k}">${DND_BACKGROUNDS[k].name}</button>`).join('')}
                 </div>
                 <div class="info-panel" id="bg-info">
-                    ${selected ? this._bgInfoHTML(selected) : '<div class="info-panel-desc">Select a background to see details.</div>'}
+                    ${selected ? this._bgInfoHTML(selected) : '<div class="info-panel-desc">Выберите предысторию для подробностей.</div>'}
                 </div>
             </div>
         `;
@@ -647,7 +647,7 @@ class CharacterCreate {
         return `
             <div class="info-panel-title">${b.name}</div>
             <div class="info-panel-desc">${b.desc}</div>
-            <div class="info-panel-detail">Skill Proficiencies: <span>${b.skills.join(', ')}</span></div>
+            <div class="info-panel-detail">Владение навыками: <span>${b.skills.map(s => DND_SKILLS[s]?.label || s).join(', ')}</span></div>
         `;
     }
 
@@ -701,34 +701,34 @@ class CharacterCreate {
             const racial = bonuses[ab.id] || 0;
             const total = base + racial;
             const mod = calcModifier(total);
-            return `<div class="summary-row"><span class="label">${ab.abbr}</span><span class="value">${total} (${modStr(mod)})${racial ? ' [+' + racial + ' racial]' : ''}</span></div>`;
+            return `<div class="summary-row"><span class="label">${ab.abbr}</span><span class="value">${total} (${modStr(mod)})${racial ? ' [+' + racial + ' раса]' : ''}</span></div>`;
         }).join('');
 
-        const skillsList = Object.keys(d.skills).filter(k => d.skills[k]).sort().join(', ') || 'None';
+        const skillsList = Object.keys(d.skills).filter(k => d.skills[k]).sort().map(k => DND_SKILLS[k]?.label || k).join(', ') || 'Нет';
 
         container.innerHTML = `
             <div class="wizard-container">
                 <div class="summary-panel">
                     <div class="summary-section">
-                        <div class="summary-section-title">Character</div>
-                        <div class="summary-row"><span class="label">Name</span><span class="value">${this._esc(d.character_name)}</span></div>
-                        <div class="summary-row"><span class="label">Gender</span><span class="value">${d.gender === 'male' ? 'Male' : 'Female'}</span></div>
-                        <div class="summary-row"><span class="label">Race</span><span class="value">${race.name || d.race}</span></div>
-                        <div class="summary-row"><span class="label">Class</span><span class="value">${cls.name || d.class_name}</span></div>
+                        <div class="summary-section-title">Персонаж</div>
+                        <div class="summary-row"><span class="label">Имя</span><span class="value">${this._esc(d.character_name)}</span></div>
+                        <div class="summary-row"><span class="label">Пол</span><span class="value">${d.gender === 'male' ? 'Муж' : 'Жен'}</span></div>
+                        <div class="summary-row"><span class="label">Раса</span><span class="value">${race.name || d.race}</span></div>
+                        <div class="summary-row"><span class="label">Класс</span><span class="value">${cls.name || d.class_name}</span></div>
                     </div>
                     <div class="summary-section">
-                        <div class="summary-section-title">Ability Scores</div>
+                        <div class="summary-section-title">Характеристики</div>
                         ${statsHTML}
                     </div>
                     <div class="summary-section">
-                        <div class="summary-section-title">Details</div>
-                        <div class="summary-row"><span class="label">Background</span><span class="value">${bg.name || d.background}</span></div>
-                        <div class="summary-row"><span class="label">Faction</span><span class="value" style="color:${fac.color || ''}">${fac.name || d.faction}</span></div>
-                        <div class="summary-row"><span class="label">Hit Die</span><span class="value">d${cls.hitDie || '?'}</span></div>
+                        <div class="summary-section-title">Детали</div>
+                        <div class="summary-row"><span class="label">Предыстория</span><span class="value">${bg.name || d.background}</span></div>
+                        <div class="summary-row"><span class="label">Фракция</span><span class="value" style="color:${fac.color || ''}">${fac.name || d.faction}</span></div>
+                        <div class="summary-row"><span class="label">Кость хитов</span><span class="value">d${cls.hitDie || '?'}</span></div>
                         <div class="summary-row"><span class="label">HP</span><span class="value">${(cls.hitDie || 8) + calcModifier((d.constitution) + (bonuses.constitution || 0))}</span></div>
                     </div>
                     <div class="summary-section">
-                        <div class="summary-section-title">Skills</div>
+                        <div class="summary-section-title">Навыки</div>
                         <div style="font-size:11px;color:var(--color-text-primary);line-height:1.5;">${skillsList}</div>
                     </div>
                 </div>
@@ -774,7 +774,7 @@ class CharacterCreate {
         const d = this.characterData;
 
         if (!d.character_name.trim()) {
-            this._showValidation('Character name is required.');
+            this._showValidation('Требуется имя персонажа.');
             return;
         }
 

@@ -139,7 +139,9 @@ class SettingsMenu {
         if (backBtn) {
             backBtn.addEventListener('click', () => {
                 console.log('[SettingsMenu] Back clicked');
-                window.router.navigate('main-menu');
+                window.router.navigate('main-menu', {
+                    backgrounds: window._menuBackgrounds || []
+                });
             });
         }
 
@@ -236,7 +238,7 @@ class SettingsMenu {
         const saveBtn = document.getElementById('btn-save');
         if (saveBtn) {
             const originalText = saveBtn.innerHTML;
-            saveBtn.innerHTML = '<span class="btn-icon">&#10003;</span> SAVED!';
+            saveBtn.innerHTML = '<span class="btn-icon">&#10003;</span> СОХРАНЕНО!';
             saveBtn.style.pointerEvents = 'none';
 
             setTimeout(() => {

@@ -14,6 +14,11 @@ class GameHUD {
         this.inCombat = false;
         this.isMyTurn = false;
         this._resultTimeout = null;
+
+        // Combat resources
+        this._resources = { action: true, bonus: true, reaction: true };
+        this._movementCurrent = 30;
+        this._movementMax = 30;
     }
 
     async init() {
@@ -35,6 +40,9 @@ class GameHUD {
 
         // Bind action buttons
         this._bindActionButtons();
+
+        // Bind keyboard hotkeys for combat
+        this._bindCombatHotkeys();
 
         // Listen for Python events
         this._subscribeEvents();
@@ -103,7 +111,7 @@ class GameHUD {
         }
 
         if (acEl) acEl.textContent = `AC: ${ac}`;
-        if (levelEl) levelEl.textContent = `Lv ${level}`;
+        if (levelEl) levelEl.textContent = `Ур ${level}`;
     }
 
     // ================================================================
@@ -146,7 +154,7 @@ class GameHUD {
         }
 
         const roundEl = document.getElementById('hud-round');
-        if (roundEl) roundEl.textContent = `Round ${data?.round || 1}`;
+        if (roundEl) roundEl.textContent = `Раунд ${data?.round || 1}`;
     }
 
     hideCombat() {
@@ -157,6 +165,10 @@ class GameHUD {
         const initEl = document.getElementById('hud-initiative');
         if (combatEl) combatEl.classList.add('hidden');
         if (initEl) initEl.classList.add('hidden');
+
+        // Hide movement bar
+        const moveSection = document.getElementById('hud-movement-section');
+        if (moveSection) moveSection.style.display = 'none';
     }
 
     onTurnStart(data) {
@@ -167,14 +179,14 @@ class GameHUD {
         const turnEl = document.getElementById('hud-turn');
         const roundEl = document.getElementById('hud-round');
 
-        if (roundEl) roundEl.textContent = `Round ${round}`;
+        if (roundEl) roundEl.textContent = `Раунд ${round}`;
 
         if (turnEl) {
             if (this.isMyTurn) {
-                turnEl.textContent = 'YOUR TURN!';
+                turnEl.textContent = 'ВАШ ХОД!';
                 turnEl.className = 'hud-turn your-turn';
             } else {
-                turnEl.textContent = `Turn: ${entityId.substring(0, 8)}...`;
+                turnEl.textContent = `Ход: ${entityId.substring(0, 8)}...`;
                 turnEl.className = 'hud-turn';
             }
         }
@@ -184,12 +196,26 @@ class GameHUD {
 
         // Enable/disable action buttons
         this._setActionButtonsEnabled(this.isMyTurn);
+
+        // Reset resources on turn start
+        if (this.isMyTurn) {
+            const resources = data.resources || {};
+            this._resources = {
+                action: resources.action !== undefined ? resources.action : true,
+                bonus: resources.bonus !== undefined ? resources.bonus : true,
+                reaction: resources.reaction !== undefined ? resources.reaction : true,
+            };
+            this._movementMax = resources.movement_max || data.movement_max || 30;
+            this._movementCurrent = resources.movement_remaining || this._movementMax;
+            this._updateResources();
+            this._updateMovement();
+        }
     }
 
     onRoundStart(data) {
         const round = data.round || 1;
         const roundEl = document.getElementById('hud-round');
-        if (roundEl) roundEl.textContent = `Round ${round}`;
+        if (roundEl) roundEl.textContent = `Раунд ${round}`;
     }
 
     onActionResult(data) {
@@ -201,26 +227,26 @@ class GameHUD {
         let className = 'hud-action-result';
 
         if (!result.success) {
-            text = result.error || 'Action failed';
+            text = result.error || 'Действие не удалось';
             className += ' result-fail';
         } else {
             const action = result.action || data.action_id || '';
             if (action === 'attack') {
                 if (result.is_critical) {
-                    text = `CRITICAL HIT! ${result.damage || 0} damage!`;
+                    text = `КРИТИЧЕСКИЙ УДАР! ${result.damage || 0} урона!`;
                     className += ' result-crit';
                 } else if (result.hit) {
-                    text = `Hit! ${result.damage || 0} damage`;
+                    text = `Попадание! ${result.damage || 0} урона`;
                     className += ' result-hit';
                 } else {
-                    text = 'Miss!';
+                    text = 'Промах!';
                     className += ' result-miss';
                 }
             } else if (action === 'end_turn') {
-                text = 'Turn ended';
+                text = 'Ход окончен';
                 className += ' result-info';
             } else {
-                text = `${action} used`;
+                text = `${action} использовано`;
                 className += ' result-info';
             }
         }
@@ -228,11 +254,60 @@ class GameHUD {
         resultEl.textContent = text;
         resultEl.className = className;
 
+        // Update resources after action
+        if (result.resources) {
+            if (result.resources.action !== undefined) this._resources.action = result.resources.action;
+            if (result.resources.bonus !== undefined) this._resources.bonus = result.resources.bonus;
+            if (result.resources.reaction !== undefined) this._resources.reaction = result.resources.reaction;
+            if (result.resources.movement_remaining !== undefined) this._movementCurrent = result.resources.movement_remaining;
+            this._updateResources();
+            this._updateMovement();
+        }
+
         // Auto-hide after 3 seconds
         if (this._resultTimeout) clearTimeout(this._resultTimeout);
         this._resultTimeout = setTimeout(() => {
             resultEl.classList.add('hidden');
         }, 3000);
+    }
+
+    // ================================================================
+    // Combat Resources & Movement
+    // ================================================================
+
+    _updateResources() {
+        const actionEl = document.getElementById('hud-res-action');
+        const bonusEl = document.getElementById('hud-res-bonus');
+        const reactionEl = document.getElementById('hud-res-reaction');
+
+        if (actionEl) {
+            actionEl.className = `hud-resource ${this._resources.action ? 'resource-available' : 'resource-spent'}`;
+        }
+        if (bonusEl) {
+            bonusEl.className = `hud-resource ${this._resources.bonus ? 'resource-available' : 'resource-spent'}`;
+        }
+        if (reactionEl) {
+            reactionEl.className = `hud-resource ${this._resources.reaction ? 'resource-available' : 'resource-spent'}`;
+        }
+    }
+
+    _updateMovement() {
+        const section = document.getElementById('hud-movement-section');
+        const fill = document.getElementById('hud-movement-fill');
+        const text = document.getElementById('hud-movement-text');
+
+        if (section) {
+            section.style.display = this.inCombat && this.isMyTurn ? '' : 'none';
+        }
+
+        if (fill && this._movementMax > 0) {
+            const ratio = Math.max(0, Math.min(1, this._movementCurrent / this._movementMax)) * 100;
+            fill.style.width = ratio + '%';
+        }
+
+        if (text) {
+            text.textContent = `${this._movementCurrent}/${this._movementMax} фт`;
+        }
     }
 
     // ================================================================
@@ -317,6 +392,65 @@ class GameHUD {
     }
 
     // ================================================================
+    // Combat Hotkeys
+    // ================================================================
+
+    _bindCombatHotkeys() {
+        document.addEventListener('keydown', (e) => {
+            // Only when in combat and it's our turn
+            if (!this.inCombat || !this.isMyTurn) return;
+
+            // Skip when typing
+            const tag = document.activeElement?.tagName;
+            if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+            // Skip if panel is open
+            if (window.panelManager && window.panelManager.isAnyOpen()) return;
+
+            // Skip modifiers
+            if (e.ctrlKey || e.altKey || e.metaKey) return;
+
+            const keyMap = {
+                '1': 'attack',
+                '2': 'spell',
+                '3': 'move',
+                '4': 'dodge',
+                '5': 'dash',
+                'e': 'end_turn'
+            };
+
+            const action = keyMap[e.key.toLowerCase()];
+            if (action) {
+                PythonAPI.combatAction(action, '');
+                e.preventDefault();
+                e.stopPropagation();
+            }
+        });
+    }
+
+    /**
+     * Handle combat hotkey from Python (CEF can't reliably produce event.key).
+     */
+    _onCombatHotkey(data) {
+        if (!this.inCombat || !this.isMyTurn) return;
+
+        const keyMap = {
+            '1': 'attack',
+            '2': 'spell',
+            '3': 'move',
+            '4': 'dodge',
+            '5': 'dash',
+            'e': 'end_turn'
+        };
+
+        const action = keyMap[data?.key];
+        if (action) {
+            console.log('[GameHUD] Combat hotkey:', action);
+            PythonAPI.combatAction(action, '');
+        }
+    }
+
+    // ================================================================
     // Event Subscriptions
     // ================================================================
 
@@ -348,6 +482,9 @@ class GameHUD {
                     break;
                 case 'game_state_changed':
                     this._onGameStateChanged(data);
+                    break;
+                case 'combat_hotkey':
+                    this._onCombatHotkey(data);
                     break;
                 case 'navigate':
                     // Show HUD when entering game (hidden screen), hide in menus

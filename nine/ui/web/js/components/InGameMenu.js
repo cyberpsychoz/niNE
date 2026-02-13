@@ -108,7 +108,7 @@ class InGameMenu {
             'align-items: center; justify-content: center; z-index: 100; gap: 20px;';
 
         const message = document.createElement('p');
-        message.textContent = 'Are you sure you want to disconnect?';
+        message.textContent = 'Вы уверены, что хотите отключиться?';
         message.style.cssText = 'color: #fff; font-size: 18px; margin: 0;';
 
         const btnRow = document.createElement('div');
@@ -116,7 +116,7 @@ class InGameMenu {
 
         const yesBtn = document.createElement('button');
         yesBtn.className = 'bg1-button bg1-button-primary';
-        yesBtn.textContent = 'YES';
+        yesBtn.textContent = 'ДА';
         yesBtn.addEventListener('click', () => {
             console.log('[InGameMenu] Disconnecting...');
             PythonAPI.disconnect();
@@ -124,7 +124,7 @@ class InGameMenu {
 
         const cancelBtn = document.createElement('button');
         cancelBtn.className = 'bg1-button';
-        cancelBtn.textContent = 'CANCEL';
+        cancelBtn.textContent = 'ОТМЕНА';
         cancelBtn.addEventListener('click', () => {
             this.hideDisconnectConfirm();
         });

@@ -70,8 +70,8 @@ class LivingSystemsServerModule(PluginModule):
     # =========================================================================
 
     def _on_npc_spawned(self, data: dict):
-        """NPC появился - инициализируем компоненты."""
-        npc_id = data.get("npc_id", "")
+        """NPC appeared — initialize living components."""
+        npc_id = data.get("npc_id", "") or data.get("entity_id", "")
         template_data = data.get("template_data", {})
         living_data = template_data.get("living", {})
 
@@ -137,8 +137,8 @@ class LivingSystemsServerModule(PluginModule):
         self.logger.debug(f"Initialized living components for NPC {npc_id}")
 
     def _on_npc_despawned(self, data: dict):
-        """NPC исчез - удаляем компоненты."""
-        npc_id = data.get("npc_id", "")
+        """NPC disappeared — remove living components."""
+        npc_id = data.get("npc_id", "") or data.get("entity_id", "")
         if npc_id in self._npc_components:
             del self._npc_components[npc_id]
 

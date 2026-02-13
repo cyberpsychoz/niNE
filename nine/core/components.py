@@ -256,7 +256,7 @@ class AIControllerComponent(Component):
     wander_interval: float = 5.0
 
     # Movement
-    move_speed: float = 1.5
+    move_speed: float = 0.6
     think_interval: float = 0.5
     think_timer: float = 0.0
 

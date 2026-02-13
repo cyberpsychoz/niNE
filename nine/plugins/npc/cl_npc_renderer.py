@@ -66,6 +66,11 @@ class NPCRenderer:
         self.hp_current = data.get("hp_current", 0)
         self.hp_max = data.get("hp_max", 0)
 
+        # Interaction metadata (for context menu)
+        self.interactions = data.get("interactions", ["talk"])
+        self.hostile = data.get("hostile", False)
+        self.is_merchant = data.get("is_merchant", False)
+
         # Animation name map (populated in _create_visual)
         self._anim_map = {}
 
@@ -75,17 +80,40 @@ class NPCRenderer:
     def _create_visual(self, render: NodePath):
         """Создаёт визуальное представление NPC."""
         # Создаём корневой узел
-        self.node = render.attachNewNode(f"npc_{self.entity_id[:8]}")
+        self.node = render.attachNewNode(f"npc_{self.entity_id}")
         self.node.setPos(self.position)
         self.node.setH(self.rotation)
 
-        # Пытаемся загрузить модель (с fallback)
+        # Map template model IDs to actual .bam files
+        MODEL_FILE_MAP = {
+            "human_male": "nine/assets/models/player2.bam",
+            "human_female": "nine/assets/models/player2.bam",
+        }
+
+        # Try to load model by template ID, then fallback list
         model_loaded = False
-        model_files = [
+        model_id = self.model_path  # e.g. "human_male", "goblin"
+        model_files = []
+
+        # If template specifies a known model, try it first
+        if model_id in MODEL_FILE_MAP:
+            model_files.append(MODEL_FILE_MAP[model_id])
+
+        # Fallback chain
+        model_files.extend([
             "nine/assets/models/base.bam",
             "nine/assets/models/player2.bam",
-        ]
-        for model_file in model_files:
+        ])
+
+        # Remove duplicates preserving order
+        seen = set()
+        unique_files = []
+        for f in model_files:
+            if f not in seen:
+                seen.add(f)
+                unique_files.append(f)
+
+        for model_file in unique_files:
             try:
                 self.actor = Actor(model_file)
                 logger.debug(f"Loaded NPC model: {model_file}")
@@ -99,6 +127,11 @@ class NPCRenderer:
             try:
                 self.actor.reparentTo(self.node)
                 self.actor.setScale(0.3)
+
+                # Load shared animations from base.bam (Mixamo skeleton)
+                # This allows any model with compatible skeleton to use
+                # all animations from base.bam (idle, walk_forward, etc.)
+                self._load_shared_animations()
 
                 # Build animation name map (same as player actors)
                 anim_names = self.actor.getAnimNames()
@@ -133,8 +166,43 @@ class NPCRenderer:
         if not model_loaded:
             self._create_placeholder()
 
-        # Создаём имя над головой
-        self._create_name_tag()
+        # Name tag disabled — handled by CEF UI overlay instead
+
+    # Individual animation files (split from base.bam).
+    # loadAnims with a multi-animation BAM loads only the first AnimBundle
+    # for every name, so we must use separate single-animation files.
+    ANIM_DIR = "nine/assets/models/anims"
+    SHARED_ANIMS = [
+        "idle", "walk_forward", "walk_backward",
+        "run_forward", "left_strafe", "right_strafe",
+    ]
+
+    def _load_shared_animations(self):
+        """Load shared Mixamo animations from individual BAM files.
+
+        Each file in ANIM_DIR contains a single AnimBundle extracted from
+        base.bam.  This allows any model with a compatible Mixamo skeleton
+        to use the full animation set.
+        """
+        import os
+        anim_dir = self.ANIM_DIR
+        if not os.path.isdir(anim_dir):
+            return
+
+        anims_dict = {}
+        for name in self.SHARED_ANIMS:
+            path = os.path.join(anim_dir, f"{name}.bam")
+            if os.path.exists(path):
+                anims_dict[name] = path
+
+        if not anims_dict:
+            return
+
+        try:
+            self.actor.loadAnims(anims_dict)
+            logger.debug(f"Loaded {len(anims_dict)} shared animations from {anim_dir}")
+        except Exception as e:
+            logger.debug(f"Could not load shared animations: {e}")
 
     def _create_placeholder(self):
         """Создаёт placeholder модель (простой куб)."""
@@ -170,6 +238,13 @@ class NPCRenderer:
 
             # Создаём 3D текст
             text_node = TextNode(f"npc_name_{self.entity_id[:8]}")
+
+            # Load Cyrillic-supporting font
+            font = self.base.loader.loadFont("nine/assets/fonts/DejaVuSans.ttf")
+            if font:
+                font.setPixelsPerUnit(64)
+                text_node.setFont(font)
+
             text_node.setText(f"{self.display_name}{hp_str}")
             text_node.setAlign(TextNode.ACenter)
             text_node.setTextColor(*color)
@@ -209,24 +284,26 @@ class NPCRenderer:
         self.is_dead = data.get("is_dead", False)
         self.hp_current = data.get("hp_current", self.hp_current)
         self.hp_max = data.get("hp_max", self.hp_max)
+        self.interactions = data.get("interactions", self.interactions)
+        self.hostile = data.get("hostile", self.hostile)
+        self.is_merchant = data.get("is_merchant", self.is_merchant)
 
         # Обновляем анимацию
         new_anim = data.get("animation", "idle")
         if new_anim != self.current_animation:
             self._play_animation(new_anim)
 
-        # Обновляем имя (цвет/HP)
-        self._update_name_tag()
+        # Name tag update removed — no 3D text above NPCs
 
     def _interpolate_position(self, dt: float):
         """Интерполирует позицию для плавного движения."""
-        # Простая линейная интерполяция к целевой позиции
         diff = self.target_position - self.position
         distance = diff.length()
 
         if distance > 0.01:
-            # Скорость интерполяции
-            speed = max(distance * 5, 2.0)  # Минимум 2 units/sec
+            # Use server velocity as base speed, with gentle catch-up for lag
+            vel_speed = self.velocity.length()
+            speed = max(vel_speed * 1.2, 0.3) + distance * 0.5
             move_amount = min(speed * dt, distance)
 
             direction = diff / distance
@@ -246,6 +323,9 @@ class NPCRenderer:
                 resolved = anim_map.get(anim_name, anim_name)
                 if resolved:
                     self.actor.loop(resolved)
+                    # Slow walk animation to match reduced NPC speed
+                    if anim_name == "walk_forward":
+                        self.actor.setPlayRate(0.5, resolved)
             except Exception as e:
                 logger.debug(f"NPC animation error for '{anim_name}': {e}")
 
@@ -289,7 +369,10 @@ class NPCClientModule(PluginModule):
 
     # How many seconds an NPC can be absent from world_state before removal.
     # Server uses delta compression — only sends NPCs whose state changed.
-    STALE_TIMEOUT = 5.0
+    # Server uses delta compression — only sends NPCs whose state changed.
+    # Static NPCs (merchants, idle guards) may never be resent.
+    # Use a long timeout so they don't get removed prematurely.
+    STALE_TIMEOUT = 120.0
 
     def __init__(self, context: PluginContext):
         super().__init__(context)

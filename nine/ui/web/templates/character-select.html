@@ -1,14 +1,14 @@
-<div class="screen fade-in" id="character-select-screen">
+<div class="screen fade-in decorated-screen" id="character-select-screen">
     <div class="screen-content" style="min-width: 700px;">
-        <h1 class="screen-title">SELECT CHARACTER</h1>
-        <p class="screen-subtitle">Choose your adventurer</p>
+        <h1 class="screen-title">ВЫБОР ПЕРСОНАЖА</h1>
+        <p class="screen-subtitle">Выберите вашего искателя приключений</p>
 
         <div class="divider"></div>
 
         <!-- Character list -->
         <div class="character-list" id="character-list">
             <p style="color: var(--color-text-hint); text-align: center;">
-                Loading characters...
+                Загрузка персонажей...
             </p>
         </div>
 
@@ -17,57 +17,16 @@
         <!-- Action buttons -->
         <div class="button-group button-group-horizontal">
             <button class="bg1-button bg1-button-primary" id="btn-select" disabled>
-                SELECT
+                ВЫБРАТЬ
             </button>
 
             <button class="bg1-button" id="btn-create">
-                CREATE NEW
+                СОЗДАТЬ НОВОГО
             </button>
 
             <button class="bg1-button" id="btn-back">
-                DISCONNECT
+                ОТКЛЮЧИТЬСЯ
             </button>
         </div>
     </div>
 </div>
-
-<style>
-.character-list {
-    min-height: 300px;
-    max-height: 400px;
-    overflow-y: auto;
-    margin: var(--spacing-lg) 0;
-}
-
-.character-card {
-    background: rgba(0, 0, 0, 0.3);
-    border: 2px solid var(--color-border);
-    border-radius: var(--border-radius);
-    padding: var(--spacing-md);
-    margin-bottom: var(--spacing-md);
-    cursor: pointer;
-    transition: all var(--transition-normal);
-}
-
-.character-card:hover {
-    border-color: var(--color-border-highlight);
-    background: rgba(0, 0, 0, 0.5);
-}
-
-.character-card.selected {
-    border-color: var(--color-border-highlight);
-    background: rgba(212, 175, 55, 0.1);
-}
-
-.character-card .name {
-    font-size: 18px;
-    color: var(--color-text-accent);
-    font-weight: bold;
-    margin-bottom: var(--spacing-xs);
-}
-
-.character-card .details {
-    font-size: 13px;
-    color: var(--color-text-secondary);
-}
-</style>

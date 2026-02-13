@@ -25,6 +25,7 @@ from nine.core.pathfinder import GridPathfinder, SteeringBehaviors
 
 from nine.plugins.npc.sh_components import (
     PositionComponent,
+    ModelComponent,
     AIComponent,
     PathfindingComponent,
     CombatComponent,
@@ -310,6 +311,15 @@ class AISystem(System):
         self._player_positions_dict: Dict[str, Tuple[float, float, float]] = {}
         self._player_data: List[Dict] = []  # Full player data for targeting
 
+        # Behavior overrides from living world (needs, schedule)
+        # entity_id -> override behavior string
+        self._behavior_overrides: Dict[str, str] = {}
+
+        # Subscribe to living world events
+        if event_manager:
+            event_manager.subscribe("npc_urgent_need", self._on_urgent_need)
+            event_manager.subscribe("npc_activity_changed", self._on_activity_changed)
+
         # Performance tracking
         self._tick_count = 0
         self._total_think_time = 0.0
@@ -376,9 +386,13 @@ class AISystem(System):
             entity_id = entity.id
 
             # Calculate LOD level based on distance to players
-            lod_level = self.lod_system.get_lod_level(
-                pos.x, pos.y, self._player_positions
-            )
+            # When no players connected, treat all NPCs as NEAR so they still think
+            if not self._player_positions:
+                lod_level = AILODLevel.NEAR
+            else:
+                lod_level = self.lod_system.get_lod_level(
+                    pos.x, pos.y, self._player_positions
+                )
             lod_counts[lod_level] += 1
 
             # Store LOD level on AI component for other systems
@@ -386,6 +400,12 @@ class AISystem(System):
 
             # Check if NPC should think this tick (LOD-based throttling)
             if not self.lod_system.should_think(entity_id, lod_level, current_time):
+                continue
+
+            # Check for behavior overrides from living world (needs, schedule)
+            override = self._behavior_overrides.get(entity_id)
+            if override:
+                self._update_override(entity, ai, pos, dt, override, lod_level)
                 continue
 
             # Update AI based on behavior
@@ -446,7 +466,7 @@ class AISystem(System):
         dt: float,
         lod_level: AILODLevel = AILODLevel.NEAR
     ):
-        """Idle - stands in place, but can react to enemies."""
+        """Idle - stands in place, but can react to enemies and occasionally wanders."""
         ai.state = AIState.IDLE
 
         # Skip perception at high LOD levels
@@ -461,6 +481,21 @@ class AISystem(System):
             ai.state = AIState.PURSUING
             # Post aggro event to start combat
             self._post_aggro_event(entity.id, target.id)
+            return
+
+        # Idle NPCs occasionally fidget/wander near their post
+        ai.wander_timer += ai.think_interval
+        if ai.wander_timer >= 8.0:  # Every 8 seconds
+            ai.wander_timer = 0.0
+            if random.random() < 0.3:  # 30% chance to wander
+                if ai.wander_center is None:
+                    ai.wander_center = (pos.x, pos.y, pos.z)
+                angle = random.uniform(0, 2 * math.pi)
+                dist = random.uniform(0.5, 2.0)
+                target_x = ai.wander_center[0] + math.cos(angle) * dist
+                target_y = ai.wander_center[1] + math.sin(angle) * dist
+                self._set_pathfinding_target_pos(entity, Vec3(target_x, target_y, pos.z))
+                ai.state = AIState.MOVING
 
     def _update_neutral(
         self,
@@ -666,6 +701,105 @@ class AISystem(System):
             ai.state = AIState.IDLE
 
     # =========================================================================
+    # Living World Integration (needs, schedule overrides)
+    # =========================================================================
+
+    def _on_urgent_need(self, data: dict):
+        """Handle urgent need from living systems — override NPC behavior."""
+        npc_id = data.get("npc_id", "")
+        need = data.get("need", "")
+        if not npc_id:
+            return
+
+        if need == "hunger":
+            self._behavior_overrides[npc_id] = "SEEK_FOOD"
+        elif need == "energy":
+            self._behavior_overrides[npc_id] = "SEEK_REST"
+        elif need == "safety":
+            self._behavior_overrides[npc_id] = "FLEE"
+
+        logger.debug(f"NPC {npc_id[:8]} urgent need: {need} -> override {self._behavior_overrides.get(npc_id)}")
+
+    def _on_activity_changed(self, data: dict):
+        """Handle activity change from schedule — override NPC behavior."""
+        npc_id = data.get("npc_id", "")
+        activity = data.get("activity", "")
+        if not npc_id:
+            return
+
+        if activity == "sleeping":
+            self._behavior_overrides[npc_id] = "SEEK_REST"
+        elif activity == "eating":
+            self._behavior_overrides[npc_id] = "SEEK_FOOD"
+        elif activity in ("patrolling", "idle", "working", "trading"):
+            # Return to default behavior
+            self._behavior_overrides.pop(npc_id, None)
+
+        logger.debug(f"NPC {npc_id[:8]} activity changed: {activity}")
+
+    def _update_override(
+        self,
+        entity: Entity,
+        ai: AIComponent,
+        pos: PositionComponent,
+        dt: float,
+        override: str,
+        lod_level: AILODLevel = AILODLevel.NEAR
+    ):
+        """Process behavior override from living world systems."""
+        # Placeholder interest points (until proper location system exists)
+        FOOD_LOCATION = (5.0, 0.0, 0.0)   # Near merchant
+        REST_LOCATION = (0.0, -5.0, 0.0)
+
+        if override == "SEEK_FOOD":
+            target = Vec3(*FOOD_LOCATION)
+            dist = pos.distance_to(target.x, target.y)
+            if dist < 1.5:
+                # Arrived at food — satisfy need and clear override
+                ai.state = AIState.IDLE
+                self._behavior_overrides.pop(entity.id, None)
+                if self.event_manager:
+                    self.event_manager.post("npc_need_satisfied", {
+                        "npc_id": entity.id, "need": "hunger"
+                    })
+            else:
+                ai.state = AIState.MOVING
+                if self.lod_system.should_do_pathfinding(lod_level):
+                    self._set_pathfinding_target_pos(entity, target)
+
+        elif override == "SEEK_REST":
+            target = Vec3(*REST_LOCATION)
+            dist = pos.distance_to(target.x, target.y)
+            if dist < 1.5:
+                ai.state = AIState.IDLE
+                self._behavior_overrides.pop(entity.id, None)
+                if self.event_manager:
+                    self.event_manager.post("npc_need_satisfied", {
+                        "npc_id": entity.id, "need": "energy"
+                    })
+            else:
+                ai.state = AIState.MOVING
+                if self.lod_system.should_do_pathfinding(lod_level):
+                    self._set_pathfinding_target_pos(entity, target)
+
+        elif override == "FLEE":
+            # Move away from last known threat
+            if ai.last_known_target_pos:
+                tx, ty, _ = ai.last_known_target_pos
+                dx = pos.x - tx
+                dy = pos.y - ty
+                length = max(0.1, (dx*dx + dy*dy) ** 0.5)
+                flee_x = pos.x + (dx / length) * 10.0
+                flee_y = pos.y + (dy / length) * 10.0
+                if self.lod_system.should_do_pathfinding(lod_level):
+                    self._set_pathfinding_target_pos(entity, Vec3(flee_x, flee_y, pos.z))
+                ai.state = AIState.FLEEING
+            else:
+                # No known threat — clear override
+                self._behavior_overrides.pop(entity.id, None)
+                ai.state = AIState.IDLE
+
+    # =========================================================================
     # Вспомогательные методы
     # =========================================================================
 
@@ -823,6 +957,7 @@ class AISystem(System):
         # Clean up LOD tracking
         self.lod_system.remove_entity(entity.id)
         self._think_accumulators.pop(entity.id, None)
+        self._behavior_overrides.pop(entity.id, None)
 
     def get_lod_stats(self) -> Dict:
         """Get AI LOD statistics."""
@@ -894,6 +1029,7 @@ class PathfindingSystem(System):
         """Следует по пути."""
         if pathfinding.current_waypoint_index >= len(pathfinding.current_path):
             pathfinding.current_path = []
+            self._set_npc_animation(entity, "idle")
             return
 
         target = pathfinding.current_path[pathfinding.current_waypoint_index]
@@ -929,12 +1065,21 @@ class PathfindingSystem(System):
         pos.velocity_x = pathfinding.velocity.x
         pos.velocity_y = pathfinding.velocity.y
 
-        # Поворачиваем в направлении движения
-        if pathfinding.velocity.length() > 0.1:
-            pos.rotation = math.degrees(math.atan2(pathfinding.velocity.y, pathfinding.velocity.x))
+        # Поворачиваем в направлении движения (Panda3D heading convention)
+        speed = pathfinding.velocity.length()
+        if speed > 0.1:
+            # Model faces -Y at H=0.  atan2(vx, vy) gives angle from +Y,
+            # so add 180° to flip the model to face the movement direction.
+            pos.rotation = 180.0 - math.degrees(math.atan2(pathfinding.velocity.x, pathfinding.velocity.y))
+
+        # Обновляем анимацию NPC на основе скорости
+        if speed > 0.1:
+            self._set_npc_animation(entity, "walk_forward")
+        else:
+            self._set_npc_animation(entity, "idle")
 
         # Проверяем застревание
-        if pathfinding.velocity.length() < 0.1:
+        if speed < 0.1:
             pathfinding.stuck_timer += dt
             if pathfinding.stuck_timer > pathfinding.stuck_threshold:
                 pathfinding.is_stuck = True
@@ -949,6 +1094,14 @@ class PathfindingSystem(System):
             pathfinding.velocity = Vec3(0, 0, 0)
             pos.velocity_x = 0
             pos.velocity_y = 0
+            self._set_npc_animation(entity, "idle")
+
+    @staticmethod
+    def _set_npc_animation(entity: Entity, anim_name: str):
+        """Updates the NPC's ModelComponent animation state."""
+        model = entity.get_component(ModelComponent)
+        if model and model.current_animation != anim_name:
+            model.current_animation = anim_name
 
 
 # =============================================================================

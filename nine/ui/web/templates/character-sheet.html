@@ -1,0 +1,81 @@
+<!-- Character Sheet Panel - persistent overlay -->
+<div id="character-sheet-panel" class="panel-overlay hidden">
+    <div class="panel-container panel-wide">
+        <!-- Header -->
+        <div class="panel-header">
+            <span class="panel-title" id="cs-title">Лист персонажа</span>
+            <button class="panel-close-btn" id="cs-close-btn">&times;</button>
+        </div>
+
+        <!-- Tabs -->
+        <div class="panel-tabs" id="cs-tabs">
+            <button class="panel-tab active" data-tab="stats">Характеристики</button>
+            <button class="panel-tab" data-tab="skills">Навыки</button>
+            <button class="panel-tab" data-tab="abilities">Способности</button>
+            <button class="panel-tab" data-tab="inventory">Инвентарь</button>
+            <button class="panel-tab" data-tab="equipment">Снаряжение</button>
+            <button class="panel-tab" data-tab="description">Описание</button>
+        </div>
+
+        <!-- Tab Content -->
+        <div class="panel-body">
+            <!-- Stats Tab -->
+            <div class="panel-tab-content active" data-tab="stats">
+                <div class="cs-stats-layout">
+                    <!-- Ability Scores -->
+                    <div class="cs-abilities-grid" id="cs-abilities">
+                        <!-- Filled by JS -->
+                    </div>
+
+                    <!-- Saving Throws -->
+                    <div class="cs-section">
+                        <div class="cs-section-title">Спасброски</div>
+                        <div class="cs-saves-list" id="cs-saves">
+                            <!-- Filled by JS -->
+                        </div>
+                    </div>
+
+                    <!-- Derived Stats -->
+                    <div class="cs-derived-stats" id="cs-derived">
+                        <!-- Filled by JS -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Skills Tab -->
+            <div class="panel-tab-content" data-tab="skills">
+                <div class="cs-skills-list" id="cs-skills-list">
+                    <!-- Filled by JS -->
+                </div>
+            </div>
+
+            <!-- Abilities/Features Tab -->
+            <div class="panel-tab-content" data-tab="abilities">
+                <div class="cs-features-container" id="cs-features">
+                    <!-- Filled by JS -->
+                </div>
+            </div>
+
+            <!-- Inventory Tab (Fallout-style list + detail) -->
+            <div class="panel-tab-content" data-tab="inventory">
+                <div class="cs-inventory-container" id="cs-inventory-container">
+                    <!-- Filled by JS: filters, item list, detail panel -->
+                </div>
+            </div>
+
+            <!-- Equipment Tab -->
+            <div class="panel-tab-content" data-tab="equipment">
+                <div class="cs-equipment-slots" id="cs-equipment-slots">
+                    <!-- Filled by JS -->
+                </div>
+            </div>
+
+            <!-- Description Tab -->
+            <div class="panel-tab-content" data-tab="description">
+                <div class="cs-description-form" id="cs-description-form">
+                    <!-- Filled by JS -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
