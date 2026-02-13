@@ -1,7 +1,7 @@
 {
     "ui_backend": "cef",
     "nickname": "MilkiWinky",
-    "resolution": "800x600",
+    "resolution": "1280x720",
     "available_resolutions": [
         "800x600",
         "1024x768",
@@ -15,9 +15,9 @@
     "fov": 70,
     "ps1_effect_enabled": true,
     "ps1_effect_resolution": 1,
-    "audio_master_volume": 65,
-    "audio_bgm_volume": 69,
-    "audio_sfx_volume": 21,
+    "audio_master_volume": 30,
+    "audio_bgm_volume": 20,
+    "audio_sfx_volume": 12,
     "audio_ambient_volume": 74,
     "audio_ui_volume": 70,
     "ui_sound_pack": "fantasy",

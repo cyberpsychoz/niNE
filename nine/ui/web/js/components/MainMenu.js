@@ -31,6 +31,9 @@ class MainMenu {
         // Attach event listeners
         this.attachEventListeners();
 
+        // Start menu music
+        if (window.soundManager) window.soundManager.playMenuMusic();
+
         console.log('[MainMenu] Rendered');
     }
 
@@ -39,6 +42,8 @@ class MainMenu {
      */
     _setBackground() {
         if (!this.element || this.backgrounds.length === 0) return;
+        // Store globally so returning from settings can reuse them
+        window._menuBackgrounds = this.backgrounds;
         const bg = this.backgrounds[Math.floor(Math.random() * this.backgrounds.length)];
         this.element.style.backgroundImage = `url('${bg}')`;
         this.element.style.backgroundSize = 'cover';
@@ -56,6 +61,15 @@ class MainMenu {
             playBtn.addEventListener('click', () => {
                 console.log('[MainMenu] PLAY clicked');
                 PythonAPI.openLoginMenu();
+            });
+        }
+
+        // GUIDE button
+        const guideBtn = document.getElementById('btn-guide');
+        if (guideBtn) {
+            guideBtn.addEventListener('click', () => {
+                console.log('[MainMenu] GUIDE clicked');
+                window.router.navigate('guide');
             });
         }
 

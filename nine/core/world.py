@@ -216,9 +216,9 @@ class GameWorld:
         # ВАЖНО: НЕ используйте на сервере без графики!
         # self.cTrav.showCollisions(self.render)
 
-        # Spawn points - high above floor for testing fall physics (floor at z=0)
+        # Spawn points (slightly above floor so gravity settles the player)
         self.spawn_points = cycle([
-            [8, -3, 15], [10, 5, 15], [5, 0, 15], [15, -5, 15], [3, 3, 15]
+            [0, 0, 1], [3, 3, 1], [-3, -3, 1], [5, -5, 1], [-5, 5, 1]
         ])
 
         self._setup_scene()
@@ -486,11 +486,11 @@ class GameWorld:
         for name, pos, size in test_blocks:
             self._create_collision_box(name, pos, size)
 
-        # Update spawn points for test map (center, above ground)
+        # Update spawn points for test map (slightly above ground)
         self.spawn_points = cycle([
-            [0, 0, 5],      # Center, high for fall test
-            [3, 3, 2],      # Near center
-            [-3, -3, 2],    # Opposite corner
+            [0, 0, 1],
+            [3, 3, 1],
+            [-3, -3, 1],
         ])
 
         logger.info(f"[World] Test map created with {len(test_blocks)} collision objects")

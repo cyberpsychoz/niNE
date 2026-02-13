@@ -9,7 +9,7 @@
         </div>
         <div class="hud-stats-row">
             <span class="hud-ac" id="hud-ac">AC: 10</span>
-            <span class="hud-level" id="hud-level">Lv 1</span>
+            <span class="hud-level" id="hud-level">Ур 1</span>
         </div>
     </div>
 
@@ -24,30 +24,51 @@
             <span class="hud-turn" id="hud-turn"></span>
         </div>
 
+        <!-- Movement bar -->
+        <div class="hud-movement-section" id="hud-movement-section" style="display:none">
+            <div class="hud-movement-bar">
+                <div class="hud-movement-fill" id="hud-movement-fill" style="width:100%"></div>
+            </div>
+            <div class="hud-movement-text" id="hud-movement-text">30/30 фт</div>
+        </div>
+
+        <!-- Resource indicators -->
+        <div class="hud-resources" id="hud-resources">
+            <div class="hud-resource resource-available" id="hud-res-action">
+                <span class="resource-label">Д</span>
+            </div>
+            <div class="hud-resource resource-available" id="hud-res-bonus">
+                <span class="resource-label">Б</span>
+            </div>
+            <div class="hud-resource resource-available" id="hud-res-reaction">
+                <span class="resource-label">Р</span>
+            </div>
+        </div>
+
         <!-- Action bar -->
         <div class="hud-action-bar" id="hud-action-bar">
             <button class="hud-action-btn" data-action="attack" data-key="1">
-                <span class="action-name">Attack</span>
+                <span class="action-name">Атака</span>
                 <span class="action-key">[1]</span>
             </button>
             <button class="hud-action-btn" data-action="spell" data-key="2">
-                <span class="action-name">Spell</span>
+                <span class="action-name">Заклинание</span>
                 <span class="action-key">[2]</span>
             </button>
             <button class="hud-action-btn" data-action="move" data-key="3">
-                <span class="action-name">Move</span>
+                <span class="action-name">Движение</span>
                 <span class="action-key">[3]</span>
             </button>
             <button class="hud-action-btn" data-action="dodge" data-key="4">
-                <span class="action-name">Dodge</span>
+                <span class="action-name">Уклонение</span>
                 <span class="action-key">[4]</span>
             </button>
             <button class="hud-action-btn" data-action="dash" data-key="5">
-                <span class="action-name">Dash</span>
+                <span class="action-name">Рывок</span>
                 <span class="action-key">[5]</span>
             </button>
             <button class="hud-action-btn hud-end-turn" data-action="end_turn" data-key="E">
-                <span class="action-name">End Turn</span>
+                <span class="action-name">Конец хода</span>
                 <span class="action-key">[E]</span>
             </button>
         </div>
@@ -58,7 +79,7 @@
 
     <!-- Initiative Tracker (right side, hidden outside combat) -->
     <div class="hud-initiative hidden" id="hud-initiative">
-        <div class="hud-initiative-title">Initiative</div>
+        <div class="hud-initiative-title">Инициатива</div>
         <div class="hud-initiative-list" id="hud-initiative-list"></div>
     </div>
 </div>

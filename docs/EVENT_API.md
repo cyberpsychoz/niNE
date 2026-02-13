@@ -1059,6 +1059,120 @@ DM команда удаления NPC.
 
 ---
 
+### npc_spawned
+
+NPC был создан в мире.
+
+**Когда вызывается**: При спавне NPC через NPCManager.
+
+**Данные**:
+```python
+{
+    "entity_id": str,       # Entity ID
+    "npc_id": str,          # То же что entity_id (для совместимости с living_npc)
+    "template_id": str,     # ID шаблона ("guard", "goblin", etc.)
+    "template_data": dict,  # Полные данные шаблона (включая living)
+    "position": {"x": float, "y": float, "z": float, "rotation": float}
+}
+```
+
+**Где слушать**: Серверные модули (Living World systems)
+
+---
+
+### npc_despawned
+
+NPC был удалён из мира.
+
+**Когда вызывается**: При удалении NPC.
+
+**Данные**:
+```python
+{
+    "entity_id": str,  # Entity ID
+    "npc_id": str      # То же что entity_id
+}
+```
+
+---
+
+### npc_urgent_need
+
+NPC испытывает критическую потребность.
+
+**Когда вызывается**: Когда потребность NPC падает ниже критического уровня (< 20).
+
+**Данные**:
+```python
+{
+    "entity_id": str,   # Entity ID NPC
+    "need": str,        # "hunger" | "energy" | "safety"
+    "value": float,     # Текущее значение потребности
+    "action": str       # "SEEK_FOOD" | "SEEK_REST" | "FLEE"
+}
+```
+
+**Где слушать**: `sv_npc_ai.py` (AISystem) — создаёт behavior override
+
+---
+
+### npc_activity_changed
+
+Активность NPC изменилась по расписанию.
+
+**Когда вызывается**: Когда игровой час сменяется и NPC получает новую активность по расписанию.
+
+**Данные**:
+```python
+{
+    "entity_id": str,     # Entity ID NPC
+    "activity": str,      # "patrolling" | "sleeping" | "eating" | "socializing"
+    "location": list      # [x, y, z] — опционально, целевая позиция
+}
+```
+
+**Где слушать**: `sv_npc_ai.py` (AISystem) — создаёт behavior override
+
+---
+
+## События игрового времени
+
+### game_tick
+
+Тик игрового времени.
+
+**Когда вызывается**: Каждый серверный тик.
+
+**Данные**:
+```python
+{
+    "delta_hours": float  # Сколько игровых часов прошло за этот тик
+}
+```
+
+**Где слушать**: Living World systems (обновление потребностей)
+
+---
+
+### game_hour_changed
+
+Сменился игровой час.
+
+**Когда вызывается**: Когда игровой час увеличивается на 1.
+
+**Данные**:
+```python
+{
+    "hour": int  # Текущий игровой час (0-23)
+}
+```
+
+**Где слушать**: Living World systems (обновление расписаний), любые модули зависящие от времени суток
+
+**Заметка**: Game time: 1 реальная минута = 1 игровой час (полный цикл день/ночь = 24 минуты). Стартовое время: 8:00 утра.
+
+---
+
 ## События аудио
 
 ### dm_audio_command

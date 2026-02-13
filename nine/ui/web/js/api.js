@@ -285,6 +285,113 @@ class PythonAPI {
             console.error('[API] Error calling close_web_page:', error);
         }
     }
+
+    /**
+     * Equip an item from inventory.
+     * @param {number} slot - Inventory slot index
+     */
+    static async equipItem(slot) {
+        return this.call('equip_item', { inventory_slot: slot });
+    }
+
+    /**
+     * Unequip an item from equipment slot.
+     * @param {string} slot - Equipment slot name
+     */
+    static async unequipItem(slot) {
+        return this.call('unequip_item', { equipment_slot: slot });
+    }
+
+    /**
+     * Cast a spell.
+     * @param {string} spellId - Spell ID
+     * @param {number} slotLevel - Spell slot level to use
+     */
+    static async castSpell(spellId, slotLevel) {
+        return this.call('cast_spell', { spell_id: spellId, slot_level: slotLevel });
+    }
+
+    /**
+     * Prepare a spell.
+     * @param {string} spellId - Spell ID
+     */
+    static async prepareSpell(spellId) {
+        return this.call('prepare_spell', { spell_id: spellId });
+    }
+
+    /**
+     * Unprepare a spell.
+     * @param {string} spellId - Spell ID
+     */
+    static async unprepareSpell(spellId) {
+        return this.call('unprepare_spell', { spell_id: spellId });
+    }
+
+    /**
+     * Request quest list from server.
+     * @param {string} filter - Filter type (all, active, available, completed)
+     */
+    static async questListRequest(filter = 'all') {
+        return this.call('quest_list_request', { filter });
+    }
+
+    /**
+     * Abandon a quest.
+     * @param {string} questId - Quest ID
+     */
+    static async questAbandon(questId) {
+        return this.call('quest_abandon', { quest_id: questId });
+    }
+
+    /**
+     * Spend a hit die during rest.
+     */
+    static async spendHitDie() {
+        return this.call('spend_hit_die', { count: 1 });
+    }
+
+    /**
+     * Finish a rest.
+     * @param {string} restType - Rest type (short, long)
+     */
+    static async finishRest(restType) {
+        return this.call('finish_rest', { rest_type: restType });
+    }
+
+    /**
+     * Update character description field.
+     * @param {string} field - Field name
+     * @param {string} value - New value
+     */
+    static async updateDescription(field, value) {
+        return this.call('update_description', { field, value });
+    }
+
+    /**
+     * Use an inventory item.
+     * @param {number} slot - Inventory slot index
+     */
+    static async itemUse(slot) {
+        return this.call('item_use', { slot });
+    }
+
+    /**
+     * Drop an inventory item.
+     * @param {number} slot - Inventory slot index
+     * @param {number} count - Number to drop
+     */
+    static async itemDrop(slot, count = 1) {
+        return this.call('item_drop', { slot, count });
+    }
+
+    /**
+     * Execute an interaction with an entity (from context menu).
+     * @param {string} entityId - Entity ID
+     * @param {string} action - Action name (talk, trade, attack, loot, pickup, inspect)
+     */
+    static async interactWith(entityId, action) {
+        return this.call('interact_with', { entity_id: entityId, action: action });
+    }
 }
 
 /**

@@ -112,55 +112,45 @@ Skeleton:
 
 ---
 
-## ⚠️ ЧТО НЕ РАБОТАЕТ (ЕЩЁ)
+## ✅ РЕАЛИЗОВАНО (февраль 2026)
 
-### 1. Приоритизация потребностей (❌)
+### 1. Приоритизация потребностей (✅ Living World → AI Integration)
 
-**Проблема:**
+**Реализовано в `sv_npc_ai.py`:**
+- Событие `npc_urgent_need` от Living World системы переопределяет текущее AI поведение
+- Критический голод → `SEEK_FOOD` (движение к ближайшей точке еды)
+- Критическая усталость → `SEEK_REST` (движение к месту отдыха)
+- Критическая безопасность → `FLEE` (бегство от угрозы)
+- Behavior overrides имеют приоритет над дефолтным поведением
+
+**Код:**
 ```python
-# Текущее состояние:
-hunger = 5.0  # CRITICAL!
-energy = 90.0
-social = 80.0
-
-# NPCs делают:
-ai.behavior = AIBehavior.PATROL  # Патрулирует как обычно
-
-# NPCs ДОЛЖНЫ делать:
-ai.behavior = AIBehavior.SEEK_FOOD  # Ищет еду!!!
+# В AISystem.update() — проверка override перед выбором поведения:
+override = self._behavior_overrides.get(entity_id)
+if override:
+    self._update_override(entity, ai, pos, dt, override, lod_level)
+    continue  # Skip default behavior
 ```
-
-**Что ломается:**
-- NPC умирает от голода, продолжая патрулировать
-- NPC падает от усталости, не идя спать
-- NPC одинокий весь день, не ищет компанию
-
-**Почему критично:**
-Потребности **не влияют на поведение** → система бесполезна.
 
 ---
 
-### 2. Влияние черт на AI (❌)
+### 2. Влияние черт на AI (✅ Trait Modifiers)
 
-**Проблема:**
+**Реализовано в `sv_npc_manager.py` — `_apply_trait_modifiers()`:**
 ```python
-# NPC с BRAVE trait:
-if combat.hp_current < combat.hp_max * 0.2:
-    ai.behavior = AIBehavior.FLEE  # Бежит при 20% HP
-
-# NPC с COWARD trait:
-if combat.hp_current < combat.hp_max * 0.2:
-    ai.behavior = AIBehavior.FLEE  # ТОЖЕ бежит при 20% HP!!! (должен при 50%)
+# При спавне NPC черты реально меняют AI параметры:
+if "brave" in traits:    ai.aggro_radius *= 1.3   # Более агрессивен
+if "cowardly" in traits: ai.aggro_radius *= 0.5   # Менее агрессивен
+if "lazy" in traits:     ai.move_speed *= 0.7     # Двигается медленнее
+if "patient" in traits:  ai.patrol_wait_time *= 1.5  # Дольше ждёт на точках
+if "curious" in traits:  ai.wander_radius *= 1.5  # Бродит дальше
 ```
 
-**Что ломается:**
-- BRAVE и COWARD ведут себя одинаково
-- KIND не помогает раненым союзникам
-- LAZY работает с той же скоростью что HARD_WORKER
-- NIGHT_OWL активен днём так же как EARLY_BIRD
+**Результат:** BRAVE и COWARD ведут себя по-разному, LAZY медленнее, CURIOUS исследует дальше.
 
-**Почему критично:**
-Черты **декоративные** → NPCs не уникальны.
+---
+
+## ⚠️ ЧТО ЕЩЁ НЕ РЕАЛИЗОВАНО
 
 ---
 
@@ -364,11 +354,13 @@ def check_relationship_actions(npc, target):
 
 ## 📈 ROADMAP К "ЖИВОМУ МИРУ"
 
-### Milestone 1: Basic Reactivity (2 недели)
-- ✅ Потребности влияют на поведение
-- ✅ Черты влияют на модификаторы
-- ✅ Отношения влияют на действия
-- **Результат:** NPCs **реагируют** на внутреннее состояние
+### Milestone 1: Basic Reactivity (✅ ЗАВЕРШЁН — февраль 2026)
+- ✅ Потребности влияют на поведение (urgent needs → behavior override)
+- ✅ Черты влияют на модификаторы (brave, cowardly, lazy, patient, curious)
+- ✅ Расписания влияют на поведение (schedule → activity override)
+- ✅ Game time система (день/ночь цикл, 1 мин = 1 час)
+- ✅ Wander behavior для idle NPC
+- **Результат:** NPCs **реагируют** на внутреннее состояние и время суток
 
 ### Milestone 2: Social Interactions (3 недели)
 - ✅ NPCs разговаривают друг с другом
@@ -453,8 +445,8 @@ def check_relationship_actions(npc, target):
 
 ---
 
-**Оценка:** ⭐⭐⭐⭐☆ сейчас
-**Потенциал:** ⭐⭐⭐⭐⭐ через Milestone 1
+**Оценка:** ⭐⭐⭐⭐☆ (Milestone 1 завершён)
+**Потенциал:** ⭐⭐⭐⭐⭐ через Milestone 2-3
 
-**Дата:** 2026-02-01
-**Автор:** Claude Opus 4.5
+**Обновлено:** 2026-02-13
+**Автор:** Claude Opus 4.5 → обновлено Claude Opus 4.6

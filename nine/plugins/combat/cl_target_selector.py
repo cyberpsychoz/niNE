@@ -1,9 +1,10 @@
 """
 Target Selector - клиентский модуль выбора целей.
 Переключение между режимом камеры и курсора (клавиша C).
+Left-click = default action, right-click = context menu.
 """
 
-from typing import Optional
+from typing import Optional, Dict, List
 from panda3d.core import (
     CollisionTraverser, CollisionNode, CollisionRay,
     CollisionHandlerQueue, GeomNode, WindowProperties,
@@ -18,7 +19,7 @@ class TargetSelector(PluginModule):
     """
     Система выбора целей с переключением режима курсора.
     - Клавиша C: переключение между режимом камеры и курсора
-    - В режиме курсора: клик по сущности выбирает её как цель
+    - В режиме курсора: левый клик = действие по умолчанию, правый клик = контекстное меню
     """
 
     def on_load(self):
@@ -48,6 +49,8 @@ class TargetSelector(PluginModule):
         self.event_manager.subscribe("combat_started", self._on_combat_started)
         self.event_manager.subscribe("combat_ended", self._on_combat_ended)
         self.event_manager.subscribe("combat_turn_start", self._on_turn_start)
+        self.event_manager.subscribe("interact_default", self._on_interact_default)
+        self.event_manager.subscribe("interact_request", self._on_interact_request)
 
     def on_unload(self):
         self.app.ignore("c")
@@ -57,6 +60,8 @@ class TargetSelector(PluginModule):
         self.event_manager.unsubscribe("combat_started", self._on_combat_started)
         self.event_manager.unsubscribe("combat_ended", self._on_combat_ended)
         self.event_manager.unsubscribe("combat_turn_start", self._on_turn_start)
+        self.event_manager.unsubscribe("interact_default", self._on_interact_default)
+        self.event_manager.unsubscribe("interact_request", self._on_interact_request)
 
         if self.cursor_mode:
             self._disable_cursor_mode()
@@ -142,6 +147,9 @@ class TargetSelector(PluginModule):
 
         # Скрываем подсказку
         self._hide_cursor_mode_hint()
+
+        # Hide any open context menu
+        self.event_manager.post("hide_context_menu", {})
 
         self.logger.debug("Cursor mode disabled")
 
@@ -255,6 +263,70 @@ class TargetSelector(PluginModule):
         return None
 
     # =========================================================================
+    # Entity info gathering
+    # =========================================================================
+
+    def _get_npc_renderer(self, entity_id: str):
+        """Find NPCRenderer for given entity_id from the NPC client module."""
+        pm = getattr(self.app, 'plugin_manager', None)
+        if not pm:
+            return None
+        loaded = pm.get_plugin("nine.npc")
+        if not loaded:
+            return None
+        # Find NPCClientModule among loaded modules
+        for module in loaded.modules:
+            renderers = getattr(module, '_renderers', None)
+            if renderers is not None:
+                return renderers.get(entity_id)
+        return None
+
+    def _get_entity_info(self, entity_id: str) -> Dict:
+        """Gather entity metadata for context menu actions."""
+        # Check if it's an NPC
+        renderer = self._get_npc_renderer(entity_id)
+        if renderer:
+            actions = self._resolve_npc_actions(renderer)
+            return {
+                "entity_type": "npc",
+                "display_name": renderer.display_name,
+                "actions": actions,
+            }
+
+        # Check if it's a player
+        node = self.app.render.find(f"**/player_{entity_id}")
+        if not node.isEmpty():
+            return {
+                "entity_type": "player",
+                "display_name": "Player",
+                "actions": ["inspect"],
+            }
+
+        # Unknown / item on ground (future)
+        return {
+            "entity_type": "item",
+            "display_name": "Item",
+            "actions": ["pickup", "inspect"],
+        }
+
+    def _resolve_npc_actions(self, renderer) -> List[str]:
+        """Determine available actions based on NPC state."""
+        if renderer.is_dead:
+            # Dead NPC: loot if it has inventory, else inspect
+            actions = ["loot"]
+            return actions
+
+        if renderer.hostile:
+            return ["attack"]
+
+        # Friendly/neutral NPC
+        actions = ["talk"]
+        if renderer.is_merchant:
+            actions.append("trade")
+        actions.append("inspect")
+        return actions
+
+    # =========================================================================
     # Обработка кликов
     # =========================================================================
 
@@ -265,6 +337,10 @@ class TargetSelector(PluginModule):
 
         if self.hovered_entity_id:
             self._select_target(self.hovered_entity_id)
+            # Post default interaction event
+            self.event_manager.post("interact_default", {
+                "entity_id": self.hovered_entity_id,
+            })
 
     def _on_right_click(self):
         """Обрабатывает правый клик мыши (контекстное меню)."""
@@ -272,7 +348,6 @@ class TargetSelector(PluginModule):
             return
 
         if self.hovered_entity_id:
-            # TODO: показать контекстное меню с действиями
             self._show_context_menu(self.hovered_entity_id)
 
     def _select_target(self, entity_id: str):
@@ -308,9 +383,96 @@ class TargetSelector(PluginModule):
 
     def _show_context_menu(self, entity_id: str):
         """Показывает контекстное меню для сущности."""
-        # TODO: реализовать контекстное меню с действиями
-        # Атака, Осмотреть, Поговорить и т.д.
-        self.logger.debug(f"Context menu for: {entity_id}")
+        mwn = self.app.mouseWatcherNode
+        if not mwn.hasMouse():
+            return
+        mx = mwn.getMouseX()
+        my = mwn.getMouseY()
+
+        entity_info = self._get_entity_info(entity_id)
+
+        self.event_manager.post("show_context_menu", {
+            "entity_id": entity_id,
+            "mouse_x": mx,
+            "mouse_y": my,
+            **entity_info,
+        })
+
+        self.logger.debug(f"Context menu for: {entity_id} ({entity_info.get('display_name', '?')})")
+
+    # =========================================================================
+    # Interaction handlers
+    # =========================================================================
+
+    def _on_interact_default(self, data):
+        """Handle default (left-click) interaction with an entity."""
+        entity_id = data.get("entity_id", "")
+        if not entity_id:
+            return
+
+        info = self._get_entity_info(entity_id)
+        entity_type = info.get("entity_type", "")
+        actions = info.get("actions", [])
+
+        if entity_type == "npc":
+            renderer = self._get_npc_renderer(entity_id)
+            if renderer and renderer.is_dead:
+                self._do_interact(entity_id, "loot")
+            elif renderer and renderer.hostile:
+                self._do_interact(entity_id, "attack")
+            elif "talk" in actions:
+                self._do_interact(entity_id, "talk")
+        elif entity_type == "item":
+            self._do_interact(entity_id, "pickup")
+
+    def _on_interact_request(self, data):
+        """Handle explicit interaction request (from context menu JS)."""
+        entity_id = data.get("entity_id", "")
+        action = data.get("action", "")
+        if entity_id and action:
+            self._do_interact(entity_id, action)
+
+    def _do_interact(self, entity_id: str, action: str):
+        """Route an interaction action to the appropriate game event."""
+        self.logger.info(f"Interact: {action} -> {entity_id[:8]}")
+
+        if action == "talk":
+            self.event_manager.post("npc_interact_request", {
+                "npc_id": entity_id,
+                "player_id": getattr(self.app, 'player_uuid', ''),
+                "interaction": "talk",
+            })
+        elif action == "trade":
+            self.event_manager.post("npc_interact_request", {
+                "npc_id": entity_id,
+                "player_id": getattr(self.app, 'player_uuid', ''),
+                "interaction": "trade",
+            })
+        elif action == "attack":
+            self.event_manager.post("target_selected", {
+                "target_id": entity_id,
+            })
+            self.event_manager.post("combat_player_action", {
+                "action": "attack",
+                "target": entity_id,
+            })
+        elif action == "loot":
+            self.event_manager.post("npc_interact_request", {
+                "npc_id": entity_id,
+                "player_id": getattr(self.app, 'player_uuid', ''),
+                "interaction": "loot",
+            })
+        elif action == "pickup":
+            self.event_manager.post("client_pickup_item", {
+                "entity_id": entity_id,
+            })
+        elif action == "inspect":
+            self.event_manager.post("inspect_entity", {
+                "entity_id": entity_id,
+            })
+
+        # Hide context menu after any action
+        self.event_manager.post("hide_context_menu", {})
 
     # =========================================================================
     # UI
@@ -319,12 +481,14 @@ class TargetSelector(PluginModule):
     def _show_cursor_mode_hint(self):
         """Показывает подсказку о режиме курсора."""
         if not self.cursor_mode_hint:
+            font = self.app.loader.loadFont("nine/assets/fonts/DejaVuSans.ttf")
             self.cursor_mode_hint = OnscreenText(
                 text="[C] Режим выбора цели",
                 pos=(0, 0.9),
                 scale=0.05,
                 fg=(1, 1, 0.5, 0.8),
                 shadow=(0, 0, 0, 0.5),
+                font=font,
                 mayChange=True
             )
 

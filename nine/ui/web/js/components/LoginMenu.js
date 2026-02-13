@@ -100,25 +100,25 @@ class LoginMenu {
 
         // Validation
         if (!ip) {
-            this.showError('Please enter server address');
+            this.showError('Введите адрес сервера');
             this.ipInput.focus();
             return;
         }
 
         if (!name) {
-            this.showError('Please enter character name');
+            this.showError('Введите имя персонажа');
             this.nameInput.focus();
             return;
         }
 
         if (name.length < 2) {
-            this.showError('Name must be at least 2 characters');
+            this.showError('Имя должно быть не менее 2 символов');
             this.nameInput.focus();
             return;
         }
 
         if (name.length > 20) {
-            this.showError('Name must be 20 characters or less');
+            this.showError('Имя должно быть не более 20 символов');
             this.nameInput.focus();
             return;
         }
@@ -161,8 +161,8 @@ class LoginMenu {
         if (this.connectBtn) {
             this.connectBtn.disabled = connecting;
             this.connectBtn.innerHTML = connecting
-                ? '<span class="btn-icon">&#8987;</span> CONNECTING...'
-                : '<span class="btn-icon">&#10148;</span> CONNECT';
+                ? '<span class="btn-icon">&#8987;</span> ПОДКЛЮЧЕНИЕ...'
+                : '<span class="btn-icon">&#10148;</span> ПОДКЛЮЧИТЬСЯ';
         }
 
         [this.ipInput, this.nameInput, this.passwordInput].forEach(input => {
@@ -175,7 +175,7 @@ class LoginMenu {
      */
     onConnectionError(error) {
         this.setConnecting(false);
-        this.showError(error || 'Connection failed');
+        this.showError(error || 'Ошибка подключения');
     }
 
     /**

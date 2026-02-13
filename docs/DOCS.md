@@ -89,62 +89,99 @@
 
 ```json
 {
-  "ui_backend": "playwright"  // Рекомендуемый
+  "ui_backend": "cef"  // Рекомендуемый
 }
 ```
 
 | Backend | Статус | Описание |
 |---------|--------|----------|
-| `playwright` | **Рекомендуемый** | Chromium-based HTML/CSS UI через Playwright |
+| `cef` | **Рекомендуемый** | CEF offscreen rendering через cef-capi-py (Chromium 131) |
+| `playwright` | Legacy | Screenshot-based Chromium UI (высокая задержка 60-160ms) |
 | `directgui` | Fallback | Нативный Panda3D DirectGUI |
 
-### Playwright UI (Рекомендуемый)
+### CEF UI (Рекомендуемый)
 
 **Файлы:**
-- `nine/ui/playwright_manager.py` — Offscreen Chromium рендеринг на текстуру
+- `nine/ui/cef_manager.py` — CEF offscreen рендеринг через cef-capi-py
 - `nine/ui/webview_api.py` — Python API для JavaScript вызовов
-- `nine/ui/web/` — HTML/CSS/JS assets
+- `nine/ui/web/` — HTML/CSS/JS assets (общие с Playwright)
 
 **Архитектура:**
 ```
-┌─────────────────────────────────┐
-│  Playwright (offscreen browser)  │ ← HTML/CSS UI
-│  → Screenshot → Panda3D Texture │
-└─────────────────────────────────┘
-         ↓ (overlay on)
-┌─────────────────────────────────┐
-│   Panda3D Window                │ ← 3D rendering
-└─────────────────────────────────┘
+┌─────────────────────────────────────┐
+│  CEF (offscreen Chromium 131)        │ ← HTML/CSS UI
+│  → Raw BGRA pixels via OnPaint      │
+│  → V8 extension для JS↔Python       │
+└─────────────────────────────────────┘
+         ↓ (каждый кадр, без кодирования)
+┌─────────────────────────────────────┐
+│  Panda3D Texture (render2d overlay)  │
+│  → Прозрачный фон, нативный ввод   │
+└─────────────────────────────────────┘
+         ↓ (composited on)
+┌─────────────────────────────────────┐
+│  Panda3D 3D Scene                    │
+└─────────────────────────────────────┘
 ```
+
+**Ключевые особенности CEF vs Playwright:**
+- Raw BGRA пиксели через OnPaint (без PNG encode/decode)
+- V8 extension для нативного JS→Python моста (`window.pyapi`)
+- Нативная обработка клавиатуры и буфера обмена
+- Работает на главном потоке (single_process=True)
+- HTTP сервер на порту 18599 для локальных файлов
 
 **Структура web/:**
 ```
 nine/ui/web/
 ├── index.html              # Root HTML
 ├── css/
-│   ├── theme.css          # BG1-style тема
-│   ├── main.css           # Layout
-│   ├── components.css     # UI компоненты
-│   └── animations.css     # Анимации
+│   ├── theme.css          # @font-face (локальные шрифты), :root переменные, ресеты
+│   ├── main.css           # Layout экранов (main menu, settings и др.)
+│   ├── components.css     # Переиспользуемые компоненты (кнопки, инпуты)
+│   └── animations.css     # Keyframes и классы анимаций
 ├── js/
-│   ├── api.js             # Python API wrapper
-│   ├── router.js          # SPA router
-│   └── components/        # JS компоненты
-└── templates/             # HTML templates
+│   ├── api.js             # PythonAPI — обёртка для JS→Python вызовов
+│   ├── main.js            # Роутер, навигация между экранами
+│   ├── panel-manager.js   # Менеджер игровых панелей (HUD)
+│   ├── sound-manager.js   # Звуковой менеджер UI
+│   └── components/        # JS компоненты экранов
+│       ├── MainMenu.js
+│       ├── LoginMenu.js
+│       ├── SettingsMenu.js
+│       ├── CharacterSelect.js
+│       ├── CharacterCreate.js
+│       ├── GameHUD.js
+│       ├── InGameMenu.js
+│       ├── CharacterSheet.js
+│       ├── SpellbookPanel.js
+│       ├── QuestLog.js
+│       ├── RestDialog.js
+│       └── ContextMenu.js
+└── templates/             # HTML templates (без inline <style>!)
 ```
 
-**JavaScript → Python:**
+**JavaScript → Python (CEF):**
 ```javascript
+// V8 extension предоставляет window.pyapi с нативным pyCall()
 await PythonAPI.getApi().exit_game()
 await PythonAPI.getApi().attempt_login(ip, name, password)
 await PythonAPI.getApi().send_chat_message(msg)
+await PythonAPI.getApi().create_character(charData)
+await PythonAPI.getApi().combat_action(actionData)
 ```
 
 **Python → JavaScript:**
 ```python
-ui_manager.send_to_js("navigate", {"screen": "main-menu"})
-ui_manager.send_to_js("chat_message", {"sender": "Bob", "text": "Hello"})
+cef_manager.send_to_js("navigate", {"screen": "main-menu"})
+cef_manager.send_to_js("chat_message", {"sender": "Bob", "text": "Hello"})
+cef_manager.send_to_js("combat_started", {"participants": [...]})
 ```
+
+**Важные правила для CEF:**
+- НИКОГДА не использовать `@import url()` с внешними URL — шрифты только локальные TTF
+- НИКОГДА не ставить `<style>` блоки в HTML templates — только linked CSS файлы
+- Все Google Fonts скачаны как TTF и подаются через HTTP сервер
 
 ### DirectGUI Fallback
 
@@ -162,23 +199,6 @@ class GameState(Enum):
     CONNECTING = auto()  # Процесс подключения
     IN_GAME = auto()     # В игре
 ```
-
-#### DnD Plugin UI (nine/plugins/dnd/)
-
-| Файл | Назначение |
-|------|------------|
-| `cl_character_select_ui.py` | Выбор персонажа |
-| `cl_character_create_ui.py` | Создание персонажа |
-
-#### Combat Plugin UI (nine/plugins/combat/)
-
-| Файл | Назначение |
-|------|------------|
-| `cl_combat_ui.py` | Главный UI боя |
-| `cl_action_bar.py` | Панель действий (атака, заклинания) |
-| `cl_initiative_display.py` | Отображение инициативы |
-| `cl_spectator_mode.py` | Режим наблюдателя |
-| `cl_target_selector.py` | Выбор цели |
 
 ---
 

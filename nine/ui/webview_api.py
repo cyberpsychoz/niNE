@@ -63,6 +63,29 @@ class WebViewAPI:
         # World state
         event_manager.subscribe("world_state_received", self._on_world_state)
 
+        # Spellcasting events
+        event_manager.subscribe("spellcasting_update", self._on_spellcasting_update)
+        event_manager.subscribe("spell_cast_result", self._on_spell_cast_result)
+
+        # Quest events
+        event_manager.subscribe("quest_list", self._on_quest_list)
+        event_manager.subscribe("quest_accepted", self._on_quest_accepted)
+        event_manager.subscribe("quest_completed", self._on_quest_completed)
+        event_manager.subscribe("quest_objective_progress", self._on_quest_objective_progress)
+        event_manager.subscribe("quest_ready_to_turn_in", self._on_quest_ready_to_turn_in)
+
+        # Rest events
+        event_manager.subscribe("show_rest_dialog", self._on_show_rest_dialog)
+        event_manager.subscribe("rest_result", self._on_rest_result)
+        event_manager.subscribe("hit_die_result", self._on_hit_die_result)
+
+        # Character sheet tab navigation
+        event_manager.subscribe("open_character_sheet_tab", self._on_open_character_sheet_tab)
+
+        # Context menu events
+        event_manager.subscribe("show_context_menu", self._on_show_context_menu)
+        event_manager.subscribe("hide_context_menu", self._on_hide_context_menu)
+
         logger.info("Subscribed to game events")
 
     # ============================================================
@@ -172,6 +195,53 @@ class WebViewAPI:
             self.app.invert_mouse_y = settings["invert_mouse_y"]
         if "fov" in settings:
             self.app.fov = settings["fov"]
+
+        # Resolution
+        if "resolution" in settings:
+            try:
+                w, h = map(int, settings["resolution"].split("x"))
+                from panda3d.core import WindowProperties
+                props = WindowProperties()
+                props.setSize(w, h)
+                self.app.win.requestProperties(props)
+            except Exception:
+                pass
+
+        # Camera controller
+        cc = getattr(self.app, 'camera_controller', None)
+        if cc:
+            if "fov" in settings:
+                cc.set_fov(settings["fov"])
+            if "third_person_camera" in settings:
+                cc.set_third_person(settings["third_person_camera"])
+                if hasattr(self.app, 'update_player_model_visibility'):
+                    self.app.update_player_model_visibility()
+            if "camera_sensitivity" in settings:
+                cc.sensitivity = settings["camera_sensitivity"] * 30.0
+            if "invert_mouse_x" in settings:
+                cc.invert_x = settings["invert_mouse_x"]
+            if "invert_mouse_y" in settings:
+                cc.invert_y = settings["invert_mouse_y"]
+
+        # Audio volumes — Panda3D side
+        am = getattr(self.app, 'audio_manager', None)
+        if am:
+            from nine.core.audio_manager import AudioChannel
+            if "audio_master_volume" in settings:
+                am.set_master_volume(settings["audio_master_volume"] / 100.0)
+            if "audio_bgm_volume" in settings:
+                am.set_channel_volume(AudioChannel.BGM, settings["audio_bgm_volume"] / 100.0)
+            if "audio_sfx_volume" in settings:
+                am.set_channel_volume(AudioChannel.SFX, settings["audio_sfx_volume"] / 100.0)
+            if "audio_ambient_volume" in settings:
+                am.set_channel_volume(AudioChannel.BGS, settings["audio_ambient_volume"] / 100.0)
+
+        # Audio volumes — JS SoundManager side (menu BGM, UI sounds)
+        self.manager.send_to_js("audio_volume_changed", {
+            "master_volume": settings.get("audio_master_volume", 65) / 100.0,
+            "bgm_volume": settings.get("audio_bgm_volume", 69) / 100.0,
+            "ui_volume": settings.get("audio_ui_volume", 70) / 100.0,
+        })
 
     def send_chat_message(self, message: str):
         """
@@ -321,6 +391,50 @@ class WebViewAPI:
             safe_data[k] = v.name if isinstance(v, Enum) else v
         self.manager.send_to_js("game_state_changed", safe_data)
 
+    def _on_spellcasting_update(self, data: Dict[str, Any]):
+        """Forward spellcasting update to JavaScript."""
+        self.manager.send_to_js("spellcasting_update", data)
+
+    def _on_spell_cast_result(self, data: Dict[str, Any]):
+        """Forward spell cast result to JavaScript."""
+        self.manager.send_to_js("spell_cast_result", data)
+
+    def _on_quest_list(self, data: Dict[str, Any]):
+        """Forward quest list to JavaScript."""
+        self.manager.send_to_js("quest_list", data)
+
+    def _on_quest_accepted(self, data: Dict[str, Any]):
+        """Forward quest accepted to JavaScript."""
+        self.manager.send_to_js("quest_accepted", data)
+
+    def _on_quest_completed(self, data: Dict[str, Any]):
+        """Forward quest completed to JavaScript."""
+        self.manager.send_to_js("quest_completed", data)
+
+    def _on_quest_objective_progress(self, data: Dict[str, Any]):
+        """Forward quest objective progress to JavaScript."""
+        self.manager.send_to_js("quest_objective_progress", data)
+
+    def _on_quest_ready_to_turn_in(self, data: Dict[str, Any]):
+        """Forward quest ready to turn in to JavaScript."""
+        self.manager.send_to_js("quest_ready_to_turn_in", data)
+
+    def _on_show_rest_dialog(self, data: Dict[str, Any]):
+        """Forward show rest dialog to JavaScript."""
+        self.manager.send_to_js("show_rest_dialog", data)
+
+    def _on_rest_result(self, data: Dict[str, Any]):
+        """Forward rest result to JavaScript."""
+        self.manager.send_to_js("rest_result", data)
+
+    def _on_hit_die_result(self, data: Dict[str, Any]):
+        """Forward hit die result to JavaScript."""
+        self.manager.send_to_js("hit_die_result", data)
+
+    def _on_open_character_sheet_tab(self, data: Dict[str, Any]):
+        """Forward open character sheet tab to JavaScript."""
+        self.manager.send_to_js("open_character_sheet_tab", data)
+
     # ============================================================
     # New JS -> Python methods
     # ============================================================
@@ -346,3 +460,112 @@ class WebViewAPI:
             "action": action,
             "target": target,
         })
+
+    def equip_item(self, data: dict):
+        """Equip an item from inventory (called from JavaScript)."""
+        slot = data.get("inventory_slot", 0) if isinstance(data, dict) else data
+        logger.info(f"Equip item slot {slot} from JavaScript")
+        self.app.event_manager.post("client_equip_item", {"inventory_slot": slot})
+
+    def unequip_item(self, data: dict):
+        """Unequip an item from equipment slot (called from JavaScript)."""
+        slot = data.get("equipment_slot", "") if isinstance(data, dict) else data
+        logger.info(f"Unequip item slot {slot} from JavaScript")
+        self.app.event_manager.post("client_unequip_item", {"equipment_slot": slot})
+
+    def cast_spell(self, data: dict):
+        """Cast a spell (called from JavaScript)."""
+        spell_id = data.get("spell_id", "")
+        slot_level = data.get("slot_level", 0)
+        logger.info(f"Cast spell {spell_id} at level {slot_level} from JavaScript")
+        self.app.event_manager.post("cast_spell_request", {
+            "spell_id": spell_id,
+            "slot_level": slot_level,
+        })
+
+    def prepare_spell(self, data: dict):
+        """Prepare a spell (called from JavaScript)."""
+        spell_id = data.get("spell_id", "")
+        logger.info(f"Prepare spell {spell_id} from JavaScript")
+        self.app.event_manager.post("prepare_spell_request", {"spell_id": spell_id})
+
+    def unprepare_spell(self, data: dict):
+        """Unprepare a spell (called from JavaScript)."""
+        spell_id = data.get("spell_id", "")
+        logger.info(f"Unprepare spell {spell_id} from JavaScript")
+        self.app.event_manager.post("unprepare_spell_request", {"spell_id": spell_id})
+
+    def quest_list_request(self, data: dict):
+        """Request quest list from server (called from JavaScript)."""
+        filter_type = data.get("filter", "all") if isinstance(data, dict) else "all"
+        logger.info(f"Quest list request: {filter_type} from JavaScript")
+        self.app.event_manager.post("quest_list_request", {"filter": filter_type})
+
+    def quest_abandon(self, data: dict):
+        """Abandon a quest (called from JavaScript)."""
+        quest_id = data.get("quest_id", "")
+        logger.info(f"Quest abandon {quest_id} from JavaScript")
+        self.app.event_manager.post("quest_abandon", {"quest_id": quest_id})
+
+    def spend_hit_die(self, data: dict = None):
+        """Spend a hit die during rest (called from JavaScript)."""
+        count = data.get("count", 1) if isinstance(data, dict) else 1
+        logger.info(f"Spend hit die (count={count}) from JavaScript")
+        self.app.event_manager.post("spend_hit_die", {"count": count})
+
+    def finish_rest(self, data: dict):
+        """Finish a rest (called from JavaScript)."""
+        rest_type = data.get("rest_type", "short") if isinstance(data, dict) else "short"
+        logger.info(f"Finish rest ({rest_type}) from JavaScript")
+        self.app.event_manager.post("rest_request", {"rest_type": rest_type})
+
+    def update_description(self, data: dict):
+        """Update character description field (called from JavaScript)."""
+        field = data.get("field", "")
+        value = data.get("value", "")
+        logger.info(f"Update description field={field} from JavaScript")
+        self.app.event_manager.post("client_update_description", {
+            "field": field,
+            "value": value,
+        })
+
+    def item_use(self, data: dict):
+        """Use an inventory item (called from JavaScript)."""
+        slot = data.get("slot", 0) if isinstance(data, dict) else data
+        logger.info(f"Item use slot {slot} from JavaScript")
+        if hasattr(self.app, 'send_item_use_packet'):
+            self.app.send_item_use_packet({"slot": slot})
+
+    def item_drop(self, data: dict):
+        """Drop an inventory item (called from JavaScript)."""
+        slot = data.get("slot", 0) if isinstance(data, dict) else data
+        count = data.get("count", 1) if isinstance(data, dict) else 1
+        logger.info(f"Item drop slot {slot} (count={count}) from JavaScript")
+        if hasattr(self.app, 'send_message'):
+            self.app.send_message({
+                "type": "item_drop",
+                "slot": slot,
+                "count": count,
+            })
+
+    def interact_with(self, data: dict):
+        """Execute an interaction from context menu click (called from JavaScript)."""
+        entity_id = data.get("entity_id", "")
+        action = data.get("action", "")
+        logger.info(f"Interact with {entity_id[:8]} action={action} from JavaScript")
+        self.app.event_manager.post("interact_request", {
+            "entity_id": entity_id,
+            "action": action,
+        })
+
+    # ============================================================
+    # Context menu events (Python -> JavaScript)
+    # ============================================================
+
+    def _on_show_context_menu(self, data: Dict[str, Any]):
+        """Forward show_context_menu event to JavaScript."""
+        self.manager.send_to_js("show_context_menu", data)
+
+    def _on_hide_context_menu(self, data: Dict[str, Any]):
+        """Forward hide_context_menu event to JavaScript."""
+        self.manager.send_to_js("hide_context_menu", data)

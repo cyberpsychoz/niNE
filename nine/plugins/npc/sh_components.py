@@ -129,7 +129,7 @@ class AIComponent(Component):
     wander_interval: float = 5.0   # Interval for choosing new point
 
     # General parameters
-    move_speed: float = 1.5        # Movement speed
+    move_speed: float = 0.6        # Movement speed
     think_interval: float = 0.5    # AI update interval
 
     # LOD (Level of Detail) - set by AISystem
@@ -161,8 +161,8 @@ class PathfindingComponent(Component):
 
     # Steering
     velocity: Vec3 = field(default_factory=lambda: Vec3(0, 0, 0))
-    max_speed: float = 1.5
-    max_force: float = 5.0
+    max_speed: float = 0.6
+    max_force: float = 2.0  # Gentle steering for smooth turns
 
 
 @dataclass

@@ -332,6 +332,11 @@ class GameServer(ShowBase):
         # Enable unified ECS mode for NPC manager if available
         self._setup_unified_ecs()
 
+        # Game time system (day/night cycle)
+        self._game_time = 8.0   # Start at 8:00 AM
+        self._game_hour = 8
+        self._time_scale = 60.0  # 1 real minute = 1 game hour (full day = 24 min)
+
         # Flag for unified world_state format
         self.use_unified_world_state = True
 
@@ -581,6 +586,20 @@ class GameServer(ShowBase):
                     "position": {"x": state["pos"][0], "y": state["pos"][1], "z": state["pos"][2]}
                 })
             self.event_manager.post("player_update", {"players": players_data})
+
+        # 2.7. Update game time (day/night cycle)
+        delta_hours = dt * (self._time_scale / 3600.0)
+        self._game_time += delta_hours
+        if self._game_time >= 24.0:
+            self._game_time -= 24.0
+        new_hour = int(self._game_time)
+        if new_hour != self._game_hour:
+            self._game_hour = new_hour
+            self.event_manager.post("game_hour_changed", {"hour": new_hour})
+            self.logger.info(f"[Time] Game hour: {new_hour}:00")
+
+        # Post game_tick for living world systems (needs decay, memory decay)
+        self.event_manager.post("game_tick", {"delta_hours": delta_hours})
 
         # 3. Update client positions in interest manager
         for cid, player in self.world.players.items():
