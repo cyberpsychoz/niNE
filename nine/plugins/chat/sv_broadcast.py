@@ -249,6 +249,28 @@ CHAT_COMMANDS = {
         "usage": "/volume master 50",
     },
 
+    # Дебаг команды симулированного боя
+    "simfights": {
+        "description": "/simfights — список активных NPC-vs-NPC боёв",
+        "role": "admin",
+        "usage": "/simfights",
+    },
+    "forcefight": {
+        "description": "/forcefight <template1> <template2> — заспавнить двух NPC и столкнуть",
+        "role": "admin",
+        "usage": "/forcefight guard goblin",
+    },
+    "stopsimfight": {
+        "description": "/stopsimfight [fight_id] — остановить симулированный бой (или все)",
+        "role": "admin",
+        "usage": "/stopsimfight",
+    },
+    "factions": {
+        "description": "/factions — показать матрицу враждебности фракций",
+        "role": "admin",
+        "usage": "/factions",
+    },
+
     # Справка
     "help": {
         "description": "/help — показать список команд",
@@ -470,6 +492,30 @@ class ChatBroadcastModule(PluginModule):
         # /pos - показать свои координаты
         if message.lower().strip() == "/pos":
             return ParsedMessage(ChatType.COMMAND, "", command="pos", args=[])
+
+        # =========================================================================
+        # Дебаг команды симулированного боя
+        # =========================================================================
+
+        # /simfights — список активных NPC-vs-NPC боёв
+        if message.lower().strip() == "/simfights":
+            return ParsedMessage(ChatType.COMMAND, "", command="simfights", args=[])
+
+        # /forcefight <template1> <template2> — заспавнить и столкнуть
+        if message.lower().startswith("/forcefight "):
+            parts = message[12:].strip().split()
+            if len(parts) >= 2:
+                return ParsedMessage(ChatType.COMMAND, "", command="forcefight", args=[parts[0], parts[1]])
+
+        # /stopsimfight [fight_id] — остановить симулированный бой
+        if message.lower().startswith("/stopsimfight"):
+            parts = message[13:].strip().split()
+            fight_id = parts[0] if parts else ""
+            return ParsedMessage(ChatType.COMMAND, "", command="stopsimfight", args=[fight_id])
+
+        # /factions — матрица враждебности
+        if message.lower().strip() == "/factions":
+            return ParsedMessage(ChatType.COMMAND, "", command="factions", args=[])
 
         # Проверка на неизвестную команду (начинается с /, но не распознана)
         if message.startswith("/"):
@@ -843,6 +889,38 @@ class ChatBroadcastModule(PluginModule):
                 return
 
             self._handle_volume_command(client_id, player_name, args)
+
+        # =========================================================================
+        # Дебаг команды симулированного боя
+        # =========================================================================
+
+        elif command == "simfights":
+            if not self._is_admin(client_id):
+                self._send_system_message(client_id, "Недостаточно прав для этой команды")
+                return
+            self._handle_simfights(client_id)
+
+        elif command == "forcefight":
+            if not self._is_admin(client_id):
+                self._send_system_message(client_id, "Недостаточно прав для этой команды")
+                return
+            if len(args) < 2:
+                self._send_system_message(client_id, "Использование: /forcefight <template1> <template2>")
+                return
+            self._handle_forcefight(client_id, player_name, args[0], args[1])
+
+        elif command == "stopsimfight":
+            if not self._is_admin(client_id):
+                self._send_system_message(client_id, "Недостаточно прав для этой команды")
+                return
+            fight_id = args[0] if args and args[0] else ""
+            self._handle_stopsimfight(client_id, fight_id)
+
+        elif command == "factions":
+            if not self._is_admin(client_id):
+                self._send_system_message(client_id, "Недостаточно прав для этой команды")
+                return
+            self._handle_factions(client_id)
 
         elif command == "help":
             # /help - показать список команд
@@ -1273,6 +1351,136 @@ class ChatBroadcastModule(PluginModule):
 
         self._send_system_message(client_id, f"Инициатива {entity_id} установлена на {value}")
         self.logger.info(f"{player_name} установил инициативу {entity_id} = {value}")
+
+    # =========================================================================
+    # Дебаг команды симулированного боя - обработчики
+    # =========================================================================
+
+    def _get_simulated_combat_manager(self):
+        """Получает SimulatedCombatManager."""
+        if hasattr(self.app, 'simulated_combat') and self.app.simulated_combat:
+            return self.app.simulated_combat
+        return None
+
+    def _handle_simfights(self, client_id: int):
+        """Обрабатывает /simfights — список активных NPC-vs-NPC боёв."""
+        sim = self._get_simulated_combat_manager()
+        if not sim:
+            self._send_system_message(client_id, "SimulatedCombatManager не загружен")
+            return
+
+        if not sim.fights:
+            self._send_system_message(client_id, "Нет активных симулированных боёв")
+            return
+
+        lines = [f"=== Симулированные бои ({len(sim.fights)}) ==="]
+        for fight in sim.fights.values():
+            living = fight.get_living_participants()
+            factions = fight.get_living_factions()
+            frozen_tag = " [FROZEN]" if fight.frozen else ""
+            lines.append(
+                f"Fight {fight.fight_id[:8]}...{frozen_tag} "
+                f"| {len(living)}/{len(fight.participants)} alive "
+                f"| factions: {', '.join(factions)} "
+                f"| center: ({fight.center_x:.1f}, {fight.center_y:.1f})"
+            )
+            for p in fight.participants.values():
+                dead_tag = " [DEAD]" if p.is_dead else ""
+                lines.append(
+                    f"  {p.name} ({p.faction}) "
+                    f"HP: {p.hp_current}/{p.hp_max} "
+                    f"AC: {p.armor_class} "
+                    f"ATK: +{p.attack_bonus} {p.damage_dice}+{p.damage_bonus}"
+                    f"{dead_tag}"
+                )
+
+        # Also show overall stats
+        stats = sim.get_stats()
+        lines.append(
+            f"--- Total: {stats['active_fights']} fights, "
+            f"{stats['total_living']}/{stats['total_participants']} alive"
+        )
+
+        self._send_system_message(client_id, "\n".join(lines))
+
+    def _handle_forcefight(self, client_id: int, player_name: str, template1: str, template2: str):
+        """Обрабатывает /forcefight — спавнит двух NPC рядом и сталкивает их."""
+        # Get player position
+        player_pos = self._get_player_position(client_id)
+        if not player_pos:
+            self._send_system_message(client_id, "Не удалось определить позицию")
+            return
+
+        # Spawn NPC 1 slightly to the left of the player
+        pos1 = {"x": player_pos[0] - 3.0, "y": player_pos[1] + 5.0, "z": player_pos[2]}
+        # Spawn NPC 2 slightly to the right
+        pos2 = {"x": player_pos[0] + 3.0, "y": player_pos[1] + 5.0, "z": player_pos[2]}
+
+        self.event_manager.post("dm_npc_spawn", {
+            "template_id": template1,
+            "position": pos1,
+            "spawner_id": client_id,
+        })
+        self.event_manager.post("dm_npc_spawn", {
+            "template_id": template2,
+            "position": pos2,
+            "spawner_id": client_id,
+        })
+
+        self._send_system_message(
+            client_id,
+            f"Spawned {template1} and {template2} near you. "
+            f"If their factions are hostile, they will fight automatically. "
+            f"Use /simfights to monitor. Use /factions to check hostility."
+        )
+        self.logger.info(f"{player_name} used /forcefight {template1} vs {template2}")
+
+    def _handle_stopsimfight(self, client_id: int, fight_id: str):
+        """Обрабатывает /stopsimfight — останавливает симулированный бой."""
+        sim = self._get_simulated_combat_manager()
+        if not sim:
+            self._send_system_message(client_id, "SimulatedCombatManager не загружен")
+            return
+
+        if not sim.fights:
+            self._send_system_message(client_id, "Нет активных симулированных боёв")
+            return
+
+        if fight_id:
+            # Find fight by prefix match
+            matched = None
+            for fid in sim.fights:
+                if fid.startswith(fight_id):
+                    matched = fid
+                    break
+
+            if matched:
+                fight = sim.fights[matched]
+                sim._end_fight(fight)
+                self._send_system_message(client_id, f"Бой {matched[:8]}... остановлен")
+            else:
+                self._send_system_message(client_id, f"Бой с ID '{fight_id}' не найден")
+        else:
+            # Stop all fights
+            count = len(sim.fights)
+            for fight in list(sim.fights.values()):
+                sim._end_fight(fight)
+            self._send_system_message(client_id, f"Остановлено {count} боёв")
+
+    def _handle_factions(self, client_id: int):
+        """Обрабатывает /factions — показывает матрицу враждебности."""
+        from nine.plugins.npc.sv_npc_ai import AISystem
+
+        lines = ["=== Faction Hostility Matrix ==="]
+        for pair, hostile in AISystem.FACTION_HOSTILITY.items():
+            status = "HOSTILE" if hostile else "neutral"
+            lines.append(f"  {pair[0]} vs {pair[1]}: {status}")
+
+        lines.append("")
+        lines.append("Factions not in the matrix are neutral to each other.")
+        lines.append("Players are attacked by NPCs with hostile_to_players=True.")
+
+        self._send_system_message(client_id, "\n".join(lines))
 
     # =========================================================================
     # GM/DM аудио команды - обработчики

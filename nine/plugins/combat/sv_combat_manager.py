@@ -3,6 +3,7 @@ Combat Manager - серверный менеджер боевых сессий.
 Координирует все пошаговые бои в игре.
 """
 
+import math
 import uuid
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple
@@ -312,6 +313,9 @@ class CombatManager:
         self.player_combat_map: Dict[int, str] = {}  # client_id -> combat_id
         self.npc_combat_map: Dict[str, str] = {}     # entity_id -> combat_id
 
+        # Cached player positions for auto-join proximity checks
+        self._player_positions: List[Dict] = []
+
         # Подписки на события
         self.event_manager.subscribe("npc_aggro_player", self._on_npc_aggro)
         self.event_manager.subscribe("player_attack_request", self._on_player_attack)
@@ -325,6 +329,8 @@ class CombatManager:
         self.event_manager.subscribe("entity_damaged", self._on_entity_damaged)
         self.event_manager.subscribe("entity_died", self._on_entity_died)
         self.event_manager.subscribe("player_left", self._on_player_left)
+        self.event_manager.subscribe("simulated_combat_to_turnbased", self._on_simulated_to_turnbased)
+        self.event_manager.subscribe("player_update", self._on_player_update_for_autojoin)
 
     def on_unload(self):
         # Отписываемся
@@ -340,6 +346,8 @@ class CombatManager:
         self.event_manager.unsubscribe("entity_damaged", self._on_entity_damaged)
         self.event_manager.unsubscribe("entity_died", self._on_entity_died)
         self.event_manager.unsubscribe("player_left", self._on_player_left)
+        self.event_manager.unsubscribe("simulated_combat_to_turnbased", self._on_simulated_to_turnbased)
+        self.event_manager.unsubscribe("player_update", self._on_player_update_for_autojoin)
 
         self.logger.info("Combat Manager unloaded")
 
@@ -860,6 +868,133 @@ class CombatManager:
             end_reason = combat.check_combat_end()
             if end_reason:
                 self.end_combat(combat.combat_id, end_reason)
+
+    def _on_simulated_to_turnbased(self, data: dict):
+        """
+        Handle transition from simulated NPC combat to turn-based.
+
+        Creates a CombatInstance, adds all surviving NPC participants
+        with their current HP, forces nearby players in, rolls initiative.
+        """
+        fight_id = data.get("fight_id")
+        participants = data.get("participants", [])
+        nearby_players = data.get("nearby_players", [])
+        center = data.get("center", {})
+
+        combat_id = str(uuid.uuid4())
+        combat = CombatInstance(combat_id, self)
+        combat.center_x = center.get("x", 0.0)
+        combat.center_y = center.get("y", 0.0)
+        combat.center_z = center.get("z", 0.0)
+        self.active_combats[combat_id] = combat
+
+        # Add NPC participants with their CURRENT HP from simulation
+        for p in participants:
+            if p.get("is_dead") or (p.get("hp_current", 0) <= 0):
+                continue
+            entity_id = p.get("entity_id")
+            if not entity_id:
+                continue
+            # Skip NPCs already in another combat
+            if self.is_entity_in_combat(entity_id):
+                continue
+
+            self._add_npc_to_combat(combat, entity_id)
+            # Override HP with simulation values
+            participant = combat.participants.get(entity_id)
+            if participant:
+                participant.hp_current = p.get("hp_current", participant.hp_current)
+
+        # Force nearby players into combat (no Join button)
+        for player_id in nearby_players:
+            try:
+                client_id = int(player_id)
+            except (ValueError, TypeError):
+                continue
+            if not self.is_entity_in_combat(str(client_id)):
+                self._add_player_to_combat(combat, client_id)
+
+        if len(combat.participants) < 2:
+            # Not enough participants for a fight
+            del self.active_combats[combat_id]
+            return
+
+        # Roll initiative and start
+        combat.roll_all_initiative()
+        combat.start_combat()
+
+        self.logger.info(
+            f"[Combat] Simulated fight {fight_id[:8] if fight_id else '?'} "
+            f"transitioned to turn-based {combat_id[:8]} "
+            f"with {len(combat.participants)} participants"
+        )
+
+    def _on_player_update_for_autojoin(self, data: dict):
+        """
+        Check if any player walked into range of an existing turn-based combat.
+        Auto-joins them with initiative roll.
+        """
+        players = data.get("players", [])
+        if not players or not self.active_combats:
+            return
+
+        for combat in list(self.active_combats.values()):
+            if not combat.is_active or not combat.is_started:
+                continue
+
+            for player in players:
+                player_uuid = player.get("uuid", "")
+                if not player_uuid:
+                    continue
+                # Skip players already in combat
+                if self.is_entity_in_combat(str(player_uuid)):
+                    continue
+
+                player_pos = player.get("position", {})
+                ppx = player_pos.get("x", 0)
+                ppy = player_pos.get("y", 0)
+                dx = combat.center_x - ppx
+                dy = combat.center_y - ppy
+                dist = math.sqrt(dx * dx + dy * dy)
+
+                if dist <= combat.radius:
+                    try:
+                        client_id = int(player_uuid)
+                    except (ValueError, TypeError):
+                        continue
+                    self._add_player_to_combat(combat, client_id)
+
+                    # Roll initiative and insert into turn order
+                    participant = combat.participants.get(str(client_id))
+                    if participant:
+                        participant.roll_initiative()
+                        inserted = False
+                        for i, eid in enumerate(combat.turn_order):
+                            other = combat.participants.get(eid)
+                            if other and participant.initiative > other.initiative:
+                                combat.turn_order.insert(i, str(client_id))
+                                inserted = True
+                                break
+                        if not inserted:
+                            combat.turn_order.append(str(client_id))
+
+                        self.event_manager.post("combat_participant_added", {
+                            "combat_id": combat.combat_id,
+                            "participant": {
+                                "entity_id": str(client_id),
+                                "is_player": True,
+                                "name": participant.name,
+                                "initiative": participant.initiative,
+                                "hp_current": participant.hp_current,
+                                "hp_max": participant.hp_max,
+                            },
+                            "turn_order": combat.turn_order,
+                        })
+
+                        self.logger.info(
+                            f"[Combat] Player {client_id} auto-joined combat "
+                            f"{combat.combat_id[:8]} (proximity)"
+                        )
 
     def _send_error(self, client_id: int, message: str):
         """Отправляет сообщение об ошибке клиенту."""
