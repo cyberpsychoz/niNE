@@ -288,6 +288,16 @@ class AISystem(System):
     required_components = [PositionComponent, AIComponent]
     priority = 10  # Executes early
 
+    # Faction hostility matrix — True = these factions attack each other on sight
+    # Keys are sorted tuples for order-independent lookup
+    FACTION_HOSTILITY = {
+        ("guards", "monsters"): True,
+        ("guards", "undead"): True,
+        ("monsters", "undead"): True,
+        ("neutral", "monsters"): False,  # merchants don't fight
+        ("neutral", "undead"): False,
+    }
+
     def __init__(
         self,
         npc_manager: 'NPCManager' = None,
@@ -473,14 +483,22 @@ class AISystem(System):
         if not self.lod_system.should_do_perception(lod_level):
             return
 
-        # Check for enemies
+        # Check for player enemies first
         target = self._find_nearest_enemy(entity, ai, pos)
         if target:
             ai.target_entity_id = target.id
             ai.behavior = AIBehavior.HOSTILE
             ai.state = AIState.PURSUING
-            # Post aggro event to start combat
             self._post_aggro_event(entity.id, target.id)
+            return
+
+        # Check for NPC enemies
+        npc_target = self._find_nearest_npc_enemy(entity, ai, pos)
+        if npc_target:
+            ai.target_entity_id = npc_target.id
+            ai.behavior = AIBehavior.HOSTILE
+            ai.state = AIState.PURSUING
+            self._post_npc_aggro_event(entity.id, npc_target.id)
             return
 
         # Idle NPCs occasionally fidget/wander near their post
@@ -530,8 +548,16 @@ class AISystem(System):
                 ai.target_entity_id = target.id
                 ai.state = AIState.PURSUING
                 self._set_pathfinding_target(entity, target)
-                # Post aggro event to start combat
                 self._post_aggro_event(entity.id, target.id)
+                return
+
+            # Check for NPC enemies
+            npc_target = self._find_nearest_npc_enemy(entity, ai, pos)
+            if npc_target:
+                ai.target_entity_id = npc_target.id
+                ai.behavior = AIBehavior.HOSTILE
+                ai.state = AIState.PURSUING
+                self._post_npc_aggro_event(entity.id, npc_target.id)
                 return
 
         current_point = ai.patrol_points[ai.current_patrol_index]
@@ -584,16 +610,23 @@ class AISystem(System):
             target = self._find_nearest_enemy(entity, ai, pos)
             if target:
                 ai.target_entity_id = target.id
-                # Save target position
                 target_pos_comp = target.get_component(PositionComponent)
                 if target_pos_comp:
                     ai.last_known_target_pos = (target_pos_comp.x, target_pos_comp.y, target_pos_comp.z)
-                # Post aggro event to start combat
                 self._post_aggro_event(entity.id, target.id)
             else:
-                # No enemies - return to idle or patrol
-                ai.state = AIState.IDLE
-                return
+                # Check for NPC enemies
+                npc_target = self._find_nearest_npc_enemy(entity, ai, pos)
+                if npc_target:
+                    ai.target_entity_id = npc_target.id
+                    npc_pos = npc_target.get_component(PositionComponent)
+                    if npc_pos:
+                        ai.last_known_target_pos = (npc_pos.x, npc_pos.y, npc_pos.z)
+                    self._post_npc_aggro_event(entity.id, npc_target.id)
+                else:
+                    # No enemies - return to idle or patrol
+                    ai.state = AIState.IDLE
+                    return
 
         # Get target position (can be NPC or player)
         target_position = self._get_target_position(ai.target_entity_id)
@@ -649,6 +682,14 @@ class AISystem(System):
             if target:
                 ai.target_entity_id = target.id
                 ai.behavior = AIBehavior.HOSTILE
+                return
+
+            # Check for NPC enemies
+            npc_target = self._find_nearest_npc_enemy(entity, ai, pos)
+            if npc_target:
+                ai.target_entity_id = npc_target.id
+                ai.behavior = AIBehavior.HOSTILE
+                self._post_npc_aggro_event(entity.id, npc_target.id)
                 return
 
         ai.wander_timer += ai.think_interval
@@ -872,12 +913,77 @@ class AISystem(System):
 
         return nearest
 
+    def _find_nearest_npc_enemy(
+        self,
+        entity: Entity,
+        ai: AIComponent,
+        pos: PositionComponent
+    ) -> Optional[Entity]:
+        """
+        Find nearest hostile NPC within aggro radius.
+
+        Scans other NPC entities in the ECS world using faction hostility.
+        Uses spatial hash when available for O(k) complexity.
+        """
+        if not self._world:
+            return None
+
+        faction = entity.get_component(FactionComponent)
+        if not faction:
+            return None
+
+        nearest = None
+        nearest_dist = float('inf')
+
+        if self.spatial_hash:
+            nearby_ids = self.spatial_hash.get_nearby_entities(
+                pos.x, pos.y, ai.aggro_radius, exclude_entity=entity.id
+            )
+            for other_id in nearby_ids:
+                other = self._world.get_entity(other_id)
+                if not other or other.id == entity.id:
+                    continue
+                other_faction = other.get_component(FactionComponent)
+                other_combat = other.get_component(CombatComponent)
+                other_pos = other.get_component(PositionComponent)
+                if not other_faction or not other_combat or not other_pos:
+                    continue
+                if other_combat.is_dead:
+                    continue
+                if not self._is_enemy_faction(faction, other_faction.faction_id):
+                    continue
+                dist = pos.distance_to(other_pos.x, other_pos.y)
+                if dist <= ai.aggro_radius and dist < nearest_dist:
+                    nearest_dist = dist
+                    nearest = other
+        else:
+            # Fallback: iterate all entities with FactionComponent
+            for other in self._world.get_entities_with_components(FactionComponent):
+                if other.id == entity.id:
+                    continue
+                other_faction = other.get_component(FactionComponent)
+                other_combat = other.get_component(CombatComponent)
+                other_pos = other.get_component(PositionComponent)
+                if not other_faction or not other_combat or not other_pos:
+                    continue
+                if other_combat.is_dead:
+                    continue
+                if not self._is_enemy_faction(faction, other_faction.faction_id):
+                    continue
+                dist = pos.distance_to(other_pos.x, other_pos.y)
+                if dist <= ai.aggro_radius and dist < nearest_dist:
+                    nearest_dist = dist
+                    nearest = other
+
+        return nearest
+
     def _is_enemy_faction(self, faction: FactionComponent, target_faction: str) -> bool:
-        """Проверяет, враждебна ли фракция."""
+        """Check if faction is hostile to target faction."""
         if target_faction in faction.disposition_overrides:
             return faction.disposition_overrides[target_faction] < 0
-        # TODO: Проверить глобальные отношения фракций
-        return False
+        # Check global hostility matrix (order-independent key)
+        pair = tuple(sorted([faction.faction_id, target_faction]))
+        return self.FACTION_HOSTILITY.get(pair, False)
 
     def _get_target_entity(self, entity_id: str) -> Optional[Entity]:
         """Получает entity цели."""
@@ -951,6 +1057,19 @@ class AISystem(System):
                 "player_id": target_id
             })
             logger.debug(f"NPC {npc_id[:8]} aggro on {target_id[:8]}")
+
+    def _post_npc_aggro_event(self, npc_id: str, target_npc_id: str) -> None:
+        """Post aggro event for NPC-on-NPC combat."""
+        event_mgr = self.event_manager
+        if not event_mgr and self.npc_manager:
+            event_mgr = self.npc_manager.event_manager
+
+        if event_mgr:
+            event_mgr.post("npc_aggro_npc", {
+                "attacker_id": npc_id,
+                "target_id": target_npc_id,
+            })
+            logger.debug(f"NPC {npc_id[:8]} aggro on NPC {target_npc_id[:8]}")
 
     def on_entity_removed(self, entity: Entity) -> None:
         """Called when entity is removed from the system."""

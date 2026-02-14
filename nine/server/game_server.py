@@ -587,6 +587,10 @@ class GameServer(ShowBase):
                 })
             self.event_manager.post("player_update", {"players": players_data})
 
+        # 2.6. Update simulated combat (NPC vs NPC real-time fights)
+        if hasattr(self, 'simulated_combat') and self.simulated_combat:
+            self.simulated_combat.update(dt)
+
         # 2.7. Update game time (day/night cycle)
         delta_hours = dt * (self._time_scale / 3600.0)
         self._game_time += delta_hours
