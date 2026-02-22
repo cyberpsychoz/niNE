@@ -185,6 +185,21 @@ class Sling(SimpleRangedWeapon):
     VALUE = 10  # 1 sp
 
 
+class Dart(SimpleRangedWeapon):
+    """Дротик — 1d4 колющий, фехтовальное, метательное."""
+    CLASS_ID = "dart"
+    NAME = "Дротик"
+    NAME_EN = "Dart"
+    DAMAGE_DICE = "1d4"
+    DAMAGE_TYPE = DamageType.PIERCING
+    FINESSE = True
+    THROWN = True
+    RANGE = WeaponRange(normal=20, long=60)
+    WEIGHT = 0.25
+    VALUE = 5  # 5 cp
+    MAX_STACK = 20
+
+
 # =============================================================================
 # Воинское рукопашное оружие (Martial Melee Weapons)
 # =============================================================================
@@ -499,7 +514,7 @@ __all__ = [
     "Club", "Dagger", "Greatclub", "Handaxe", "Javelin",
     "LightHammer", "Mace", "Quarterstaff", "Sickle", "Spear",
     # Простое дальнобойное
-    "LightCrossbow", "Shortbow", "Sling",
+    "LightCrossbow", "Shortbow", "Sling", "Dart",
     # Воинское рукопашное
     "Battleaxe", "Flail", "Glaive", "Greataxe", "Greatsword",
     "Halberd", "Lance", "Longsword", "Maul", "Morningstar",

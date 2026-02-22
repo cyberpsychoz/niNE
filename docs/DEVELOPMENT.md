@@ -19,7 +19,7 @@
 |---------|--------|----------|
 | Персонажи | ✅ Работает | Создание, выбор, сохранение в БД |
 | Чат | ✅ Работает | RP команды, /help, подсказки при вводе |
-| Инвентарь | ✅ Работает | Entity-система, D&D предметы |
+| Инвентарь | ✅ Работает | Entity-система, D&D предметы, стартовое снаряжение |
 | Экипировка | ✅ Работает | Слоты, надевание/снятие |
 | Лист персонажа | ✅ Работает | 8 вкладок: Инвентарь, Экипировка, Описание, Статы, Навыки, Способности, Квесты, Заклинания |
 | Знакомства | ✅ Работает | Система представлений |
@@ -1975,38 +1975,51 @@ NPC система перенесена в Фазу 0 как критическ�
 
 ---
 
-#### D. Система инвентаря и экипировки (dnd_inventory)
+#### D. Система инвентаря и экипировки — ✅ РЕАЛИЗОВАНО
 
-**Цель:** Замена упрощённого инвентаря на полноценный с экипировкой и слотами
+> **Обновление (февраль 2026):** Инвентарная система реализована в плагине `nine/plugins/inventory/`.
 
-**Плагины:**
-- `dnd_inventory/sv_inventory.py` — логика предметов и экипировки
-- `dnd_inventory/cl_inventory_ui.py` — UI инвентаря (клавиша I)
-- `dnd_inventory/data/items.json` — база предметов
+**Плагин `nine/plugins/inventory/`:**
+- `sv_inventory.py` — серверная логика: инвентарь, стекирование, стартовое снаряжение
+- `cl_character_sheet.py` — клиентский лист персонажа (клавиша C)
+- `entities/` — Entity-система предметов с авто-загрузкой
 
-**Реализация:**
-1. **Слоты экипировки:**
-   ```
-   [Голова]  [Шея]   [Плечи]
-   [Грудь]   [Спина] [Пояс]
-   [Руки]    [Кольцо1] [Кольцо2]
-   [Оружие]  [Щит]   [Боеприпасы]
-   ```
+**Реализованная Entity-система (112+ предметов):**
+1. **Оружие (weapons.py):** все оружие D&D 5e PHB — 30 единиц
+   - Simple Melee: club, dagger, greatclub, handaxe, javelin, light_hammer, mace, quarterstaff, sickle, spear
+   - Simple Ranged: light_crossbow, shortbow, sling, dart
+   - Martial Melee: battleaxe, flail, glaive, greataxe, greatsword, halberd, lance, longsword, maul, morningstar, pike, rapier, scimitar, shortsword, trident, warpick, warhammer, whip
+   - Martial Ranged: blowgun, hand_crossbow, heavy_crossbow, longbow, net
 
-2. **Типы предметов:**
-   - **Оружие** — урон, тип (мечи, луки, магия), владение
-   - **Броня** — AC, тип (лёгкая, средняя, тяжёлая), ограничения DEX
-   - **Расходники** — зелья, свитки, стрелы
-   - **Инструменты** — воровские отмычки, инструменты ремесленника
-   - **Квестовые предметы**
+2. **Броня (armors.py):** полный набор D&D 5e PHB — 14 единиц
+   - Light: padded, leather, studded leather
+   - Medium: hide, chain shirt, scale mail, breastplate, half plate
+   - Heavy: ring mail, chainmail, splint, plate
+   - Shields: wooden, steel
 
-3. **UI инвентаря:**
-   - Сетка предметов (как в Skyrim/Divinity)
-   - Drag & drop для экипировки
-   - Вес (carrying capacity на основе STR)
-   - Фильтры по типам
+3. **Аксессуары (accessories.py):** магические предметы — 20+ единиц
+   - Кольца, амулеты, плащи, перчатки, сапоги, пояса
 
-**Приоритет:** Высокий — базовая механика D&D
+4. **Расходники:** health_potion, sushi
+
+5. **Бытовые предметы (mundane_items.py):** 35 единиц стартового снаряжения
+   - Фокусировки: spellbook, holy_symbol, arcane_focus
+   - Инструменты: thieves_tools, herbalism_kit, disguise_kit, artisans_tools
+   - Музыка/паки: lute, musical_instrument, explorers_pack
+   - Одежда: common_clothes, fine_clothes, vestments, costume, travelers_clothes
+   - Разное: prayer_book, crowbar, hunting_trap, dice_set и др.
+
+6. **Валюта:** n_bucks (Най-Бакс)
+
+**Стартовое снаряжение (февраль 2026):**
+- `nine/plugins/dnd/sh_starting_equipment.py` — маппинг алиасов (chain_mail→chainmail, shield→steel_shield, darts→10x dart и т.д.)
+- При `player_joined` автоматически выдаётся снаряжение класса + предыстории + золото
+- Все 12 классов и 10 предысторий покрыты
+
+**Слоты экипировки:**
+```
+head, chest, hands, legs, feet, weapon, off_hand, ring1, ring2, neck, back, waist
+```
 
 ---
 

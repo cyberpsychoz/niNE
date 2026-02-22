@@ -228,6 +228,9 @@ class TurnManager:
             actor.movement_remaining += actor.movement_speed
             result["effect"] = "movement_doubled"
             result["new_movement"] = actor.movement_remaining
+            self._broadcast_combat_log(
+                combat.combat_id, f"{actor.name} использует Рывок"
+            )
 
         elif action.id == "disengage":
             # Помечаем что можно двигаться без провоцированных атак
@@ -237,6 +240,9 @@ class TurnManager:
         elif action.id == "dodge":
             actor.conditions.append("dodging")
             result["effect"] = "dodging"
+            self._broadcast_combat_log(
+                combat.combat_id, f"{actor.name} использует Уклонение"
+            )
 
         elif action.id == "help":
             if target:
@@ -255,6 +261,9 @@ class TurnManager:
 
         elif action.id == "end_turn":
             result["effect"] = "turn_ended"
+            self._broadcast_combat_log(
+                combat.combat_id, f"{actor.name} завершает ход"
+            )
 
         return result
 
@@ -265,8 +274,9 @@ class TurnManager:
             "target_name": target.name,
         }
 
-        # Получаем бонус атаки
+        # Получаем бонус атаки и название оружия
         attack_bonus = self._get_attack_bonus(attacker.entity_id)
+        weapon_name = self._get_weapon_name(attacker.entity_id)
 
         # Получаем AC цели
         target_ac = target.armor_class
@@ -295,10 +305,20 @@ class TurnManager:
             result["disadvantage"] = True
 
         # Определяем попадание
+        roll_val = attack_roll.rolls[0]
+        sign = "+" if attack_bonus >= 0 else ""
+        roll_str = f"d20({roll_val}){sign}{attack_bonus}={attack_total}"
+
         if attack_roll.is_fumble:
             # Натуральная 1 всегда промах
             result["hit"] = False
             result["message"] = "Критический промах!"
+
+            # Log critical miss
+            self._broadcast_combat_log(
+                combat.combat_id,
+                f"{attacker.name} атакует {target.name} ({weapon_name}): {roll_str} — Критический промах!"
+            )
 
         elif attack_roll.is_critical:
             # Натуральная 20 всегда попадание + крит урон
@@ -312,7 +332,16 @@ class TurnManager:
             result["damage_rolls"] = damage_roll.rolls
 
             # Применяем урон
-            self._apply_damage(target, damage_roll.total)
+            self._apply_damage(combat, target, damage_roll.total)
+
+            # Log critical hit
+            rolls_str = ",".join(str(r) for r in damage_roll.rolls)
+            dmg_mod = f"+{damage_roll.modifier}" if damage_roll.modifier > 0 else (str(damage_roll.modifier) if damage_roll.modifier < 0 else "")
+            self._broadcast_combat_log(
+                combat.combat_id,
+                f"{attacker.name} атакует {target.name} ({weapon_name}): {roll_str} vs AC {target_ac} — КРИТ! "
+                f"Урон: {damage_roll.dice_notation}({rolls_str}){dmg_mod}={damage_roll.total}"
+            )
 
         elif attack_total >= target_ac:
             # Попадание
@@ -326,26 +355,47 @@ class TurnManager:
             result["damage_rolls"] = damage_roll.rolls
 
             # Применяем урон
-            self._apply_damage(target, damage_roll.total)
+            self._apply_damage(combat, target, damage_roll.total)
+
+            # Log hit
+            rolls_str = ",".join(str(r) for r in damage_roll.rolls)
+            dmg_mod = f"+{damage_roll.modifier}" if damage_roll.modifier > 0 else (str(damage_roll.modifier) if damage_roll.modifier < 0 else "")
+            self._broadcast_combat_log(
+                combat.combat_id,
+                f"{attacker.name} атакует {target.name} ({weapon_name}): {roll_str} vs AC {target_ac} — Попадание! "
+                f"Урон: {damage_roll.dice_notation}({rolls_str}){dmg_mod}={damage_roll.total}"
+            )
 
         else:
             # Промах
             result["hit"] = False
             result["message"] = "Промах"
 
-        # Добавляем текущее HP цели
+            # Log miss
+            self._broadcast_combat_log(
+                combat.combat_id,
+                f"{attacker.name} атакует {target.name} ({weapon_name}): {roll_str} vs AC {target_ac} — Промах"
+            )
+
+        # Добавляем текущее HP цели и название оружия
+        result["weapon_name"] = weapon_name
         result["target_hp_current"] = target.hp_current
         result["target_hp_max"] = target.hp_max
         result["target_is_dead"] = target.is_dead
 
         return result
 
-    def _apply_damage(self, target, damage: int):
+    def _apply_damage(self, combat, target, damage: int):
         """Применяет урон к цели."""
         target.hp_current = max(0, target.hp_current - damage)
 
         if target.hp_current <= 0:
             target.is_dead = True
+
+            # Log death
+            self._broadcast_combat_log(
+                combat.combat_id, f"{target.name} повержен!"
+            )
 
             # Оповещаем о смерти
             self.event_manager.post("entity_died", {
@@ -513,6 +563,47 @@ class TurnManager:
 
         return "1d6"
 
+    def _get_weapon_name(self, entity_id: str) -> str:
+        """Получает название оружия сущности."""
+        # Player?
+        try:
+            client_id = int(entity_id)
+            if hasattr(self.app, 'plugin_manager'):
+                dnd_plugin = self.app.plugin_manager.get_plugin("nine.dnd")
+                if dnd_plugin:
+                    for module in dnd_plugin.modules:
+                        if hasattr(module, 'active_characters'):
+                            char_uuid = module.active_characters.get(client_id)
+                            if char_uuid and self.equipment_module:
+                                weapon = self.equipment_module.get_main_weapon(char_uuid)
+                                if weapon:
+                                    return weapon.NAME
+                            return "Безоружный удар"
+        except ValueError:
+            pass
+
+        # NPC — use damage_type from CombatComponent as weapon hint
+        if hasattr(self.app, 'plugin_manager'):
+            npc_plugin = self.app.plugin_manager.get_plugin("nine.npc")
+            if npc_plugin:
+                for module in npc_plugin.modules:
+                    if hasattr(module, 'get_npc_entity'):
+                        entity = module.get_npc_entity(entity_id)
+                        if entity:
+                            from nine.plugins.npc.sh_components import CombatComponent
+                            combat = entity.get_component(CombatComponent)
+                            if combat:
+                                dtype = combat.damage_type
+                                type_names = {
+                                    "slashing": "Рубящее оружие",
+                                    "piercing": "Колющее оружие",
+                                    "bludgeoning": "Дробящее оружие",
+                                    "bite": "Укус",
+                                    "claw": "Когти",
+                                }
+                                return type_names.get(dtype, dtype.capitalize() if dtype else "Оружие")
+        return "Оружие"
+
     def _get_player_combat_data(self, client_id: int) -> Optional[dict]:
         """
         Получает боевые данные игрока с учетом экипированного оружия.
@@ -549,11 +640,10 @@ class TurnManager:
         prof = char.get("proficiency_bonus", 2)
 
         # Получаем экипированное оружие
-        # ВАЖНО: EquipmentServerModule использует client_id как ключ (из event "player_joined")
         equipment_module = self.equipment_module
         weapon = None
         if equipment_module:
-            weapon = equipment_module.get_main_weapon(client_id)
+            weapon = equipment_module.get_main_weapon(char_uuid)
 
         # Если оружие экипировано
         if weapon:
@@ -591,11 +681,12 @@ class TurnManager:
                 "has_proficiency": has_proficiency,
             }
 
-        # Без оружия - unarmed strike
+        # Без оружия - unarmed strike (1d4 + STR)
         else:
-            # Безоружная атака: 1 + STR modifier урона
-            damage = 1 + str_mod
-            damage_dice = "1" if damage <= 1 else f"1+{damage - 1}"
+            damage_dice = "1d4"
+            if str_mod != 0:
+                sign = "+" if str_mod > 0 else ""
+                damage_dice += f"{sign}{str_mod}"
 
             return {
                 "attack_bonus": str_mod + prof,  # STR + proficiency (все владеют безоружной атакой)
@@ -640,6 +731,32 @@ class TurnManager:
             "target_id": target_id,
             "result": result,
         })
+
+    def _broadcast_combat_log(self, combat_id: str, message: str):
+        """Broadcast a combat log message to all player participants."""
+        manager = self.combat_manager
+        if not manager:
+            return
+        combat = manager.active_combats.get(combat_id)
+        if not combat:
+            return
+        recipients = []
+        for p in combat.participants.values():
+            if p.is_player:
+                try:
+                    recipients.append(int(p.entity_id))
+                except ValueError:
+                    pass
+        if recipients:
+            self.event_manager.post("chat_send_to_clients", {
+                "data": {
+                    "type": "chat_broadcast",
+                    "chat_type": "system",
+                    "from_name": "Бой",
+                    "message": message,
+                },
+                "recipients": recipients
+            })
 
     def _send_error(self, entity_id: str, message: str):
         """Отправляет сообщение об ошибке."""

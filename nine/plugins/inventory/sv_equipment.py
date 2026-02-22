@@ -90,12 +90,12 @@ class EquipmentServerModule(PluginModule):
     def _get_inventory_module(self):
         """Получить ссылку на модуль инвентаря."""
         if self.inventory_module is None:
-            # Ищем модуль инвентаря в приложении
-            if hasattr(self.app, 'plugin_manager'):
-                from nine.plugins.inventory.sv_inventory import InventoryServerModule
-                for plugin in self.app.plugin_manager.plugins.values():
-                    for module in plugin.get('modules', {}).values():
-                        if isinstance(module, InventoryServerModule):
+            pm = getattr(self.app, 'plugin_manager', None)
+            if pm:
+                loaded = pm.loaded_plugins.get("nine.inventory")
+                if loaded:
+                    for module in loaded.modules:
+                        if hasattr(module, 'inventories') and hasattr(module, 'get_inventory'):
                             self.inventory_module = module
                             break
         return self.inventory_module
@@ -515,6 +515,14 @@ class EquipmentServerModule(PluginModule):
                     has_armor = True
                     base_ac = entity.BASE_AC
 
+        # Определяем ограничение DEX от брони
+        max_dex_bonus = None  # None = unlimited
+        for slot, entity in player_eq.slots.items():
+            if entity and hasattr(entity, 'ARMOR_TYPE') and hasattr(entity, 'MAX_DEX_BONUS'):
+                from nine.plugins.inventory.entities.equipment.armor import ArmorType
+                if entity.ARMOR_TYPE != ArmorType.SHIELD:
+                    max_dex_bonus = entity.MAX_DEX_BONUS
+
         # Отправляем событие с обновлёнными бонусами
         self.event_manager.post("equipment_stats_updated", {
             "uuid": player_uuid,
@@ -522,6 +530,7 @@ class EquipmentServerModule(PluginModule):
             "base_ac": base_ac,
             "has_armor": has_armor,
             "has_shield": has_shield,
+            "max_dex_bonus": max_dex_bonus,
         })
 
     def _send_equipment_update(self, player_uuid: str):

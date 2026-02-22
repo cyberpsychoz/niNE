@@ -76,15 +76,13 @@ class CharacterSheet {
             legs:      'Ноги (одежда)'
         };
 
-        // Description fields
-        this.DESC_FIELDS = [
-            { key: 'appearance', label: 'Внешность' },
-            { key: 'age', label: 'Возраст' },
-            { key: 'build', label: 'Телосложение' },
-            { key: 'features', label: 'Особые черты' },
-            { key: 'demeanor', label: 'Манера поведения' },
-            { key: 'backstory', label: 'Предыстория' }
+        // Description sub-tabs
+        this.DESC_TABS = [
+            { key: 'appearance', label: 'Описание персонажа' },
+            { key: 'backstory', label: 'Предыстория' },
+            { key: 'notes', label: 'Заметки' },
         ];
+        this._activeDescTab = 'appearance';
     }
 
     async init() {
@@ -268,7 +266,7 @@ class CharacterSheet {
                         <div class="cs-derived-label">Здоровье</div>
                     </div>
                     <div class="cs-derived-item">
-                        <div class="cs-derived-value">${hitDice}/${hitDiceMax}${hitDie}</div>
+                        <div class="cs-derived-value">${hitDice}/${hitDiceMax} ${hitDie}</div>
                         <div class="cs-derived-label">Кости хитов</div>
                     </div>
                     <div class="cs-derived-item">
@@ -423,22 +421,53 @@ class CharacterSheet {
 
         const activeFilter = this._invFilter || 'all';
 
-        // Filter items
+        // Build equipped items list from equipment slots (Fallout-style: show in inventory with [E])
+        const equippedItems = [];
+        if (this._equipment) {
+            for (const [slotKey, eqItem] of Object.entries(this._equipment)) {
+                if (eqItem) {
+                    equippedItems.push({
+                        ...eqItem,
+                        _equipped: true,
+                        _equipSlot: slotKey,
+                        category: eqItem.category || (slotKey === 'main_hand' || slotKey === 'off_hand' ? 'weapon' : 'armor'),
+                    });
+                }
+            }
+        }
+
+        // Filter inventory items
         const filtered = activeFilter === 'all'
             ? this._inventory
             : this._inventory.filter(item => item.category === activeFilter);
+
+        // Filter equipped items
+        const filteredEquipped = activeFilter === 'all'
+            ? equippedItems
+            : equippedItems.filter(item => item.category === activeFilter);
 
         // Category filter bar
         const filterHtml = CATEGORIES.map(c =>
             `<button class="cs-inv-filter-btn ${activeFilter === c.key ? 'active' : ''}" data-cat="${c.key}">${c.label}</button>`
         ).join('');
 
-        // Item list
+        // Item list: equipped items first, then inventory
         let listHtml = '';
-        if (filtered.length === 0) {
-            listHtml = '<div class="cs-inv-empty">Пусто</div>';
-        } else {
-            listHtml = filtered.map((item, idx) => {
+
+        // Equipped items with [E] badge
+        const equippedHtml = filteredEquipped.map(item => {
+            const rarityColor = this.RARITY_COLORS[item.rarity] || this.RARITY_COLORS.common;
+            const slotName = this.EQUIP_SLOTS[item._equipSlot] || item._equipSlot;
+            return `<div class="cs-inv-item cs-inv-equipped" data-equip-slot="${item._equipSlot}">
+                <span class="cs-inv-item-name" style="color: ${rarityColor}"><span class="cs-inv-equip-badge" title="${slotName}">E</span>${item.name || '?'}</span>
+                <span class="cs-inv-item-weight">${slotName}</span>
+            </div>`;
+        }).join('');
+
+        // Regular inventory items
+        const invHtml = filtered.length === 0 && filteredEquipped.length === 0
+            ? '<div class="cs-inv-empty">Пусто</div>'
+            : filtered.map((item, idx) => {
                 const origIdx = this._inventory.indexOf(item);
                 const rarityColor = this.RARITY_COLORS[item.rarity] || this.RARITY_COLORS.common;
                 const selected = this._selectedInvSlot === origIdx;
@@ -448,7 +477,8 @@ class CharacterSheet {
                     <span class="cs-inv-item-weight">${item.weight ? (item.weight * (item.count || 1)).toFixed(1) : ''}</span>
                 </div>`;
             }).join('');
-        }
+
+        listHtml = equippedHtml + invHtml;
 
         // Detail panel for selected item
         let detailHtml = '<div class="cs-inv-detail-empty">Выберите предмет</div>';
@@ -481,8 +511,40 @@ class CharacterSheet {
             });
         });
 
+        // Bind equipped item click — show detail and allow unequip
+        container.querySelectorAll('.cs-inv-equipped').forEach(el => {
+            el.addEventListener('click', () => {
+                this._selectedInvSlot = null;
+                const slotKey = el.dataset.equipSlot;
+                const eqItem = this._equipment[slotKey];
+                if (eqItem) {
+                    const detailPanel = container.querySelector('.cs-inv-detail');
+                    if (detailPanel) {
+                        const slotName = this.EQUIP_SLOTS[slotKey] || slotKey;
+                        const rarityColor = this.RARITY_COLORS[eqItem.rarity] || this.RARITY_COLORS.common;
+                        detailPanel.innerHTML = `
+                            <div class="cs-inv-detail-header" style="color: ${rarityColor}">${eqItem.name || '?'}</div>
+                            <div class="cs-inv-detail-props">
+                                <div class="cs-inv-prop"><span class="cs-inv-prop-label">Слот:</span> ${slotName}</div>
+                            </div>
+                            ${eqItem.tooltip ? `<div class="cs-inv-tooltip-stats">${eqItem.tooltip.split('\\n').map(l => `<div class="cs-inv-stat-line">${l}</div>`).join('')}</div>` : ''}
+                            <div class="cs-inv-actions">
+                                <button class="cs-inv-action-btn cs-inv-unequip-btn" data-equip-slot="${slotKey}">Снять</button>
+                            </div>
+                        `;
+                        detailPanel.querySelector('.cs-inv-unequip-btn')?.addEventListener('click', () => {
+                            PythonAPI.call('unequip_item', { equipment_slot: slotKey });
+                        });
+                    }
+                }
+                // Update selection visuals
+                container.querySelectorAll('.cs-inv-item').forEach(i => i.classList.remove('selected'));
+                el.classList.add('selected');
+            });
+        });
+
         // Bind item selection
-        container.querySelectorAll('.cs-inv-item').forEach(el => {
+        container.querySelectorAll('.cs-inv-item:not(.cs-inv-equipped)').forEach(el => {
             el.addEventListener('click', () => {
                 this._selectedInvSlot = parseInt(el.dataset.slot);
                 this._renderInventory();
@@ -601,6 +663,7 @@ class CharacterSheet {
                     <div class="cs-equip-slot filled" data-slot="${slotKey}" title="${item.tooltip || item.name || ''}">
                         <span class="cs-equip-slot-name">${slotName}</span>
                         <span class="cs-equip-item-name" style="color: ${rarityColor}">${item.name || '?'}</span>
+                        <button class="cs-equip-unequip-btn" data-slot="${slotKey}" title="Снять">&#x2716;</button>
                     </div>
                 `;
             } else {
@@ -614,9 +677,10 @@ class CharacterSheet {
         }).join('');
 
         // Bind click to unequip
-        container.querySelectorAll('.cs-equip-slot.filled').forEach(slot => {
-            slot.addEventListener('click', () => {
-                const slotKey = slot.dataset.slot;
+        container.querySelectorAll('.cs-equip-unequip-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const slotKey = btn.dataset.slot;
                 PythonAPI.call('unequip_item', { equipment_slot: slotKey });
             });
         });
@@ -633,29 +697,31 @@ class CharacterSheet {
         const char = this._character;
         const desc = char?.description || {};
 
-        // Check if description is a single "text" field or structured fields
-        if (typeof desc === 'string' || (desc.text !== undefined && Object.keys(desc).length <= 1)) {
-            // Single text description
-            const text = typeof desc === 'string' ? desc : (desc.text || '');
-            container.innerHTML = `
-                <div class="cs-desc-field">
-                    <label class="cs-desc-label">Описание</label>
-                    <textarea class="cs-desc-textarea cs-desc-large" data-field="text">${this._escapeHtml(text)}</textarea>
-                </div>
-            `;
-        } else {
-            // Structured fields
-            container.innerHTML = this.DESC_FIELDS.map(({ key, label }) => {
-                const value = desc[key] || '';
-                const isLarge = key === 'backstory';
-                return `
-                    <div class="cs-desc-field">
-                        <label class="cs-desc-label">${label}</label>
-                        <textarea class="cs-desc-textarea ${isLarge ? 'cs-desc-large' : ''}" data-field="${key}">${this._escapeHtml(value)}</textarea>
-                    </div>
-                `;
-            }).join('');
-        }
+        // Sub-tab buttons
+        const tabsHtml = this.DESC_TABS.map(({ key, label }) =>
+            `<button class="cs-desc-tab-btn ${this._activeDescTab === key ? 'active' : ''}" data-desc-tab="${key}">${label}</button>`
+        ).join('');
+
+        // Active sub-tab content
+        const activeTab = this.DESC_TABS.find(t => t.key === this._activeDescTab) || this.DESC_TABS[0];
+        const value = typeof desc === 'string'
+            ? (activeTab.key === 'appearance' ? desc : '')
+            : (desc[activeTab.key] || '');
+
+        container.innerHTML = `
+            <div class="cs-desc-tabs">${tabsHtml}</div>
+            <div class="cs-desc-field">
+                <textarea class="cs-desc-textarea cs-desc-full" data-field="${activeTab.key}">${this._escapeHtml(value)}</textarea>
+            </div>
+        `;
+
+        // Bind sub-tab switching
+        container.querySelectorAll('.cs-desc-tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this._activeDescTab = btn.dataset.descTab;
+                this._renderDescription();
+            });
+        });
 
         // Bind blur to save
         container.querySelectorAll('.cs-desc-textarea').forEach(textarea => {
@@ -699,8 +765,12 @@ class CharacterSheet {
 
                 case 'equipment_update':
                     this._equipment = data?.slots || data || {};
-                    if (this.activeTab === 'equipment' && this.element && !this.element.classList.contains('hidden')) {
-                        this._renderEquipment();
+                    if (this.element && !this.element.classList.contains('hidden')) {
+                        if (this.activeTab === 'equipment') {
+                            this._renderEquipment();
+                        } else if (this.activeTab === 'inventory') {
+                            this._renderInventory();
+                        }
                     }
                     break;
 

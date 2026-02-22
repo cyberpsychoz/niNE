@@ -257,6 +257,21 @@ class PythonAPI {
     }
 
     /**
+     * Delete a character.
+     * @param {string} uuid - Character UUID
+     */
+    static async deleteCharacter(uuid) {
+        console.log('[API] Calling Python: delete_character()', uuid);
+        const api = this.getApi();
+        if (!api) return;
+        try {
+            await api.delete_character(uuid);
+        } catch (error) {
+            console.error('[API] Error calling delete_character:', error);
+        }
+    }
+
+    /**
      * Execute a combat action.
      * @param {string} action - Action ID (attack, dash, dodge, etc.)
      * @param {string} target - Target entity ID (optional)

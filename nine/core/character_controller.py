@@ -67,6 +67,11 @@ class CharacterController:
         self.is_on_ground = False
         self.is_jumping = False  # True while ascending from jump
 
+        # Noclip mode
+        self.noclip_mode = False
+        self._noclip_speed = 8.0   # Fast fly speed
+        self._noclip_fast = 16.0   # Sprint fly speed
+
         # Logging
         self._last_log_time = 0
         self._spawn_time = time.time()
@@ -254,7 +259,8 @@ class CharacterController:
             # In the air
             self.is_on_ground = False
 
-    def update(self, dt, move_vector, is_running=False, do_jump=False, cTrav=None):
+    def update(self, dt, move_vector, is_running=False, do_jump=False, cTrav=None,
+               noclip_up=False, noclip_down=False):
         """
         Updates character position with Source-like physics.
 
@@ -264,10 +270,16 @@ class CharacterController:
             is_running: Whether shift is held
             do_jump: Whether to jump
             cTrav: Not used (uses self.cTrav)
+            noclip_up: Move up in noclip mode (space)
+            noclip_down: Move down in noclip mode (ctrl)
 
         Returns:
             Tuple of (position, rotation)
         """
+        # Noclip mode: free flight, no gravity, no collision
+        if self.noclip_mode:
+            return self._update_noclip(dt, move_vector, is_running, noclip_up, noclip_down)
+
         # DEBUG: Log state before
         if do_jump:
             logger.info(f"[CharController.update START] do_jump={do_jump} onGround={self.is_on_ground} jumping={self.is_jumping} "
@@ -355,6 +367,44 @@ class CharacterController:
 
         return self.actor.getPos(), self.actor.getHpr()
 
+    def _update_noclip(self, dt, move_vector, is_running, noclip_up, noclip_down):
+        """Update position in noclip mode — free flight through walls."""
+        speed = self._noclip_fast if is_running else self._noclip_speed
+        has_input = move_vector.length_squared() > 0.01
+
+        # Horizontal movement
+        vel = LVector3(0, 0, 0)
+        if has_input:
+            direction = LVector3(move_vector)
+            direction.normalize()
+            vel.x = direction.x * speed
+            vel.y = direction.y * speed
+
+        # Vertical movement
+        if noclip_up:
+            vel.z = speed
+        elif noclip_down:
+            vel.z = -speed
+
+        # Apply position
+        old_pos = self.actor.getPos()
+        new_pos = LVector3(old_pos)
+        new_pos.x += vel.x * dt
+        new_pos.y += vel.y * dt
+        new_pos.z += vel.z * dt
+        self.actor.setPos(new_pos)  # setPos, not setFluidPos — skip collision
+
+        # Rotation
+        self.is_moving = has_input
+        if has_input:
+            target_heading = degrees(atan2(-vel.x, vel.y)) + 180
+            self.current_heading = self._lerp_angle(
+                self.current_heading, target_heading, self.rotation_speed * dt
+            )
+            self.actor.setH(self.current_heading)
+
+        return self.actor.getPos(), self.actor.getHpr()
+
     def set_position(self, pos):
         """Directly set position (for spawning/teleport)."""
         actor_pos = LVector3(*pos) if isinstance(pos, (list, tuple)) else pos
@@ -369,6 +419,28 @@ class CharacterController:
     def get_velocity(self):
         """Get current velocity."""
         return LVector3(self.velocity)
+
+    def enable_noclip(self):
+        """Enable noclip mode — disable collisions, allow free flight."""
+        if self.noclip_mode:
+            return
+        self.noclip_mode = True
+        self.velocity = LVector3(0, 0, 0)
+        # Remove colliders from traverser so we pass through walls
+        self.cTrav.removeCollider(self.collision_np)
+        self.cTrav.removeCollider(self.ground_ray_np)
+        logger.info("[Player] Noclip ENABLED")
+
+    def disable_noclip(self):
+        """Disable noclip mode — restore collisions."""
+        if not self.noclip_mode:
+            return
+        self.noclip_mode = False
+        self.velocity = LVector3(0, 0, 0)
+        # Re-register colliders
+        self.cTrav.addCollider(self.collision_np, self.pusher)
+        self.cTrav.addCollider(self.ground_ray_np, self.ground_queue)
+        logger.info("[Player] Noclip DISABLED")
 
     def cleanup(self):
         """Remove collision nodes and cleanup."""

@@ -281,8 +281,19 @@ class GameServer(ShowBase):
 
         # Networking state
         self.clients = {}  # map client_id to writer
+        self.client_addresses: Dict[int, str] = {}  # client_id -> IP string
         self.client_id_counter = 0
         self.message_queue = deque()
+
+        # Ban system
+        self.banned_ips: Set[str] = set()
+        self._load_banlist()
+
+        # Noclip tracking
+        self.noclip_clients: Set[int] = set()
+
+        # Combat movement freeze tracking: combat_id -> set of player client_ids
+        self._combat_frozen_players: Dict[str, set] = {}
 
         # Setup World (uses Panda3D collision system, no Bullet)
         self.world = GameWorld(self.render)
@@ -303,6 +314,8 @@ class GameServer(ShowBase):
         self.event_manager.subscribe("world_config_send_to_client", self.handle_world_config_send)
         # Subscribe to inventory events from plugins
         self.event_manager.subscribe("inventory_send_to_client", self.handle_inventory_send)
+        # Subscribe to equipment events from plugins
+        self.event_manager.subscribe("equipment_send_to_client", self.handle_equipment_send)
         # Subscribe to system messages
         self.event_manager.subscribe("system_message_to_client", self.handle_system_message)
 
@@ -316,6 +329,13 @@ class GameServer(ShowBase):
         self.event_manager.subscribe("combat_turn_start", self.handle_combat_turn_start)
         self.event_manager.subscribe("combat_action_result", self.handle_combat_action_result)
         self.event_manager.subscribe("combat_round_start", self.handle_combat_round_start)
+
+        # Acquaintance system events
+        self.event_manager.subscribe("introduction_completed_to_client", self.handle_dnd_send)
+        self.event_manager.subscribe("introduction_request_to_client", self.handle_dnd_send)
+        self.event_manager.subscribe("introduction_declined_to_client", self.handle_dnd_send)
+        self.event_manager.subscribe("acquaintance_name_updated_to_client", self.handle_dnd_send)
+        self.event_manager.subscribe("player_name_response_to_client", self.handle_dnd_send)
 
         # NPC Manager will be set by NPC plugin during load
         self.npc_manager = None
@@ -392,6 +412,66 @@ class GameServer(ShowBase):
             "map_path": "nine/assets/models/maps/map3.bam"
         })
         self.logger.info(f"[World] world_loaded event posted with bounds: {bounds}")
+
+    # =========================================================================
+    # Ban System
+    # =========================================================================
+
+    def _load_banlist(self):
+        """Load banned IPs from banlist.txt."""
+        try:
+            with open("banlist.txt", "r") as f:
+                for line in f:
+                    ip = line.strip()
+                    if ip and not ip.startswith("#"):
+                        self.banned_ips.add(ip)
+            if self.banned_ips:
+                self.logger.info(f"Loaded {len(self.banned_ips)} banned IPs")
+        except FileNotFoundError:
+            pass
+
+    def _save_banlist(self):
+        """Save banned IPs to banlist.txt."""
+        with open("banlist.txt", "w") as f:
+            for ip in sorted(self.banned_ips):
+                f.write(ip + "\n")
+
+    def kick_player(self, client_id: int, reason: str = ""):
+        """Kick a player from the server."""
+        writer = self.clients.get(client_id)
+        if not writer:
+            return
+        self.logger.info(f"Kicking client {client_id}: {reason}")
+        asyncio.run_coroutine_threadsafe(
+            self.send_to_client(client_id, {
+                "type": "kicked",
+                "reason": reason or "You have been kicked"
+            }),
+            self.asyncio_loop
+        )
+
+        def _do_disconnect(task):
+            self.handle_disconnect(client_id)
+            if not writer.is_closing():
+                writer.close()
+            return task.done
+
+        self.taskMgr.doMethodLater(0.1, _do_disconnect, f"kick-{client_id}")
+
+    def ban_player(self, client_id: int, reason: str = ""):
+        """Ban a player's IP and kick them."""
+        ip = self.client_addresses.get(client_id)
+        if ip:
+            self.banned_ips.add(ip)
+            self._save_banlist()
+            self.logger.info(f"Banned IP {ip} (client {client_id}): {reason}")
+        self.kick_player(client_id, reason or "You have been banned")
+
+    def unban_ip(self, ip: str):
+        """Remove an IP from the ban list."""
+        self.banned_ips.discard(ip)
+        self._save_banlist()
+        self.logger.info(f"Unbanned IP {ip}")
 
     def _load_or_create_config(self) -> dict:
         """Load server config from file, or create default if not exists."""
@@ -573,6 +653,20 @@ class GameServer(ShowBase):
             self.logger.debug(f"[GameServer TICK #{self._tick_id}] world.update(dt={dt:.4f})")
         self.world.update(dt)
 
+        # 2.1. Check combat movement notifications
+        for cid, player in self.world.players.items():
+            if getattr(player, '_combat_movement_notified', False):
+                player._combat_movement_notified = False
+                self.event_manager.post("chat_send_to_clients", {
+                    "data": {
+                        "type": "chat_broadcast",
+                        "chat_type": "system",
+                        "from_name": "Бой",
+                        "message": "Передвижение исчерпано!",
+                    },
+                    "recipients": [cid]
+                })
+
         # 2.5. Update NPC system
         if self.npc_manager:
             self.npc_manager.update(dt)
@@ -736,6 +830,25 @@ class GameServer(ShowBase):
         elif msg_type == "chat_message":
             player = self.world.players.get(client_id)
             if player:
+                # In combat: chat costs a bonus action (brief utterance)
+                if hasattr(self, 'combat_manager') and self.combat_manager:
+                    combat = self.combat_manager.get_combat_for_entity(str(client_id))
+                    if combat:
+                        participant = combat.get_participant(str(client_id))
+                        if participant and combat.current_participant == participant:
+                            if not participant.has_bonus_action:
+                                # No bonus action — block message
+                                self.event_manager.post("chat_send_to_clients", {
+                                    "data": {
+                                        "type": "chat_broadcast",
+                                        "chat_type": "system",
+                                        "from_name": "Бой",
+                                        "message": "Нет бонусного действия для речи",
+                                    },
+                                    "recipients": [client_id]
+                                })
+                                return
+                            participant.has_bonus_action = False
                 # Send to plugin for processing
                 player_pos = player.get_state()["pos"]
                 self.event_manager.post("chat_message_received", {
@@ -765,6 +878,17 @@ class GameServer(ShowBase):
                 "count": data.get("count", 1),
                 "position": position,
             })
+        elif msg_type == "equip_item":
+            self.event_manager.post("equip_item", {
+                "uuid": client_id,
+                "inventory_slot": data.get("inventory_slot", 0),
+                "equipment_slot": data.get("equipment_slot"),
+            })
+        elif msg_type == "unequip_item":
+            self.event_manager.post("unequip_item", {
+                "uuid": client_id,
+                "equipment_slot": data.get("equipment_slot", ""),
+            })
         elif msg_type == "combat_action":
             # Боевое действие от клиента
             self.event_manager.post("combat_action_request", {
@@ -782,6 +906,22 @@ class GameServer(ShowBase):
             self.event_manager.post("combat_movement_request", {
                 "client_id": client_id,
                 "destination": data.get("destination"),
+            })
+        elif msg_type == "combat_vote_cancel":
+            # Голос за отмену боя
+            self.event_manager.post("combat_vote_cancel", {
+                "client_id": client_id,
+            })
+        elif msg_type == "admin_action":
+            self.event_manager.post("dm_panel_admin_action", {
+                "client_id": client_id,
+                **{k: v for k, v in data.items() if k != "type"}
+            })
+        elif msg_type == "inspect_request":
+            self._handle_inspect_request(client_id, data)
+        elif msg_type == "noclip_request":
+            self.event_manager.post("admin_toggle_noclip", {
+                "client_id": client_id,
             })
         elif data.get("type") == "internal_disconnect":
             self.handle_disconnect(client_id)
@@ -964,6 +1104,22 @@ class GameServer(ShowBase):
                 self.send_to_client(client_id, inventory_data), self.asyncio_loop
             )
 
+    def handle_equipment_send(self, event_data: dict):
+        """
+        Handles equipment_send_to_client event from equipment plugin.
+        event_data = {
+            "client_id": client_id,
+            "data": equipment_data
+        }
+        """
+        client_id = event_data.get("client_id")
+        equipment_data = event_data.get("data", {})
+
+        if client_id is not None:
+            asyncio.run_coroutine_threadsafe(
+                self.send_to_client(client_id, equipment_data), self.asyncio_loop
+            )
+
     def handle_system_message(self, event_data: dict):
         """
         Отправляет системное сообщение клиенту через чат.
@@ -1099,14 +1255,22 @@ class GameServer(ShowBase):
 
         self.logger.info(f"[Combat] Combat {combat_id[:8]}... started with {len(participants)} participants")
 
-        # Get client IDs of player participants
+        # Get client IDs of player participants and freeze them
         client_ids = []
+        combat_player_set = set()
         for p in participants:
             if p.get("is_player"):
                 try:
-                    client_ids.append(int(p.get("entity_id")))
+                    cid = int(p.get("entity_id"))
+                    client_ids.append(cid)
+                    combat_player_set.add(cid)
+                    # Freeze player movement
+                    player = self.world.players.get(cid)
+                    if player:
+                        player.combat_frozen = True
                 except (ValueError, TypeError):
                     pass
+        self._combat_frozen_players[combat_id] = combat_player_set
 
         if client_ids:
             combat_data = {
@@ -1128,6 +1292,14 @@ class GameServer(ShowBase):
 
         self.logger.info(f"[Combat] Combat {combat_id[:8]}... ended: {reason}")
 
+        # Unfreeze all players from this combat
+        combat_players = self._combat_frozen_players.pop(combat_id, set())
+        for cid in combat_players:
+            player = self.world.players.get(cid)
+            if player:
+                player.combat_frozen = False
+                player._combat_movement_budget = None
+
         # Broadcast to all clients (they check if they were in combat)
         combat_data = {
             "type": "combat_ended",
@@ -1143,18 +1315,44 @@ class GameServer(ShowBase):
         """Broadcasts turn start to all participants."""
         combat_id = event_data.get("combat_id")
         entity_id = event_data.get("entity_id")
+        entity_name = event_data.get("entity_name", "")
         is_player = event_data.get("is_player", False)
         round_num = event_data.get("round", 1)
         turn_order = event_data.get("turn_order", [])
         current_index = event_data.get("current_index", 0)
         resources = event_data.get("resources", {})
 
-        self.logger.debug(f"[Combat] Turn start: entity={entity_id}, round={round_num}")
+        self.logger.debug(f"[Combat] Turn start: entity={entity_id} ({entity_name}), round={round_num}")
+
+        # Freeze/unfreeze players for combat movement blocking
+        combat_players = self._combat_frozen_players.get(combat_id, set())
+        for cid in combat_players:
+            player = self.world.players.get(cid)
+            if player:
+                player.combat_frozen = True
+                # Clear movement budget for non-active players
+                player._combat_movement_budget = None
+        if is_player:
+            try:
+                cid = int(entity_id)
+                player = self.world.players.get(cid)
+                if player:
+                    player.combat_frozen = False
+                    # Set movement budget: movement_speed(feet) * 0.3 ≈ Panda3D units
+                    movement_feet = resources.get("movement", 30.0)
+                    player._combat_movement_budget = movement_feet * 0.3
+                    player._combat_moved = 0.0
+                    player._combat_movement_notified = False
+                    pos = player.actor.getPos()
+                    player._combat_last_pos = (pos.x, pos.y)
+            except (ValueError, TypeError):
+                pass
 
         turn_data = {
             "type": "combat_turn_start",
             "combat_id": combat_id,
             "entity_id": entity_id,
+            "entity_name": entity_name,
             "is_player": is_player,
             "round": round_num,
             "turn_order": turn_order,
@@ -1191,6 +1389,105 @@ class GameServer(ShowBase):
             self.broadcast(round_data), self.asyncio_loop
         )
 
+    # =========================================================================
+    # Inspect System
+    # =========================================================================
+
+    def _handle_inspect_request(self, client_id: int, data: dict):
+        """Handle inspect_request from a client — look up entity and send back name+description."""
+        entity_id = data.get("entity_id", "")
+        if not entity_id:
+            return
+
+        name = "Неизвестный"
+        description = ""
+
+        # Check if it's a player
+        try:
+            target_client_id = int(entity_id)
+            if target_client_id in self.world.players:
+                # Use acquaintance system for name resolution
+                name = self._resolve_player_name_for_inspect(client_id, target_client_id)
+                description = self._get_player_description(target_client_id)
+                asyncio.run_coroutine_threadsafe(
+                    self.send_to_client(client_id, {
+                        "type": "inspect_result",
+                        "entity_id": entity_id,
+                        "name": name,
+                        "description": description,
+                    }),
+                    self.asyncio_loop
+                )
+                return
+        except (ValueError, TypeError):
+            pass
+
+        # Check if it's an NPC
+        if self.npc_manager:
+            for npc in self.npc_manager.get_npc_states():
+                if npc.get("entity_id") == entity_id:
+                    name = npc.get("display_name", npc.get("template_id", "NPC"))
+                    description = npc.get("description", "")
+                    break
+
+        asyncio.run_coroutine_threadsafe(
+            self.send_to_client(client_id, {
+                "type": "inspect_result",
+                "entity_id": entity_id,
+                "name": name,
+                "description": description,
+            }),
+            self.asyncio_loop
+        )
+
+    def _resolve_player_name_for_inspect(self, viewer_client_id: int, target_client_id: int) -> str:
+        """Resolve player name using acquaintance system if available."""
+        # Self-inspect — always show own name
+        if viewer_client_id == target_client_id:
+            return self._get_player_character_name(target_client_id)
+
+        # Try acquaintance module
+        pm = getattr(self, 'plugin_manager', None)
+        if pm:
+            from nine.plugins.inventory.sv_acquaintance import AcquaintanceServerModule
+            loaded = pm.get_plugin("nine.inventory")
+            if loaded:
+                for module in loaded.modules:
+                    if isinstance(module, AcquaintanceServerModule):
+                        return module.get_displayed_name(viewer_client_id, target_client_id)
+
+        return "Неизвестный"
+
+    def _get_player_character_name(self, client_id: int) -> str:
+        """Get character name for a player."""
+        pm = getattr(self, 'plugin_manager', None)
+        if pm:
+            from nine.plugins.inventory.sv_character_sheet import CharacterSheetServerModule
+            loaded = pm.get_plugin("nine.inventory")
+            if loaded:
+                for module in loaded.modules:
+                    if isinstance(module, CharacterSheetServerModule):
+                        return module.get_character_name(client_id)
+        player = self.world.players.get(client_id)
+        return player.name if player else "Игрок"
+
+    def _get_player_description(self, client_id: int) -> str:
+        """Get character description for a player."""
+        pm = getattr(self, 'plugin_manager', None)
+        if pm:
+            from nine.plugins.inventory.sv_character_sheet import CharacterSheetServerModule
+            loaded = pm.get_plugin("nine.inventory")
+            if loaded:
+                for module in loaded.modules:
+                    if isinstance(module, CharacterSheetServerModule):
+                        char = module.get_character(client_id)
+                        if char:
+                            desc = char.get("description", {})
+                            if isinstance(desc, str):
+                                return desc
+                            return desc.get("appearance", "")
+        return ""
+
     async def send_to_clients(self, data, client_ids):
         """Sends a message to specific clients."""
         payload = json.dumps(data).encode("utf-8")
@@ -1209,6 +1506,8 @@ class GameServer(ShowBase):
         self.logger.info(f"Client #{client_id} processing disconnection.")
         if client_id in self.clients:
             del self.clients[client_id]
+        self.client_addresses.pop(client_id, None)
+        self.noclip_clients.discard(client_id)
 
         # Unregister from interest manager
         self.interest_manager.unregister_client(client_id)
@@ -1224,10 +1523,26 @@ class GameServer(ShowBase):
     async def handle_connection(self, reader, writer):
         self.client_id_counter += 1
         client_id = self.client_id_counter
-        self.clients[client_id] = writer
         addr = writer.get_extra_info('peername')
+        client_ip = addr[0] if addr else "unknown"
+
+        # Check ban before accepting
+        if client_ip in self.banned_ips:
+            self.logger.info(f"Rejected banned IP {client_ip}")
+            try:
+                payload = json.dumps({"type": "auth_failed", "reason": "You are banned"}).encode("utf-8")
+                header = struct.pack("!I", len(payload))
+                writer.write(header + payload)
+                await writer.drain()
+            except Exception:
+                pass
+            writer.close()
+            return
+
+        self.clients[client_id] = writer
+        self.client_addresses[client_id] = client_ip
         self.logger.info(f"Client #{client_id} connected from {addr}.")
-        
+
         try:
             while True:
                 header = await reader.readexactly(4)

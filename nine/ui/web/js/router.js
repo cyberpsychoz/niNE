@@ -61,6 +61,13 @@ class Router {
             this.currentScreen = new ScreenClass(params);
             await this.currentScreen.render();
             console.log(`[Router] Rendered screen: ${screenName}`);
+
+            // Fade out splash screen on first navigation
+            const splash = document.getElementById('splash-screen');
+            if (splash && !splash.classList.contains('fade-out')) {
+                splash.classList.add('fade-out');
+                setTimeout(() => splash.remove(), 500);
+            }
         } catch (error) {
             console.error(`[Router] Error rendering screen ${screenName}:`, error);
         }

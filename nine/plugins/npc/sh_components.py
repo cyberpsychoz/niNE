@@ -38,6 +38,7 @@ class AIState(Enum):
     FLEEING = auto()        # Убегает
     INTERACTING = auto()    # Взаимодействует (диалог)
     DEAD = auto()           # Мёртв
+    IN_COMBAT = auto()      # В пошаговом бою (AI заморожен)
 
 
 class InteractionType(Enum):

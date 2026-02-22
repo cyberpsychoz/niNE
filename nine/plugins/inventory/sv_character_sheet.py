@@ -225,6 +225,10 @@ class CharacterSheetServerModule(PluginModule):
             return
 
         self.characters[player_uuid]["equipment_bonuses"] = bonuses
+        self.characters[player_uuid]["_base_ac"] = data.get("base_ac", 10)
+        self.characters[player_uuid]["_has_armor"] = data.get("has_armor", False)
+        self.characters[player_uuid]["_has_shield"] = data.get("has_shield", False)
+        self.characters[player_uuid]["_max_dex_bonus"] = data.get("max_dex_bonus", None)
         self._recalculate_derived_stats(player_uuid)
         self._send_character_sheet(player_uuid)
 
@@ -333,6 +337,10 @@ class CharacterSheetServerModule(PluginModule):
         # Владения (proficiencies)
         proficiencies = self._build_proficiencies(class_data, race_data, background_data, db_data.get("proficiencies", {}))
 
+        # Passive perception = 10 + perception skill modifier
+        perception_data = skills.get("perception", {})
+        passive_perception = 10 + perception_data.get("modifier", wis_mod)
+
         return {
             "uuid": db_data.get("uuid", ""),
             "name": db_data.get("character_name", "Незнакомец"),
@@ -401,7 +409,7 @@ class CharacterSheetServerModule(PluginModule):
             # Бонусы экипировки
             "equipment_bonuses": {},
 
-            # Для совместимости со старым кодом
+            # Для совместимости со старым кодом и JS CharacterSheet
             "stats": {
                 "strength": strength,
                 "dexterity": dexterity,
@@ -420,8 +428,14 @@ class CharacterSheetServerModule(PluginModule):
                 "max_hp": db_data.get("hp_max", 10),
                 "current_hp": db_data.get("hp_current", 10),
                 "temp_hp": 0,
+                "armor_class": db_data.get("armor_class", 10 + dex_mod),
+                "initiative": dex_mod,
                 "base_speed": race_data.get("speed", 30),
+                "hit_die": f"d{hit_die}",
+                "hit_dice_current": hit_dice_current,
+                "hit_dice_max": hit_dice_max,
                 "proficiency_bonus": prof_bonus,
+                "passive_perception": passive_perception,
                 "proficiencies": proficiencies.get("all", []),
                 "languages": proficiencies.get("languages", ["Common"]),
             },
@@ -474,7 +488,9 @@ class CharacterSheetServerModule(PluginModule):
 
             total = mod + bonus
 
-            skills[skill_name] = {
+            # Normalize key to snake_case for JS CharacterSheet compatibility
+            key = skill_name.lower().replace(" ", "_")
+            skills[key] = {
                 "name_ru": skill_data.get("name", skill_name),
                 "ability": ability,
                 "modifier": total,
@@ -613,15 +629,41 @@ class CharacterSheetServerModule(PluginModule):
         return xp_table.get(level, 355000)
 
     def _recalculate_derived_stats(self, player_uuid: str):
-        """Пересчитывает производные характеристики."""
+        """Пересчитывает производные характеристики (AC, speed) с учётом экипировки."""
         if player_uuid not in self.characters:
             return
 
         char = self.characters[player_uuid]
         bonuses = char.get("equipment_bonuses", {})
+        dex_mod = char["abilities"]["dexterity"]["modifier"]
 
-        # Пересчёт AC, HP и т.д. с учётом бонусов экипировки
-        # TODO: Реализовать полный пересчёт
+        # --- AC ---
+        base_ac = char.get("_base_ac", 10)
+        has_armor = char.get("_has_armor", False)
+        has_shield = char.get("_has_shield", False)
+        max_dex = char.get("_max_dex_bonus", None)
+
+        if has_armor:
+            effective_dex = dex_mod if max_dex is None else min(dex_mod, max_dex)
+            ac = base_ac + effective_dex
+        else:
+            ac = 10 + dex_mod
+
+        if has_shield:
+            ac += 2
+
+        ac += bonuses.get("armor_class", 0)  # magic item bonuses
+        char["armor_class"] = ac
+
+        # --- Speed ---
+        base_speed = char.get("speed", 30)
+        speed_bonus = bonuses.get("speed", 0)
+        char["speed"] = base_speed + speed_bonus
+
+        # --- Update stats sub-object for HUD compatibility ---
+        if "stats" in char:
+            char["stats"]["armor_class"] = ac
+            char["stats"]["base_speed"] = char["speed"]
 
     # =========================================================================
     # Sending data
