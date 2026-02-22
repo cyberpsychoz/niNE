@@ -14,6 +14,11 @@ class GameHUD {
         this.inCombat = false;
         this.isMyTurn = false;
         this._resultTimeout = null;
+        this._combatStartOverlay = null;
+        this._combatCountdownInterval = null;
+
+        // Participants cache (from combat_started) for name lookups
+        this._participants = {};
 
         // Combat resources
         this._resources = { action: true, bonus: true, reaction: true };
@@ -143,6 +148,14 @@ class GameHUD {
     showCombat(data) {
         this.inCombat = true;
 
+        // Cache participants for name lookups
+        if (data && data.participants) {
+            this._participants = {};
+            data.participants.forEach(p => {
+                this._participants[p.entity_id] = p;
+            });
+        }
+
         const combatEl = document.getElementById('hud-combat');
         const initEl = document.getElementById('hud-initiative');
         if (combatEl) combatEl.classList.remove('hidden');
@@ -155,11 +168,15 @@ class GameHUD {
 
         const roundEl = document.getElementById('hud-round');
         if (roundEl) roundEl.textContent = `Раунд ${data?.round || 1}`;
+
+        // Show "НАЧАЛО БОЯ" overlay with countdown
+        this._showCombatStartOverlay();
     }
 
     hideCombat() {
         this.inCombat = false;
         this.isMyTurn = false;
+        this._participants = {};
 
         const combatEl = document.getElementById('hud-combat');
         const initEl = document.getElementById('hud-initiative');
@@ -169,11 +186,78 @@ class GameHUD {
         // Hide movement bar
         const moveSection = document.getElementById('hud-movement-section');
         if (moveSection) moveSection.style.display = 'none';
+
+        // Remove combat start overlay if still showing
+        this._removeCombatStartOverlay();
+    }
+
+    _getParticipantName(entityId) {
+        const p = this._participants[entityId];
+        if (p && p.name) return p.name;
+        return '???';
+    }
+
+    _showCombatStartOverlay() {
+        this._removeCombatStartOverlay();
+
+        const overlay = document.createElement('div');
+        overlay.id = 'combat-start-overlay';
+        overlay.style.cssText = `
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            background: rgba(0, 0, 0, 0.6); z-index: 9999;
+            pointer-events: none; animation: fadeIn 0.3s ease;
+        `;
+
+        const title = document.createElement('div');
+        title.textContent = 'НАЧАЛО БОЯ';
+        title.style.cssText = `
+            font-family: 'Cinzel', serif; font-size: 64px; font-weight: bold;
+            color: #ff4444; text-shadow: 0 0 20px rgba(255, 68, 68, 0.8),
+            0 0 40px rgba(255, 68, 68, 0.4); letter-spacing: 8px;
+        `;
+
+        const countdown = document.createElement('div');
+        countdown.id = 'combat-countdown';
+        countdown.style.cssText = `
+            font-family: 'Cinzel', serif; font-size: 48px; font-weight: bold;
+            color: #ffcc00; margin-top: 20px;
+            text-shadow: 0 0 15px rgba(255, 204, 0, 0.6);
+        `;
+        countdown.textContent = '3';
+
+        overlay.appendChild(title);
+        overlay.appendChild(countdown);
+        document.body.appendChild(overlay);
+        this._combatStartOverlay = overlay;
+
+        let count = 3;
+        this._combatCountdownInterval = setInterval(() => {
+            count--;
+            if (count > 0) {
+                countdown.textContent = String(count);
+            } else {
+                this._removeCombatStartOverlay();
+            }
+        }, 1000);
+    }
+
+    _removeCombatStartOverlay() {
+        if (this._combatCountdownInterval) {
+            clearInterval(this._combatCountdownInterval);
+            this._combatCountdownInterval = null;
+        }
+        if (this._combatStartOverlay) {
+            this._combatStartOverlay.remove();
+            this._combatStartOverlay = null;
+        }
     }
 
     onTurnStart(data) {
-        this.isMyTurn = data.is_player || false;
+        // Use is_your_turn (set by webview_api) instead of is_player
+        this.isMyTurn = data.is_your_turn || false;
         const entityId = data.entity_id || '';
+        const entityName = data.entity_name || this._getParticipantName(entityId);
         const round = data.round || 1;
 
         const turnEl = document.getElementById('hud-turn');
@@ -186,7 +270,7 @@ class GameHUD {
                 turnEl.textContent = 'ВАШ ХОД!';
                 turnEl.className = 'hud-turn your-turn';
             } else {
-                turnEl.textContent = `Ход: ${entityId.substring(0, 8)}...`;
+                turnEl.textContent = `Ход: ${entityName}`;
                 turnEl.className = 'hud-turn';
             }
         }
@@ -201,12 +285,12 @@ class GameHUD {
         if (this.isMyTurn) {
             const resources = data.resources || {};
             this._resources = {
-                action: resources.action !== undefined ? resources.action : true,
-                bonus: resources.bonus !== undefined ? resources.bonus : true,
-                reaction: resources.reaction !== undefined ? resources.reaction : true,
+                action: resources.has_action !== undefined ? resources.has_action : true,
+                bonus: resources.has_bonus_action !== undefined ? resources.has_bonus_action : true,
+                reaction: resources.has_reaction !== undefined ? resources.has_reaction : true,
             };
-            this._movementMax = resources.movement_max || data.movement_max || 30;
-            this._movementCurrent = resources.movement_remaining || this._movementMax;
+            this._movementMax = resources.movement_max || resources.movement || 30;
+            this._movementCurrent = resources.movement || this._movementMax;
             this._updateResources();
             this._updateMovement();
         }
@@ -264,6 +348,14 @@ class GameHUD {
             this._updateMovement();
         }
 
+        // Update initiative tracker HP if attack result has target HP data
+        if (result.action === 'attack' || data.action_id === 'attack') {
+            const targetId = result.target_id || data.target_id;
+            if (targetId && result.target_hp_current !== undefined) {
+                this._updateInitiativeHP(targetId, result.target_hp_current, result.target_hp_max, result.target_is_dead);
+            }
+        }
+
         // Auto-hide after 3 seconds
         if (this._resultTimeout) clearTimeout(this._resultTimeout);
         this._resultTimeout = setTimeout(() => {
@@ -306,7 +398,7 @@ class GameHUD {
         }
 
         if (text) {
-            text.textContent = `${this._movementCurrent}/${this._movementMax} фт`;
+            text.textContent = `${Math.floor(this._movementCurrent)}/${Math.floor(this._movementMax)} фт`;
         }
     }
 
@@ -336,7 +428,7 @@ class GameHUD {
             const hpRatio = p.hp_max > 0 ? (p.hp_current / p.hp_max) : 0;
 
             el.innerHTML = `
-                <span class="init-order">${p.initiative || 0}</span>
+                <span class="init-order">${Math.floor(p.initiative || 0)}</span>
                 <span class="init-name">${(p.name || '???').substring(0, 12)}</span>
                 <div class="init-hp-bar">
                     <div class="init-hp-fill" style="width:${hpRatio * 100}%"></div>
@@ -359,6 +451,27 @@ class GameHUD {
         });
     }
 
+    _updateInitiativeHP(entityId, hpCurrent, hpMax, isDead) {
+        const entry = document.querySelector(`.hud-init-entry[data-entity-id="${entityId}"]`);
+        if (!entry) return;
+
+        if (isDead) {
+            entry.classList.add('init-dead');
+        }
+
+        const hpFill = entry.querySelector('.init-hp-fill');
+        const hpText = entry.querySelector('.init-hp-text');
+
+        if (hpFill && hpMax > 0) {
+            const ratio = Math.max(0, Math.min(1, hpCurrent / hpMax)) * 100;
+            hpFill.style.width = ratio + '%';
+        }
+
+        if (hpText) {
+            hpText.textContent = isDead ? 'X' : `${hpCurrent}/${hpMax}`;
+        }
+    }
+
     // ================================================================
     // Action Buttons
     // ================================================================
@@ -372,9 +485,24 @@ class GameHUD {
                 if (!this.isMyTurn) return;
                 const action = btn.dataset.action;
                 console.log('[GameHUD] Action clicked:', action);
-                PythonAPI.combatAction(action, '');
+                if (action === 'spell') {
+                    if (window.panelManager) window.panelManager.toggle('spellbook');
+                } else if (action === 'item') {
+                    if (window.panelManager) window.panelManager.open('character-sheet', { tab: 'inventory' });
+                } else {
+                    PythonAPI.combatAction(action, '');
+                }
             });
         });
+
+        // Cancel combat button
+        const cancelBtn = document.getElementById('hud-cancel-combat');
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', () => {
+                if (!this.inCombat) return;
+                PythonAPI.getApi().vote_cancel_combat();
+            });
+        }
     }
 
     _setActionButtonsEnabled(enabled) {
@@ -412,16 +540,21 @@ class GameHUD {
 
             const keyMap = {
                 '1': 'attack',
-                '2': 'spell',
-                '3': 'move',
-                '4': 'dodge',
-                '5': 'dash',
+                '2': 'dash',
+                '3': 'dodge',
+                '4': 'item',
                 'e': 'end_turn'
             };
 
             const action = keyMap[e.key.toLowerCase()];
             if (action) {
-                PythonAPI.combatAction(action, '');
+                if (action === 'spell') {
+                    if (window.panelManager) window.panelManager.toggle('spellbook');
+                } else if (action === 'item') {
+                    if (window.panelManager) window.panelManager.open('character-sheet', { tab: 'inventory' });
+                } else {
+                    PythonAPI.combatAction(action, '');
+                }
                 e.preventDefault();
                 e.stopPropagation();
             }
@@ -436,17 +569,22 @@ class GameHUD {
 
         const keyMap = {
             '1': 'attack',
-            '2': 'spell',
-            '3': 'move',
-            '4': 'dodge',
-            '5': 'dash',
+            '2': 'dash',
+            '3': 'dodge',
+            '4': 'item',
             'e': 'end_turn'
         };
 
         const action = keyMap[data?.key];
         if (action) {
             console.log('[GameHUD] Combat hotkey:', action);
-            PythonAPI.combatAction(action, '');
+            if (action === 'spell') {
+                if (window.panelManager) window.panelManager.toggle('spellbook');
+            } else if (action === 'item') {
+                if (window.panelManager) window.panelManager.open('character-sheet', { tab: 'inventory' });
+            } else {
+                PythonAPI.combatAction(action, '');
+            }
         }
     }
 
@@ -510,6 +648,7 @@ class GameHUD {
     // ================================================================
 
     destroy() {
+        this._removeCombatStartOverlay();
         if (this.element) {
             this.element.remove();
             this.element = null;

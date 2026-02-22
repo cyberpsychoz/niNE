@@ -30,6 +30,9 @@ class WebViewAPI:
         # Store login credentials for get_login_credentials() to retrieve
         self._login_credentials = {}
 
+        # Cached combat target from target_selected event
+        self._selected_target_id = None
+
         # Подписываемся на события для отправки в JS
         self._subscribe_to_events()
 
@@ -82,9 +85,22 @@ class WebViewAPI:
         # Character sheet tab navigation
         event_manager.subscribe("open_character_sheet_tab", self._on_open_character_sheet_tab)
 
+        # Target selection (cache for combat actions)
+        event_manager.subscribe("target_selected", self._on_target_selected)
+
         # Context menu events
         event_manager.subscribe("show_context_menu", self._on_show_context_menu)
         event_manager.subscribe("hide_context_menu", self._on_hide_context_menu)
+
+        # Inspect result
+        event_manager.subscribe("inspect_result", self._on_inspect_result)
+
+        # Admin panel events
+        event_manager.subscribe("dm_panel_player_list", self._on_dm_panel_player_list)
+        event_manager.subscribe("dm_panel_combat_list", self._on_dm_panel_combat_list)
+        event_manager.subscribe("dm_panel_npc_templates", self._on_dm_panel_npc_templates)
+        event_manager.subscribe("admin_panel_ban_list", self._on_admin_panel_ban_list)
+        event_manager.subscribe("noclip_toggled", self._on_noclip_toggled)
 
         logger.info("Subscribed to game events")
 
@@ -355,8 +371,10 @@ class WebViewAPI:
         self.manager.send_to_js("world_state", data)
 
     def _on_combat_turn_start(self, data: Dict[str, Any]):
-        """Forward combat turn start to JavaScript."""
-        self.manager.send_to_js("combat_turn_start", data)
+        """Forward combat turn start to JavaScript with is_your_turn flag."""
+        enriched = dict(data)
+        enriched["is_your_turn"] = (str(data.get("entity_id", "")) == str(getattr(self.app, 'player_id', -1)))
+        self.manager.send_to_js("combat_turn_start", enriched)
 
     def _on_combat_action_result(self, data: Dict[str, Any]):
         """Forward combat action result to JavaScript."""
@@ -447,6 +465,15 @@ class WebViewAPI:
         else:
             logger.warning("No create_character callback registered")
 
+    def delete_character(self, character_uuid: str):
+        """Delete a character (called from JavaScript)."""
+        logger.info(f"Delete character from JavaScript: {character_uuid}")
+        if hasattr(self.app, 'send_message') and character_uuid:
+            self.app.send_message({
+                "type": "character_delete",
+                "character_uuid": character_uuid,
+            })
+
     def request_character_list(self):
         """Request character list from server (called from JavaScript)."""
         logger.info("Request character list from JavaScript")
@@ -455,11 +482,19 @@ class WebViewAPI:
 
     def combat_action(self, action: str, target: str = ""):
         """Execute combat action (called from JavaScript)."""
-        logger.info(f"Combat action from JavaScript: {action} target={target}")
-        self.app.event_manager.post("combat_player_action", {
-            "action": action,
-            "target": target,
+        # Resolve target: use provided target, or fall back to cached selection
+        resolved_target = target if target else self._selected_target_id
+        logger.info(f"Combat action from JavaScript: {action} target={resolved_target}")
+        self.app.event_manager.post("send_to_server", {
+            "type": "combat_action",
+            "action_id": action,
+            "target_id": resolved_target,
         })
+
+    def _on_target_selected(self, data: Dict[str, Any]):
+        """Cache selected target for combat actions."""
+        self._selected_target_id = data.get("target_id")
+        logger.debug(f"Target selected: {self._selected_target_id}")
 
     def equip_item(self, data: dict):
         """Equip an item from inventory (called from JavaScript)."""
@@ -562,6 +597,21 @@ class WebViewAPI:
     # Context menu events (Python -> JavaScript)
     # ============================================================
 
+    def _on_inspect_result(self, data: Dict[str, Any]):
+        """Handle inspect_result from server — output to chat as system message."""
+        name = data.get("name", "???")
+        description = data.get("description", "")
+        if description:
+            message = f"* Вы осматриваете {name}: {description}"
+        else:
+            message = f"* Вы осматриваете {name}. Ничего примечательного."
+        # Post as local chat message (not sent to server)
+        self.manager.send_to_js("chat_message", {
+            "chat_type": "system",
+            "from_name": "Система",
+            "message": message,
+        })
+
     def _on_show_context_menu(self, data: Dict[str, Any]):
         """Forward show_context_menu event to JavaScript."""
         self.manager.send_to_js("show_context_menu", data)
@@ -569,3 +619,59 @@ class WebViewAPI:
     def _on_hide_context_menu(self, data: Dict[str, Any]):
         """Forward hide_context_menu event to JavaScript."""
         self.manager.send_to_js("hide_context_menu", data)
+
+    # ============================================================
+    # Admin panel events (Python -> JavaScript)
+    # ============================================================
+
+    def _on_dm_panel_player_list(self, data: Dict[str, Any]):
+        """Forward DM panel player list to JavaScript."""
+        self.manager.send_to_js("dm_panel_player_list", data)
+
+    def _on_dm_panel_combat_list(self, data: Dict[str, Any]):
+        """Forward DM panel combat list to JavaScript."""
+        self.manager.send_to_js("dm_panel_combat_list", data)
+
+    def _on_dm_panel_npc_templates(self, data: Dict[str, Any]):
+        """Forward DM panel NPC templates to JavaScript."""
+        self.manager.send_to_js("dm_panel_npc_templates", data)
+
+    def _on_admin_panel_ban_list(self, data: Dict[str, Any]):
+        """Forward admin panel ban list to JavaScript."""
+        self.manager.send_to_js("admin_panel_ban_list", data)
+
+    def _on_noclip_toggled(self, data: Dict[str, Any]):
+        """Forward noclip toggle state to JavaScript."""
+        self.manager.send_to_js("noclip_toggled", data)
+
+    # ============================================================
+    # Admin panel actions (JavaScript -> Python)
+    # ============================================================
+
+    def admin_action(self, data_str: str):
+        """Handle admin action from JavaScript (JSON string from AdminPanel.js)."""
+        import json
+        try:
+            data = json.loads(data_str) if isinstance(data_str, str) else data_str
+        except (json.JSONDecodeError, TypeError):
+            logger.warning(f"Invalid admin_action data: {data_str}")
+            return
+        action = data.get("action", "")
+        logger.info(f"Admin action from JavaScript: {action}")
+        # Post to event system — sv_dm_panel handles routing
+        self.app.event_manager.post("client_admin_action", data)
+        # Also send to server directly
+        if hasattr(self.app, 'send_message'):
+            self.app.send_message({"type": "admin_action", **data})
+
+    def vote_cancel_combat(self):
+        """Vote to cancel current combat (called from JavaScript)."""
+        logger.info("Vote cancel combat from JavaScript")
+        if hasattr(self.app, 'send_message'):
+            self.app.send_message({"type": "combat_vote_cancel"})
+
+    def noclip_request(self):
+        """Request noclip toggle from server (called from JavaScript)."""
+        logger.info("Noclip request from JavaScript")
+        if hasattr(self.app, 'send_message'):
+            self.app.send_message({"type": "noclip_request"})

@@ -2,6 +2,8 @@
  * Custom Select - Replaces native <select> elements with custom dropdowns.
  * Native <select> popups don't work in CEF offscreen rendering mode.
  *
+ * Uses position:fixed so dropdowns escape overflow:auto/hidden containers.
+ *
  * Usage: call initCustomSelects() after DOM is ready.
  * The original <select> is hidden but kept in sync so form reads still work.
  */
@@ -31,7 +33,7 @@
             display.appendChild(label);
             display.appendChild(arrow);
 
-            // Dropdown list
+            // Dropdown list — appended to body to escape overflow clipping
             const dropdown = document.createElement('div');
             dropdown.className = 'cs-dropdown';
 
@@ -63,23 +65,43 @@
                 wrapper.classList.remove('open');
             }
 
+            function positionDropdown() {
+                const rect = display.getBoundingClientRect();
+                dropdown.style.left = rect.left + 'px';
+                dropdown.style.width = rect.width + 'px';
+
+                // Check if dropdown fits below, otherwise open upward
+                const spaceBelow = window.innerHeight - rect.bottom;
+                const dropHeight = Math.min(dropdown.scrollHeight, 200);
+                if (spaceBelow < dropHeight && rect.top > dropHeight) {
+                    dropdown.style.top = (rect.top - dropHeight) + 'px';
+                } else {
+                    dropdown.style.top = rect.bottom + 'px';
+                }
+            }
+
             display.addEventListener('click', (e) => {
                 e.stopPropagation();
                 // Close all other custom selects first
                 document.querySelectorAll('.cs-dropdown.open').forEach(d => {
                     if (d !== dropdown) {
                         d.classList.remove('open');
-                        d.parentElement.classList.remove('open');
+                        if (d._csWrapper) d._csWrapper.classList.remove('open');
                     }
                 });
+                const opening = !dropdown.classList.contains('open');
                 dropdown.classList.toggle('open');
                 wrapper.classList.toggle('open');
+                if (opening) positionDropdown();
             });
 
             buildOptions();
 
             wrapper.appendChild(display);
-            wrapper.appendChild(dropdown);
+            // Append dropdown to body so it escapes overflow containers
+            dropdown._csWrapper = wrapper;
+            document.body.appendChild(dropdown);
+
             select.parentNode.insertBefore(wrapper, select.nextSibling);
         });
     };
@@ -88,7 +110,7 @@
     document.addEventListener('click', () => {
         document.querySelectorAll('.cs-dropdown.open').forEach(d => {
             d.classList.remove('open');
-            d.parentElement.classList.remove('open');
+            if (d._csWrapper) d._csWrapper.classList.remove('open');
         });
     });
 })();

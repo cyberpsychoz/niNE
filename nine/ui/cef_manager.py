@@ -76,6 +76,10 @@ PYAPI_INJECT_JS = """
         panel_closed: function() { pyCall('panel_closed', {}); },
         interact_with: function(data) { pyCall('interact_with', data); },
         context_menu_closed: function() { pyCall('context_menu_closed', {}); },
+        delete_character: function(uuid) { pyCall('delete_character', {character_uuid: uuid}); },
+        admin_action: function(data) { pyCall('admin_action', {data: data}); },
+        noclip_request: function() { pyCall('noclip_request', {}); },
+        vote_cancel_combat: function() { pyCall('vote_cancel_combat', {}); },
     };
     console.log('[CEF] pyapi bridge injected');
 })();
@@ -516,6 +520,8 @@ class CEFUIManager:
             self.api.hide_in_game_menu()
         elif method == 'create_character':
             self.api.create_character(args)
+        elif method == 'delete_character':
+            self.api.delete_character(args.get('character_uuid', ''))
         elif method == 'request_character_list':
             self.api.request_character_list()
         elif method == 'combat_action':
@@ -553,6 +559,12 @@ class CEFUIManager:
                 cc.resume()
         elif method == 'interact_with':
             self.api.interact_with(args)
+        elif method == 'admin_action':
+            self.api.admin_action(args.get('data', ''))
+        elif method == 'vote_cancel_combat':
+            self.api.vote_cancel_combat()
+        elif method == 'noclip_request':
+            self.api.noclip_request()
         elif method == 'context_menu_closed':
             pass  # JS-only state cleanup
         else:
@@ -646,6 +658,10 @@ class CEFUIManager:
         self._input.accept('i', self._on_panel_key, ['character-sheet'])
         self._input.accept('k', self._on_panel_key, ['spellbook'])
         self._input.accept('j', self._on_panel_key, ['quest-log'])
+        self._input.accept('f2', self._on_panel_key, ['admin-panel'])
+
+        # Noclip toggle (admin/DM only — server validates role)
+        self._input.accept('n', self._on_noclip_toggle)
 
         # Combat hotkeys (also Python-side for same reason)
         for key in ['1', '2', '3', '4', '5']:
@@ -817,7 +833,26 @@ class CEFUIManager:
             cc = getattr(self.app, 'camera_controller', None)
             if cc:
                 cc.pause()
+            # Reset movement keys to prevent stuck walking
+            if hasattr(self.app, 'keyMap'):
+                for key in self.app.keyMap:
+                    self.app.keyMap[key] = False
         self.send_to_js("toggle_panel", {"panel": panel_name})
+
+    def _on_noclip_toggle(self):
+        """Handle N key — request noclip toggle from server."""
+        if getattr(self.app, '_web_chat_active', False):
+            return
+        from nine.core.game_state import GameState
+        if self.game_state != GameState.IN_GAME:
+            return
+        if self._panel_open:
+            return
+        if getattr(self.app, 'in_game_menu_active', False):
+            return
+        # Send noclip request to server
+        if hasattr(self.app, 'send_message'):
+            self.app.send_message({"type": "noclip_request"})
 
     def _on_combat_hotkey(self, key):
         """Handle combat hotkey from Panda3D input."""

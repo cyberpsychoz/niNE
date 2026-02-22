@@ -78,11 +78,21 @@ class CharacterSelect {
                 <div class="details">
                     ${char.race} ${char.class || ''} — Уровень ${char.level || 1}
                 </div>
+                <button class="char-delete-btn" data-uuid="${char.uuid}" title="Удалить персонажа">&times;</button>
             `;
 
-            card.addEventListener('click', () => {
+            card.addEventListener('click', (e) => {
+                if (e.target.classList.contains('char-delete-btn')) return;
                 this._selectCharacter(char);
             });
+
+            const delBtn = card.querySelector('.char-delete-btn');
+            if (delBtn) {
+                delBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this._confirmDelete(char);
+                });
+            }
 
             this.characterList.appendChild(card);
         });
@@ -105,6 +115,38 @@ class CharacterSelect {
 
         // Enable select button
         this.selectBtn.disabled = false;
+    }
+
+    _confirmDelete(char) {
+        // Show inline confirmation instead of alert() (CEF offscreen has no alert)
+        const existing = document.getElementById('delete-confirm-overlay');
+        if (existing) existing.remove();
+
+        const overlay = document.createElement('div');
+        overlay.id = 'delete-confirm-overlay';
+        overlay.className = 'panel-overlay';
+        overlay.innerHTML = `
+            <div class="panel-container" style="width:400px;padding:24px;text-align:center;">
+                <div class="panel-header"><span class="panel-title">УДАЛИТЬ ПЕРСОНАЖА?</span></div>
+                <p style="color:var(--color-text-primary);margin:16px 0;">
+                    Вы уверены, что хотите удалить <strong>${char.character_name}</strong>? Это действие необратимо.
+                </p>
+                <div style="display:flex;gap:8px;justify-content:center;">
+                    <button class="bg1-button admin-btn-darkred" id="confirm-delete-yes">УДАЛИТЬ</button>
+                    <button class="bg1-button" id="confirm-delete-no">ОТМЕНА</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+
+        document.getElementById('confirm-delete-yes').addEventListener('click', () => {
+            console.log('[CharacterSelect] Deleting character:', char.uuid);
+            PythonAPI.deleteCharacter(char.uuid);
+            overlay.remove();
+        });
+        document.getElementById('confirm-delete-no').addEventListener('click', () => {
+            overlay.remove();
+        });
     }
 
     attachEventListeners() {

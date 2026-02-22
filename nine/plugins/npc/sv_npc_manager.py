@@ -440,6 +440,43 @@ class NPCManager:
     # Публичные методы
     # =========================================================================
 
+    def _get_ground_height(self, x: float, y: float, z_start: float = 100.0) -> float:
+        """Find ground height at (x, y) using a collision ray cast."""
+        from panda3d.core import (
+            CollisionRay, CollisionNode, CollisionHandlerQueue,
+            CollisionTraverser, BitMask32
+        )
+
+        world = getattr(self.app, 'world', None)
+        if not world or not hasattr(world, 'render'):
+            return 0.0
+
+        ray = CollisionRay()
+        ray.setOrigin(x, y, z_start)
+        ray.setDirection(0, 0, -1)
+
+        ray_node = CollisionNode('npc_ground_probe')
+        ray_node.addSolid(ray)
+        ray_node.setFromCollideMask(BitMask32.bit(2))  # FLOOR_MASK
+        ray_node.setIntoCollideMask(BitMask32.allOff())
+
+        ray_np = world.render.attachNewNode(ray_node)
+        queue = CollisionHandlerQueue()
+
+        trav = CollisionTraverser()
+        trav.addCollider(ray_np, queue)
+        trav.traverse(world.render)
+
+        ray_np.removeNode()
+
+        if queue.getNumEntries() > 0:
+            queue.sortEntries()
+            entry = queue.getEntry(0)
+            surface_point = entry.getSurfacePoint(world.render)
+            return surface_point.z
+
+        return 0.0  # Fallback
+
     def spawn_npc(
         self,
         template_id: str,
@@ -463,6 +500,12 @@ class NPCManager:
         Returns:
             Созданная entity или None
         """
+        # Snap NPC to ground level via ray cast
+        ground_z = self._get_ground_height(x, y, z + 50.0)
+        if ground_z != 0.0 or z <= 1.0:
+            self.logger.info(f"[NPC Spawn] Adjusted z: {z:.1f} -> {ground_z:.1f} (ground level)")
+            z = ground_z
+
         template = self.npc_templates.get(template_id)
         if not template:
             self.logger.warning(f"Unknown NPC template: {template_id}")
@@ -1031,10 +1074,16 @@ class NPCManager:
 
         template_id = data.get("template_id")
         pos = data.get("position", {})
-        x = pos.get("x", 0)
-        y = pos.get("y", 0)
-        z = pos.get("z", 0)
-        rotation = pos.get("rotation", 0)
+        if isinstance(pos, (list, tuple)):
+            x = pos[0] if len(pos) > 0 else 0
+            y = pos[1] if len(pos) > 1 else 0
+            z = pos[2] if len(pos) > 2 else 0
+            rotation = 0
+        else:
+            x = pos.get("x", 0)
+            y = pos.get("y", 0)
+            z = pos.get("z", 0)
+            rotation = pos.get("rotation", 0)
 
         self.logger.info(f"[NPC_MANAGER] Спавним NPC: template={template_id}, pos=({x}, {y}, {z})")
 

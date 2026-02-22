@@ -99,6 +99,10 @@ class GameClient(ShowBase):
         self.is_connected = False
         self.is_server = False  # Plugins check this
 
+        # Combat state tracking (client-side)
+        self.in_combat = False
+        self.is_my_combat_turn = False
+
         # Buffer for events that arrive before plugins are loaded.
         # Server sends world_config, character_sheet, etc. BEFORE welcome,
         # but plugins load in the welcome handler. Buffer these and replay.
@@ -208,6 +212,8 @@ class GameClient(ShowBase):
         self.event_manager.subscribe("client_send_chat_message", self.send_chat_packet)
         self.event_manager.subscribe("client_item_use", self.send_item_use_packet)
         self.event_manager.subscribe("client_item_drop", self.send_item_drop_packet)
+        self.event_manager.subscribe("client_equip_item", self.send_equip_item_packet)
+        self.event_manager.subscribe("client_unequip_item", self.send_unequip_item_packet)
         self.event_manager.subscribe("send_to_server", self._handle_send_to_server)
 
         # --- Scene Optimizer ---
@@ -447,10 +453,20 @@ class GameClient(ShowBase):
         self.logger.info(f"Map collision setup: {total_polys} wall polygons for camera")
 
     def update_key_map(self, key, state):
-        # Block key-down when chat is open, but allow key-up to prevent stuck keys
-        if self.is_chat_active() and state:
+        # Block key-down when chat or a panel is open, allow key-up to prevent stuck keys
+        if state and (self.is_chat_active() or self._is_panel_open()):
+            return
+        # Block movement keys during combat when not player's turn
+        if state and self.in_combat and not self.is_my_combat_turn and key in ("w", "a", "s", "d", "space", "shift"):
             return
         self.keyMap[key] = state
+
+    def _is_panel_open(self):
+        """Check if any UI panel is open (character sheet, etc.)."""
+        ui = getattr(self, 'ui', None)
+        if ui and hasattr(ui, '_panel_open'):
+            return ui._panel_open is not None
+        return False
 
     def disable_game_input(self):
         if self.camera_controller:
@@ -982,6 +998,10 @@ class GameClient(ShowBase):
             # Передаём плагину инвентаря
             self._post_or_buffer_event("inventory_update", data)
 
+        elif msg_type == "equipment_update":
+            # Передаём обновление экипировки
+            self._post_or_buffer_event("equipment_update", data)
+
         elif msg_type == "world_state":
             import time
             for p_id_str, p_info in data.get("players", {}).items():
@@ -1045,6 +1065,49 @@ class GameClient(ShowBase):
 
             # Post world_state_received event for NPC renderer and other plugins
             self._post_or_buffer_event("world_state_received", data)
+
+        elif msg_type == "kicked":
+            reason = data.get("reason", "You have been kicked")
+            self.logger.warning(f"Kicked from server: {reason}")
+            self.disconnect()
+
+        elif msg_type == "noclip_toggled":
+            enabled = data.get("enabled", False)
+            self.logger.info(f"Noclip {'enabled' if enabled else 'disabled'}")
+            cc = getattr(self, 'character_controller', None)
+            if cc:
+                if enabled:
+                    cc.enable_noclip()
+                else:
+                    cc.disable_noclip()
+            # Hide/show player model in noclip
+            if self.player_actor_model:
+                if enabled:
+                    self.player_actor_model.hide()
+                else:
+                    self.player_actor_model.show()
+            self._post_or_buffer_event("noclip_toggled", data)
+
+        elif msg_type == "combat_started":
+            self.in_combat = True
+            self.is_my_combat_turn = False
+            # Reset movement keys to stop walking
+            for key in self.keyMap:
+                self.keyMap[key] = False
+            self._post_or_buffer_event(msg_type, data)
+
+        elif msg_type == "combat_turn_start":
+            self.is_my_combat_turn = (str(data.get("entity_id", "")) == str(self.player_id))
+            if not self.is_my_combat_turn:
+                for key in self.keyMap:
+                    self.keyMap[key] = False
+            self._post_or_buffer_event(msg_type, data)
+
+        elif msg_type == "combat_ended":
+            self.in_combat = False
+            self.is_my_combat_turn = False
+            self._post_or_buffer_event(msg_type, data)
+
         else:
             self._post_or_buffer_event(msg_type, data)
 
@@ -1087,6 +1150,8 @@ class GameClient(ShowBase):
 
         self.player_id = -1
         self.is_connected = False
+        self.in_combat = False
+        self.is_my_combat_turn = False
         self._pre_plugin_event_buffer.clear()
 
         # Уведомляем плагины об отключении ПЕРЕД уничтожением UI
@@ -1206,6 +1271,27 @@ class GameClient(ShowBase):
                 "type": "item_drop",
                 "slot": data.get("slot", 0),
                 "count": data.get("count", 1),
+            }
+            self.asyncio_loop.create_task(send_message(self.writer, packet))
+
+    def send_equip_item_packet(self, data: dict):
+        """Отправляет запрос на экипировку предмета."""
+        if self.is_connected and self.player_id >= 0:
+            packet = {
+                "type": "equip_item",
+                "inventory_slot": data.get("inventory_slot", 0),
+            }
+            eq_slot = data.get("equipment_slot")
+            if eq_slot:
+                packet["equipment_slot"] = eq_slot
+            self.asyncio_loop.create_task(send_message(self.writer, packet))
+
+    def send_unequip_item_packet(self, data: dict):
+        """Отправляет запрос на снятие экипировки."""
+        if self.is_connected and self.player_id >= 0:
+            packet = {
+                "type": "unequip_item",
+                "equipment_slot": data.get("equipment_slot", ""),
             }
             self.asyncio_loop.create_task(send_message(self.writer, packet))
 

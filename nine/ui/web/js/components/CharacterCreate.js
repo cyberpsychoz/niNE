@@ -172,7 +172,7 @@ class CharacterCreate {
     _handlePythonMessage(event) {
         const { type, data } = event.detail;
         if (type === 'character_create_failed') {
-            alert('Ошибка создания персонажа: ' + (data.reason || 'Неизвестная ошибка'));
+            this._showValidation('Ошибка: ' + (data.reason || 'Неизвестная ошибка'));
         }
     }
 

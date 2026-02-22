@@ -10,6 +10,7 @@ are managed as Pawn entities with shared components and systems.
 
 import json
 import logging
+import math
 import os
 import time
 from itertools import cycle
@@ -79,6 +80,34 @@ class Player:
         if self.is_dev_client:
             return None
 
+        # Block movement during combat when frozen (not player's turn)
+        if getattr(self, 'combat_frozen', False):
+            for k in list(self.keys.keys()):
+                self.keys[k] = False
+
+        # Track combat movement budget (only when it's player's turn)
+        budget = getattr(self, '_combat_movement_budget', None)
+        if budget is not None and not getattr(self, 'combat_frozen', False):
+            last_pos = getattr(self, '_combat_last_pos', None)
+            if last_pos is not None:
+                pos = self.actor.getPos()
+                dx = pos.x - last_pos[0]
+                dy = pos.y - last_pos[1]
+                dist = math.sqrt(dx * dx + dy * dy)
+                if dist > 0.01:
+                    self._combat_moved = getattr(self, '_combat_moved', 0.0) + dist
+                    if self._combat_moved >= self._combat_movement_budget:
+                        # Out of movement — block keys AND zero velocity
+                        for k in ("w", "a", "s", "d"):
+                            self.keys[k] = False
+                        self.character_controller.velocity.x = 0
+                        self.character_controller.velocity.y = 0
+                        # Notify once
+                        if not getattr(self, '_combat_movement_notified', False):
+                            self._combat_movement_notified = True
+            pos = self.actor.getPos()
+            self._combat_last_pos = (pos.x, pos.y)
+
         # If using ECS entity, sync input to component
         if self.entity:
             input_comp = self.entity.get_component(InputComponent)
@@ -92,10 +121,17 @@ class Player:
         do_jump = self.keys.get("space", False)
 
         # Debug: Log jump attempts
-        if do_jump:
+        if do_jump and not self.character_controller.noclip_mode:
             logger.info(f"[Player '{self.name}'] Jump button pressed! keys={self.keys}")
 
-        result = self.character_controller.update(dt, move_vector, is_running, do_jump)
+        # Noclip: space=up, shift=down (running doesn't apply in noclip)
+        noclip_up = self.keys.get("space", False) if self.character_controller.noclip_mode else False
+        noclip_down = self.keys.get("shift", False) if self.character_controller.noclip_mode else False
+
+        result = self.character_controller.update(
+            dt, move_vector, is_running, do_jump,
+            noclip_up=noclip_up, noclip_down=noclip_down
+        )
         if result:
             self.last_move_time = time.time()
 

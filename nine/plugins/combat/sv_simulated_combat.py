@@ -140,8 +140,11 @@ class SimulatedCombatManager:
         for fight in list(self.fights.values()):
             if fight.frozen:
                 continue
-            self._update_fight(fight, dt)
+            # Check player proximity FIRST — freeze fight before NPCs can die
             self._check_player_proximity(fight)
+            if fight.frozen:
+                continue  # Fight was frozen by proximity check
+            self._update_fight(fight, dt)
             self._check_fight_end(fight)
 
     # =========================================================================

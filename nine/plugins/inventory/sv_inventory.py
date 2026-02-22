@@ -70,6 +70,11 @@ class InventoryServerModule(PluginModule):
         # TODO: Загрузить инвентарь из БД
         self.inventories[player_uuid] = []
 
+        # Grant starting equipment from class + background
+        character_data = data.get("character_data")
+        if character_data:
+            self._grant_starting_equipment(player_uuid, character_data)
+
         self.logger.debug(f"Инвентарь игрока {player_uuid} инициализирован")
 
         # Отправляем текущий инвентарь клиенту
@@ -317,6 +322,57 @@ class InventoryServerModule(PluginModule):
                 "max_slots": self.max_slots,
             }
         })
+
+    # -------------------------------------------------------------------------
+    # Starting equipment
+    # -------------------------------------------------------------------------
+
+    def _grant_starting_equipment(self, player_uuid: str, character_data: dict):
+        """Grant class + background starting equipment to a new character."""
+        from nine.plugins.dnd.sh_constants import CLASSES, BACKGROUNDS
+        from nine.plugins.dnd.sh_starting_equipment import resolve_equipment_key
+
+        char_class = character_data.get("class", "")
+        background = character_data.get("background", "")
+        granted = []
+
+        # Class starting equipment
+        class_info = CLASSES.get(char_class)
+        if class_info:
+            for key in class_info.get("starting_equipment", []):
+                class_id, count = resolve_equipment_key(key)
+                if self.give_item(player_uuid, class_id, count):
+                    granted.append(f"{count}x {class_id}")
+                else:
+                    self.logger.warning(
+                        f"Starting equipment: unknown item '{class_id}' "
+                        f"(from class '{char_class}' key '{key}')"
+                    )
+
+        # Background equipment
+        bg_info = BACKGROUNDS.get(background)
+        if bg_info:
+            for key in bg_info.get("equipment", []):
+                class_id, count = resolve_equipment_key(key)
+                if self.give_item(player_uuid, class_id, count):
+                    granted.append(f"{count}x {class_id}")
+                else:
+                    self.logger.warning(
+                        f"Starting equipment: unknown item '{class_id}' "
+                        f"(from background '{background}' key '{key}')"
+                    )
+
+            # Background gold as n_bucks
+            gold = bg_info.get("gold", 0)
+            if gold > 0:
+                if self.give_item(player_uuid, "n_bucks", gold):
+                    granted.append(f"{gold}x n_bucks")
+
+        if granted:
+            self.logger.info(
+                f"Granted starting equipment to {player_uuid}: "
+                + ", ".join(granted)
+            )
 
     # -------------------------------------------------------------------------
     # Public API

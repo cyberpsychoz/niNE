@@ -4,6 +4,7 @@ Combat Manager - серверный менеджер боевых сессий.
 """
 
 import math
+import time
 import uuid
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple
@@ -20,6 +21,7 @@ class CombatEndReason(Enum):
     FLED = auto()           # Бегство
     DM_ENDED = auto()       # GM принудительно завершил
     TIMEOUT = auto()        # Таймаут
+    CANCELLED = auto()      # Игроки проголосовали за отмену
 
 
 @dataclass
@@ -90,6 +92,13 @@ class CombatInstance:
         self.center_z: float = 0.0
         self.radius: float = 30.0  # футов
 
+        # Opposing faction pairs (for combat end detection)
+        self.opposing_factions: Set[Tuple[str, str]] = set()
+
+        # Vote cancel system
+        self.cancel_votes: Set[str] = set()
+        self.cancel_timer_task = None
+
     @property
     def current_participant(self) -> Optional[CombatParticipant]:
         """Возвращает участника, чей сейчас ход."""
@@ -150,16 +159,35 @@ class CombatInstance:
         self.round_number = 1
         self.current_turn_index = 0
 
-        # Начинаем первый ход
-        self._start_current_turn()
-
-        # Оповещаем
+        # Оповещаем ПЕРЕД первым ходом (клиенты должны узнать о бое до turn_start)
         self.manager.event_manager.post("combat_started", {
             "combat_id": self.combat_id,
             "participants": self._get_participants_data(),
             "turn_order": self.turn_order,
             "round": self.round_number,
         })
+
+        # Log combat start with initiative order
+        self.manager._broadcast_combat_log(self, self._format_combat_start_log())
+
+        # Delay first turn by 3s (warmup countdown) — all participants stay frozen
+        self.manager.app.taskMgr.doMethodLater(
+            3.0, self._delayed_first_turn, f"combat-warmup-{self.combat_id}"
+        )
+
+    def _delayed_first_turn(self, task):
+        """Start the first turn after warmup countdown."""
+        self._start_current_turn()
+        return task.done
+
+    def _format_combat_start_log(self) -> str:
+        """Format combat start message with initiative order."""
+        parts = []
+        for eid in self.turn_order:
+            p = self.participants.get(eid)
+            if p:
+                parts.append(f"{p.name} (инициатива {p.initiative})")
+        return "Бой начался! Участники: " + ", ".join(parts)
 
     def advance_turn(self):
         """Переходит к следующему ходу."""
@@ -180,6 +208,11 @@ class CombatInstance:
                     "combat_id": self.combat_id,
                     "round": self.round_number,
                 })
+
+                # Log new round
+                self.manager._broadcast_combat_log(
+                    self, f"--- Раунд {self.round_number} ---"
+                )
 
             current = self.current_participant
             if current and not current.is_dead and not current.is_incapacitated:
@@ -203,12 +236,16 @@ class CombatInstance:
 
         participant.reset_turn()
 
+        # Log turn start
+        self.manager._broadcast_combat_log(self, f"Ход: {participant.name}")
+
         # Tick conditions
         # TODO: уменьшить длительность состояний
 
         self.manager.event_manager.post("combat_turn_start", {
             "combat_id": self.combat_id,
             "entity_id": participant.entity_id,
+            "entity_name": participant.name,
             "is_player": participant.is_player,
             "round": self.round_number,
             "turn_order": self.turn_order,
@@ -234,26 +271,21 @@ class CombatInstance:
 
     def check_combat_end(self) -> Optional[CombatEndReason]:
         """Проверяет, должен ли бой закончиться."""
-        # Собираем фракции живых участников
         alive_factions: Set[str] = set()
-
         for p in self.participants.values():
             if not p.is_dead:
                 alive_factions.add(p.faction)
 
-        # Если осталась только одна фракция (или ноль) - бой окончен
-        if len(alive_factions) <= 1:
-            # Определяем победителя
-            if alive_factions:
-                winner_faction = list(alive_factions)[0]
-                # Проверяем есть ли игроки среди победителей
-                for p in self.participants.values():
-                    if p.is_player and not p.is_dead:
-                        return CombatEndReason.VICTORY
-                return CombatEndReason.DEFEAT
-            return CombatEndReason.DEFEAT
+        # Check if any opposing pair still has both sides alive
+        for faction_a, faction_b in self.opposing_factions:
+            if faction_a in alive_factions and faction_b in alive_factions:
+                return None  # Opposing sides still fighting
 
-        return None
+        # No active opposition remains — determine outcome
+        for p in self.participants.values():
+            if p.is_player and not p.is_dead:
+                return CombatEndReason.VICTORY
+        return CombatEndReason.DEFEAT
 
     def get_participant(self, entity_id: str) -> Optional[CombatParticipant]:
         """Получает участника по ID."""
@@ -275,7 +307,7 @@ class CombatInstance:
                 "is_player": p.is_player,
                 "name": p.name,
                 "faction": p.faction,
-                "initiative": p.initiative,
+                "initiative": int(p.initiative),
                 "hp_current": p.hp_current,
                 "hp_max": p.hp_max,
                 "armor_class": p.armor_class,
@@ -316,6 +348,9 @@ class CombatManager:
         # Cached player positions for auto-join proximity checks
         self._player_positions: List[Dict] = []
 
+        # Cooldown after combat cancel (entity_id -> timestamp)
+        self._last_cancelled_at: Dict[str, float] = {}
+
         # Подписки на события
         self.event_manager.subscribe("npc_aggro_player", self._on_npc_aggro)
         self.event_manager.subscribe("player_attack_request", self._on_player_attack)
@@ -331,6 +366,9 @@ class CombatManager:
         self.event_manager.subscribe("player_left", self._on_player_left)
         self.event_manager.subscribe("simulated_combat_to_turnbased", self._on_simulated_to_turnbased)
         self.event_manager.subscribe("player_update", self._on_player_update_for_autojoin)
+        self.event_manager.subscribe("combat_turn_start", self._on_npc_turn_start)
+        self.event_manager.subscribe("combat_action_result", self._on_npc_action_result)
+        self.event_manager.subscribe("combat_vote_cancel", self._on_vote_cancel)
 
     def on_unload(self):
         # Отписываемся
@@ -348,6 +386,14 @@ class CombatManager:
         self.event_manager.unsubscribe("player_left", self._on_player_left)
         self.event_manager.unsubscribe("simulated_combat_to_turnbased", self._on_simulated_to_turnbased)
         self.event_manager.unsubscribe("player_update", self._on_player_update_for_autojoin)
+        self.event_manager.unsubscribe("combat_turn_start", self._on_npc_turn_start)
+        self.event_manager.unsubscribe("combat_action_result", self._on_npc_action_result)
+        self.event_manager.unsubscribe("combat_vote_cancel", self._on_vote_cancel)
+
+        # Cancel any pending NPC AI tasks and cancel timers
+        for combat in self.active_combats.values():
+            self.app.taskMgr.remove(f"npc-ai-{combat.combat_id}")
+            self.app.taskMgr.remove(f"cancel-combat-{combat.combat_id}")
 
         self.logger.info("Combat Manager unloaded")
 
@@ -370,13 +416,29 @@ class CombatManager:
         """
         combat_id = str(uuid.uuid4())
 
+        # Cooldown check: prevent starting combat if recently cancelled
+        now = time.time() if hasattr(time, 'time') else 0
+        all_ids = [initiator_id] + target_ids
+        for eid in all_ids:
+            if self._last_cancelled_at.get(eid, 0) > now - 5.0:
+                self.logger.info(f"Combat blocked: cooldown after cancel for {eid}")
+                return None
+
         combat = CombatInstance(combat_id, self)
         self.active_combats[combat_id] = combat
 
         # Добавляем участников
-        all_ids = [initiator_id] + target_ids
         for entity_id in all_ids:
             self._add_entity_to_combat(combat, entity_id)
+
+        # Record opposing faction pairs
+        initiator_p = combat.get_participant(initiator_id)
+        if initiator_p:
+            for tid in target_ids:
+                target_p = combat.get_participant(tid)
+                if target_p and target_p.faction != initiator_p.faction:
+                    pair = tuple(sorted([initiator_p.faction, target_p.faction]))
+                    combat.opposing_factions.add(pair)
 
         # Бросаем инициативу
         combat.roll_all_initiative()
@@ -407,12 +469,32 @@ class CombatManager:
             else:
                 losers.append(p.entity_id)
 
-        # Очищаем маппинги
+        # Cancel any pending cancel timer
+        if combat.cancel_timer_task:
+            self.app.taskMgr.remove(f"cancel-combat-{combat_id}")
+
+        # Log combat end
+        reason_labels = {
+            CombatEndReason.VICTORY: "ПОБЕДА",
+            CombatEndReason.DEFEAT: "ПОРАЖЕНИЕ",
+            CombatEndReason.FLED: "БЕГСТВО",
+            CombatEndReason.DM_ENDED: "ЗАВЕРШЁН DM",
+            CombatEndReason.TIMEOUT: "ТАЙМАУТ",
+            CombatEndReason.CANCELLED: "ОТМЕНЁН ИГРОКАМИ",
+        }
+        self._broadcast_combat_log(
+            combat, f"Бой окончен: {reason_labels.get(reason, reason.name)}"
+        )
+
+        # Очищаем маппинги и unfreeze NPC AI
         for p in combat.participants.values():
             if p.is_player:
                 self.player_combat_map.pop(int(p.entity_id), None)
             else:
                 self.npc_combat_map.pop(p.entity_id, None)
+                # Restore NPC AI state (IDLE if alive, DEAD stays DEAD)
+                if not p.is_dead:
+                    self._set_npc_ai_state(p.entity_id, "IDLE")
 
         # Оповещаем
         self.event_manager.post("combat_ended", {
@@ -504,6 +586,48 @@ class CombatManager:
 
         self.npc_combat_map[entity_id] = combat.combat_id
 
+        # Freeze NPC AI — prevent patrol/wander during turn-based combat
+        self._set_npc_ai_state(entity_id, "IN_COMBAT")
+
+    def _set_npc_ai_state(self, entity_id: str, state_name: str):
+        """Set NPC AI state (e.g. IN_COMBAT or IDLE) via ECS."""
+        if not hasattr(self.app, 'plugin_manager'):
+            return
+        npc_plugin = self.app.plugin_manager.get_plugin("nine.npc")
+        if not npc_plugin:
+            return
+        for module in npc_plugin.modules:
+            if hasattr(module, 'get_npc_entity'):
+                entity = module.get_npc_entity(entity_id)
+                if entity:
+                    from nine.plugins.npc.sh_components import AIComponent, AIState
+                    ai = entity.get_component(AIComponent)
+                    if ai:
+                        try:
+                            ai.state = AIState[state_name]
+                        except KeyError:
+                            pass
+                break
+
+    def _sync_npc_entity_hp(self, entity_id: str, new_hp: int, is_dead: bool = False):
+        """Sync combat damage back to the NPC entity's CombatComponent."""
+        if not hasattr(self.app, 'plugin_manager'):
+            return
+        npc_plugin = self.app.plugin_manager.get_plugin("nine.npc")
+        if not npc_plugin:
+            return
+        for module in npc_plugin.modules:
+            if hasattr(module, 'get_npc_entity'):
+                entity = module.get_npc_entity(entity_id)
+                if entity:
+                    from nine.plugins.npc.sh_components import CombatComponent
+                    combat_comp = entity.get_component(CombatComponent)
+                    if combat_comp:
+                        combat_comp.hp_current = new_hp
+                        if is_dead:
+                            combat_comp.is_dead = True
+                break
+
     def _get_player_data(self, client_id: int) -> Optional[dict]:
         """Получает данные игрока из игрового мира."""
         # Сначала пробуем получить из D&D плагина (полные данные персонажа)
@@ -589,6 +713,36 @@ class CombatManager:
             }
 
         return None
+
+    def _add_nearby_npcs_to_combat(self, combat: CombatInstance):
+        """Scan for NPCs within combat radius and add them as participants.
+
+        Pulls in guards, merchants, and other NPCs that were not part of the
+        original simulated fight but are standing close enough to be drawn
+        into the turn-based encounter.
+        """
+        npc_manager = getattr(self.app, 'npc_manager', None)
+        if not npc_manager or not hasattr(npc_manager, 'get_npcs_in_radius'):
+            return
+
+        nearby_entities = npc_manager.get_npcs_in_radius(
+            combat.center_x, combat.center_y, combat.radius
+        )
+
+        for entity in nearby_entities:
+            entity_id = entity.id
+            # Skip NPCs already in this combat or another combat
+            if entity_id in combat.participants:
+                continue
+            if self.is_entity_in_combat(entity_id):
+                continue
+
+            self._add_npc_to_combat(combat, entity_id)
+            if entity_id in combat.participants:
+                self.logger.info(
+                    f"[Combat] Nearby NPC {combat.participants[entity_id].name} "
+                    f"({entity_id}) pulled into combat {combat.combat_id[:8]}"
+                )
 
     # =========================================================================
     # Обработчики событий
@@ -834,6 +988,8 @@ class CombatManager:
         combat = self.get_combat_for_entity(entity_id)
         if combat and new_hp is not None:
             combat.update_participant_hp(entity_id, new_hp)
+            # Sync HP back to NPC entity so network data reflects damage
+            self._sync_npc_entity_hp(entity_id, new_hp)
 
     def _on_entity_died(self, data: dict):
         """Обрабатывает смерть сущности."""
@@ -847,6 +1003,8 @@ class CombatManager:
             participant = combat.get_participant(entity_id)
             if participant:
                 participant.is_dead = True
+            # Sync death to NPC entity
+            self._sync_npc_entity_hp(entity_id, 0, is_dead=True)
 
             # Проверяем окончание боя
             end_reason = combat.check_combat_end()
@@ -914,10 +1072,22 @@ class CombatManager:
             if not self.is_entity_in_combat(str(client_id)):
                 self._add_player_to_combat(combat, client_id)
 
+        # Pull in nearby NPCs that weren't in the simulated fight
+        # (guards, merchants, etc. within combat radius)
+        self._add_nearby_npcs_to_combat(combat)
+
         if len(combat.participants) < 2:
             # Not enough participants for a fight
             del self.active_combats[combat_id]
             return
+
+        # Record opposing faction pairs from participants
+        factions_list = [(p.entity_id, p.faction) for p in combat.participants.values()]
+        for i, (eid_a, fac_a) in enumerate(factions_list):
+            for eid_b, fac_b in factions_list[i+1:]:
+                if fac_a != fac_b:
+                    pair = tuple(sorted([fac_a, fac_b]))
+                    combat.opposing_factions.add(pair)
 
         # Roll initiative and start
         combat.roll_all_initiative()
@@ -995,6 +1165,336 @@ class CombatManager:
                             f"[Combat] Player {client_id} auto-joined combat "
                             f"{combat.combat_id[:8]} (proximity)"
                         )
+
+    # =========================================================================
+    # NPC Turn-Based Combat AI
+    # =========================================================================
+
+    def _on_npc_turn_start(self, data: dict):
+        """Handle turn start — if it's an NPC's turn, schedule AI decision."""
+        is_player = data.get("is_player", True)
+        if is_player:
+            return  # Player turns are handled by the client
+
+        combat_id = data.get("combat_id")
+        entity_id = data.get("entity_id")
+        if not combat_id or not entity_id:
+            return
+
+        combat = self.active_combats.get(combat_id)
+        if not combat or not combat.is_active:
+            return
+
+        # Schedule NPC AI decision with a small delay (simulate "thinking")
+        self.app.taskMgr.remove(f"npc-ai-{combat_id}")
+        self.app.taskMgr.doMethodLater(
+            1.0, self._npc_ai_decide,
+            f"npc-ai-{combat_id}",
+            extraArgs=[combat_id, entity_id],
+            appendTask=True,
+        )
+
+    def _npc_ai_decide(self, combat_id: str, entity_id: str, task):
+        """NPC AI decision-making for turn-based combat."""
+        combat = self.active_combats.get(combat_id)
+        if not combat or not combat.is_active:
+            return task.done
+
+        participant = combat.get_participant(entity_id)
+        if not participant or participant.is_dead:
+            # Skip dead NPC — advance turn
+            combat.advance_turn()
+            return task.done
+
+        # Ensure it's still this NPC's turn
+        current = combat.current_participant
+        if not current or current.entity_id != entity_id:
+            return task.done
+
+        # Neutral NPCs (merchants, etc.) — dodge and end turn, never attack
+        if participant.faction == "neutral":
+            if participant.has_action:
+                self.event_manager.post("combat_action_execute", {
+                    "combat_id": combat_id,
+                    "actor_id": entity_id,
+                    "action_id": "dodge",
+                    "target_id": None,
+                })
+            else:
+                self.event_manager.post("combat_action_execute", {
+                    "combat_id": combat_id,
+                    "actor_id": entity_id,
+                    "action_id": "end_turn",
+                    "target_id": None,
+                })
+            return task.done
+
+        # Find best target (nearest enemy by faction)
+        target = self._npc_pick_target(combat, participant)
+
+        if target and participant.has_action:
+            # Try to move into range first
+            self._npc_move_toward_target(combat, participant, target)
+
+            # Attack the target
+            self.event_manager.post("combat_action_execute", {
+                "combat_id": combat_id,
+                "actor_id": entity_id,
+                "action_id": "attack",
+                "target_id": target.entity_id,
+            })
+            # After the action result comes back, _on_npc_action_result will
+            # decide whether to continue or end the turn.
+        else:
+            # No target or no action left — check if we should dodge
+            if participant.has_action and participant.hp_current < participant.hp_max * 0.3:
+                # Low HP, dodge for survival
+                self.event_manager.post("combat_action_execute", {
+                    "combat_id": combat_id,
+                    "actor_id": entity_id,
+                    "action_id": "dodge",
+                    "target_id": None,
+                })
+            else:
+                # Nothing useful to do — end turn
+                self.event_manager.post("combat_action_execute", {
+                    "combat_id": combat_id,
+                    "actor_id": entity_id,
+                    "action_id": "end_turn",
+                    "target_id": None,
+                })
+
+        return task.done
+
+    def _on_npc_action_result(self, data: dict):
+        """After an NPC action executes, decide next step or end turn."""
+        combat_id = data.get("combat_id")
+        actor_id = data.get("actor_id")
+        action_id = data.get("action_id")
+
+        if not combat_id or not actor_id:
+            return
+
+        combat = self.active_combats.get(combat_id)
+        if not combat or not combat.is_active:
+            return
+
+        participant = combat.get_participant(actor_id)
+        if not participant or participant.is_player:
+            return  # Only handle NPC follow-up decisions
+
+        # Don't schedule follow-up if turn already ended or advanced
+        current = combat.current_participant
+        if not current or current.entity_id != actor_id:
+            return
+
+        # If the action was end_turn, the turn manager already advanced
+        if action_id == "end_turn":
+            return
+
+        # Schedule follow-up: if NPC still has bonus action, might use it,
+        # otherwise end turn after a short delay
+        self.app.taskMgr.remove(f"npc-ai-{combat_id}")
+        self.app.taskMgr.doMethodLater(
+            0.8, self._npc_ai_followup,
+            f"npc-ai-{combat_id}",
+            extraArgs=[combat_id, actor_id],
+            appendTask=True,
+        )
+
+    def _npc_ai_followup(self, combat_id: str, entity_id: str, task):
+        """NPC follow-up after first action — typically ends turn."""
+        combat = self.active_combats.get(combat_id)
+        if not combat or not combat.is_active:
+            return task.done
+
+        participant = combat.get_participant(entity_id)
+        if not participant or participant.is_dead:
+            return task.done
+
+        current = combat.current_participant
+        if not current or current.entity_id != entity_id:
+            return task.done
+
+        # End turn
+        self.event_manager.post("combat_action_execute", {
+            "combat_id": combat_id,
+            "actor_id": entity_id,
+            "action_id": "end_turn",
+            "target_id": None,
+        })
+
+        return task.done
+
+    def _npc_pick_target(self, combat: CombatInstance, npc: CombatParticipant) -> Optional[CombatParticipant]:
+        """Pick the best target for an NPC in turn-based combat."""
+        best_target = None
+        best_score = -1
+
+        for p in combat.participants.values():
+            if p.entity_id == npc.entity_id:
+                continue
+            if p.is_dead:
+                continue
+            if p.faction == npc.faction:
+                continue  # Don't attack allies
+            if p.faction == "neutral":
+                continue  # Don't attack neutral NPCs (merchants, etc.)
+
+            # Score: prefer low HP targets, players over NPCs
+            score = 100.0
+            if p.is_player:
+                score += 50  # Prefer attacking players
+            # Prefer wounded targets (ratio of missing HP)
+            if p.hp_max > 0:
+                hp_ratio = p.hp_current / p.hp_max
+                score += (1.0 - hp_ratio) * 30  # More wounded = higher score
+
+            if score > best_score:
+                best_score = score
+                best_target = p
+
+        return best_target
+
+    # =========================================================================
+    # NPC Movement AI
+    # =========================================================================
+
+    def _npc_move_toward_target(self, combat: CombatInstance, npc: CombatParticipant, target: CombatParticipant):
+        """Move NPC toward target if not in melee range."""
+        # Get TurnManager for position lookups
+        turn_manager = self._get_turn_manager()
+        if not turn_manager:
+            return
+
+        npc_pos = turn_manager._get_entity_position(npc.entity_id)
+        target_pos = turn_manager._get_entity_position(target.entity_id)
+        if not npc_pos or not target_pos:
+            return
+
+        distance = turn_manager._calculate_distance(npc_pos, target_pos)
+        weapon_range = 5.0  # melee default
+
+        if distance <= weapon_range:
+            return  # Already in range
+
+        # Calculate how much to move
+        move_needed = distance - weapon_range
+        move_available = min(move_needed, npc.movement_remaining)
+
+        if move_available <= 0:
+            return
+
+        # Direction vector (2D)
+        dx = target_pos[0] - npc_pos[0]
+        dy = target_pos[1] - npc_pos[1]
+        dist_2d = math.sqrt(dx * dx + dy * dy)
+        if dist_2d == 0:
+            return
+
+        # Normalize and scale
+        ratio = move_available / dist_2d
+        dest = [
+            npc_pos[0] + dx * ratio,
+            npc_pos[1] + dy * ratio,
+            npc_pos[2] if len(npc_pos) > 2 else 0,
+        ]
+
+        # Post movement request (processed synchronously by TurnManager)
+        self.event_manager.post("combat_movement_request", {
+            "combat_id": combat.combat_id,
+            "actor_id": npc.entity_id,
+            "destination": dest,
+        })
+
+    def _get_turn_manager(self):
+        """Get TurnManager reference from the combat plugin."""
+        if hasattr(self, '_turn_manager_ref') and self._turn_manager_ref:
+            return self._turn_manager_ref
+
+        if hasattr(self.app, 'plugin_manager'):
+            combat_plugin = self.app.plugin_manager.get_plugin("nine.combat")
+            if combat_plugin:
+                for module in combat_plugin.modules:
+                    if hasattr(module, '_on_action_execute'):
+                        self._turn_manager_ref = module
+                        return module
+        return None
+
+    # =========================================================================
+    # Vote Cancel Combat
+    # =========================================================================
+
+    def _on_vote_cancel(self, data: dict):
+        """Handle vote to cancel combat from a player."""
+        client_id = data.get("client_id")
+        if client_id is None:
+            return
+
+        combat = self.get_combat_for_entity(str(client_id))
+        if not combat:
+            return
+
+        combat.cancel_votes.add(str(client_id))
+
+        # Check if ALL alive players voted
+        player_ids = [p.entity_id for p in combat.participants.values()
+                      if p.is_player and not p.is_dead]
+        if all(pid in combat.cancel_votes for pid in player_ids):
+            # Start 5-second countdown
+            self._broadcast_combat_log(
+                combat,
+                "Все игроки проголосовали за отмену боя. Бой закончится через 5 секунд..."
+            )
+            if combat.cancel_timer_task:
+                self.app.taskMgr.remove(f"cancel-combat-{combat.combat_id}")
+            combat.cancel_timer_task = self.app.taskMgr.doMethodLater(
+                5.0, self._cancel_combat_timer,
+                f"cancel-combat-{combat.combat_id}",
+                extraArgs=[combat.combat_id],
+                appendTask=True,
+            )
+        else:
+            # Notify progress
+            voted = len(combat.cancel_votes)
+            total = len(player_ids)
+            self._broadcast_combat_log(
+                combat, f"Голос за отмену боя ({voted}/{total})"
+            )
+
+    def _cancel_combat_timer(self, combat_id: str, task):
+        """Timer callback: cancel combat after 5s vote."""
+        combat = self.active_combats.get(combat_id)
+        if not combat or not combat.is_active:
+            return task.done
+
+        # Record cooldown for all participants
+        now = time.time()
+        for p in combat.participants.values():
+            self._last_cancelled_at[p.entity_id] = now
+
+        self.end_combat(combat_id, CombatEndReason.CANCELLED)
+        return task.done
+
+    def _broadcast_combat_log(self, combat: CombatInstance, message: str):
+        """Broadcast a combat log message to all player participants."""
+        recipients = []
+        for p in combat.participants.values():
+            if p.is_player:
+                try:
+                    recipients.append(int(p.entity_id))
+                except ValueError:
+                    pass
+        if recipients:
+            self.event_manager.post("chat_send_to_clients", {
+                "data": {
+                    "type": "chat_broadcast",
+                    "chat_type": "system",
+                    "from_name": "Бой",
+                    "message": message,
+                },
+                "recipients": recipients
+            })
 
     def _send_error(self, client_id: int, message: str):
         """Отправляет сообщение об ошибке клиенту."""

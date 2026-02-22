@@ -261,13 +261,13 @@ class CombatUI(PluginModule):
 
     def _on_turn_start(self, data: dict):
         """Обрабатывает начало хода."""
-        is_my_turn = data.get("is_player", False)
         entity_id = data.get("entity_id", "")
-
+        # Compare entity_id to local player_id to determine if it's our turn
+        is_my_turn = (str(entity_id) == str(getattr(self.app, 'player_id', -1)))
         self.is_my_turn = is_my_turn
 
-        # Получаем имя сущности
-        entity_name = self._get_entity_name(entity_id)
+        # Use entity_name from server if available, fallback to local lookup
+        entity_name = data.get("entity_name") or self._get_entity_name(entity_id)
 
         self._show_turn_indicator(entity_name, is_my_turn)
 

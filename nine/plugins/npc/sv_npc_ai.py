@@ -381,6 +381,10 @@ class AISystem(System):
             ai = entity.get_component(AIComponent)
             pos = entity.get_component(PositionComponent)
 
+            # Skip NPCs in turn-based combat (frozen by combat manager)
+            if ai.state == AIState.IN_COMBAT:
+                continue
+
             # Dead NPCs don't think
             combat = entity.get_component(CombatComponent)
             if combat:

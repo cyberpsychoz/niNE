@@ -28,8 +28,12 @@ class TargetSelector(PluginModule):
         # Состояние
         self.cursor_mode = False           # Режим курсора активен
         self.is_in_combat = False          # Находимся в бою
+        self.is_my_turn = False            # Наш ход
         self.hovered_entity_id = None      # ID сущности под курсором
         self.selected_entity_id = None     # Выбранная цель
+
+        # Acquaintance name cache {entity_id: known_name}
+        self._acquaintance_names = {}
 
         # Подсветка
         self.highlight_node = None
@@ -51,6 +55,7 @@ class TargetSelector(PluginModule):
         self.event_manager.subscribe("combat_turn_start", self._on_turn_start)
         self.event_manager.subscribe("interact_default", self._on_interact_default)
         self.event_manager.subscribe("interact_request", self._on_interact_request)
+        self.event_manager.subscribe("introduction_completed", self._on_introduction_completed)
 
     def on_unload(self):
         self.app.ignore("c")
@@ -62,6 +67,7 @@ class TargetSelector(PluginModule):
         self.event_manager.unsubscribe("combat_turn_start", self._on_turn_start)
         self.event_manager.unsubscribe("interact_default", self._on_interact_default)
         self.event_manager.unsubscribe("interact_request", self._on_interact_request)
+        self.event_manager.unsubscribe("introduction_completed", self._on_introduction_completed)
 
         if self.cursor_mode:
             self._disable_cursor_mode()
@@ -263,6 +269,37 @@ class TargetSelector(PluginModule):
         return None
 
     # =========================================================================
+    # Player name helpers
+    # =========================================================================
+
+    def _get_player_display_name(self, entity_id: str) -> str:
+        """Get display name for a player entity."""
+        # Self — show own character name
+        player_uuid = getattr(self.app, 'player_uuid', '')
+        if str(entity_id) == str(player_uuid):
+            return self._get_own_name()
+        # Known acquaintance
+        known = self._acquaintance_names.get(str(entity_id))
+        if known:
+            return known
+        return "Неизвестный"
+
+    def _get_own_name(self) -> str:
+        """Get own character name from cached character data."""
+        char = getattr(self.app, 'current_character', None)
+        if char and isinstance(char, dict):
+            return char.get('character_name', char.get('name', 'Игрок'))
+        return "Игрок"
+
+    def _on_introduction_completed(self, data: dict):
+        """Cache acquaintance name when introduction completes."""
+        other_uuid = data.get("other_uuid", "")
+        other_name = data.get("other_name", "")
+        if other_uuid and other_name:
+            self._acquaintance_names[str(other_uuid)] = other_name
+            self.logger.debug(f"Acquaintance cached: {other_uuid[:8]} -> {other_name}")
+
+    # =========================================================================
     # Entity info gathering
     # =========================================================================
 
@@ -296,9 +333,10 @@ class TargetSelector(PluginModule):
         # Check if it's a player
         node = self.app.render.find(f"**/player_{entity_id}")
         if not node.isEmpty():
+            display_name = self._get_player_display_name(entity_id)
             return {
                 "entity_type": "player",
-                "display_name": "Player",
+                "display_name": display_name,
                 "actions": ["inspect"],
             }
 
@@ -323,6 +361,7 @@ class TargetSelector(PluginModule):
         actions = ["talk"]
         if renderer.is_merchant:
             actions.append("trade")
+        actions.append("attack")
         actions.append("inspect")
         return actions
 
@@ -343,12 +382,24 @@ class TargetSelector(PluginModule):
             })
 
     def _on_right_click(self):
-        """Обрабатывает правый клик мыши (контекстное меню)."""
+        """Обрабатывает правый клик мыши (атака в бою / контекстное меню)."""
         if not self.cursor_mode:
             return
 
-        if self.hovered_entity_id:
-            self._show_context_menu(self.hovered_entity_id)
+        if not self.hovered_entity_id:
+            return
+
+        # В бою + наш ход -> правый клик = атака
+        if self.is_in_combat and self.is_my_turn:
+            self._select_target(self.hovered_entity_id)
+            self.event_manager.post("send_to_server", {
+                "type": "combat_action",
+                "action_id": "attack",
+                "target_id": self.hovered_entity_id,
+            })
+            return
+
+        self._show_context_menu(self.hovered_entity_id)
 
     def _select_target(self, entity_id: str):
         """Выбирает сущность как цель."""
@@ -410,6 +461,10 @@ class TargetSelector(PluginModule):
         if not entity_id:
             return
 
+        # During combat, left-click only selects (attack via right-click or button)
+        if self.is_in_combat:
+            return
+
         info = self._get_entity_info(entity_id)
         entity_type = info.get("entity_type", "")
         actions = info.get("actions", [])
@@ -452,9 +507,10 @@ class TargetSelector(PluginModule):
             self.event_manager.post("target_selected", {
                 "target_id": entity_id,
             })
-            self.event_manager.post("combat_player_action", {
-                "action": "attack",
-                "target": entity_id,
+            self.event_manager.post("send_to_server", {
+                "type": "combat_action",
+                "action_id": "attack",
+                "target_id": entity_id,
             })
         elif action == "loot":
             self.event_manager.post("npc_interact_request", {
@@ -467,6 +523,12 @@ class TargetSelector(PluginModule):
                 "entity_id": entity_id,
             })
         elif action == "inspect":
+            # Send inspect request to server for authoritative name/description lookup
+            if hasattr(self.app, 'send_message'):
+                self.app.send_message({
+                    "type": "inspect_request",
+                    "entity_id": entity_id,
+                })
             self.event_manager.post("inspect_entity", {
                 "entity_id": entity_id,
             })
@@ -519,6 +581,7 @@ class TargetSelector(PluginModule):
     def _on_combat_ended(self, data: dict):
         """Обрабатывает окончание боя."""
         self.is_in_combat = False
+        self.is_my_turn = False
 
         # Очищаем выбор
         if self.selected_entity_id:
@@ -531,9 +594,8 @@ class TargetSelector(PluginModule):
 
     def _on_turn_start(self, data: dict):
         """Обрабатывает начало хода."""
-        # Если это наш ход, убедимся что курсор активен
-        is_my_turn = data.get("is_player", False)
-        if is_my_turn and not self.cursor_mode:
+        self.is_my_turn = data.get("is_player", False)
+        if self.is_my_turn and not self.cursor_mode:
             self._enable_cursor_mode()
 
     # =========================================================================
