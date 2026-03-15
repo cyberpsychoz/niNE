@@ -36,11 +36,13 @@ from nine.core.components import (
     ModelComponent,
     PawnComponent,
     PhysicsComponent,
+    PhysicsTier,
     HealthComponent,
     InputComponent,
     AIControllerComponent,
     PathfindingComponent,
     NetworkSyncComponent,
+    WorldBoundsComponent,
     PawnType,
     AIBehavior,
     AIState,
@@ -83,8 +85,16 @@ class PhysicsSystem(System):
         self.render = render
         self.cTrav = cTrav
 
-        # Track physics data per entity
+        # Track physics data per entity (FULL tier only)
         self._physics_data: Dict[str, PhysicsEntityData] = {}
+
+        # World bounds (cached from WorldBoundsComponent)
+        self._world_bounds: Optional[WorldBoundsComponent] = None
+
+        # Ground height cache for SIMPLE tier NPC
+        self._ground_z_cache: Dict[str, float] = {}  # entity_id -> cached ground z
+        self._ground_ray_budget: int = 10  # Max ray casts per frame for SIMPLE tier
+        self._ground_ray_queue: List[str] = []  # Round-robin queue of entity IDs
 
     def on_entity_added(self, entity: Entity) -> None:
         """Setup collision for new entity."""
@@ -95,12 +105,16 @@ class PhysicsSystem(System):
         if not physics or not physics.has_collision:
             return
 
-        # Create physics data for this entity
-        data = PhysicsEntityData()
-        data.setup_collision(entity.id, self.render, self.cTrav, physics)
-        self._physics_data[entity.id] = data
-
-        logger.debug(f"[PhysicsSystem] Setup collision for entity {entity.id[:8]}")
+        # Only FULL tier gets Panda3D collision nodes
+        if physics.tier == PhysicsTier.FULL:
+            data = PhysicsEntityData()
+            data.setup_collision(entity.id, self.render, self.cTrav, physics)
+            self._physics_data[entity.id] = data
+            logger.debug(f"[PhysicsSystem] Setup FULL collision for entity {entity.id[:8]}")
+        elif physics.tier == PhysicsTier.SIMPLE:
+            # SIMPLE tier: add to ground ray round-robin queue
+            self._ground_ray_queue.append(entity.id)
+            logger.debug(f"[PhysicsSystem] Setup SIMPLE physics for entity {entity.id[:8]}")
 
     def on_entity_removed(self, entity: Entity) -> None:
         """Cleanup collision for removed entity."""
@@ -108,11 +122,31 @@ class PhysicsSystem(System):
             self._physics_data[entity.id].cleanup(self.cTrav)
             del self._physics_data[entity.id]
             logger.debug(f"[PhysicsSystem] Cleaned up collision for entity {entity.id[:8]}")
+        # Clean up SIMPLE tier data
+        self._ground_z_cache.pop(entity.id, None)
+        if entity.id in self._ground_ray_queue:
+            self._ground_ray_queue.remove(entity.id)
 
     def update(self, dt: float, entities: List[Entity]) -> None:
-        """Update physics for all entities."""
+        """Update physics for all entities, branching by PhysicsTier."""
+        # Cache world bounds on first frame
+        if self._world_bounds is None and self._world:
+            for e in self._world.get_entities_with_components(WorldBoundsComponent):
+                self._world_bounds = e.get_component(WorldBoundsComponent)
+                break
+
         for entity in entities:
-            self._update_entity_physics(entity, dt)
+            physics = entity.get_component(PhysicsComponent)
+            if not physics:
+                continue
+
+            if physics.tier == PhysicsTier.NONE:
+                continue
+            elif physics.tier == PhysicsTier.SIMPLE:
+                self._update_simple_physics(entity, dt)
+            else:
+                # FULL tier — original collision-based physics
+                self._update_entity_physics(entity, dt)
 
     def _update_entity_physics(self, entity: Entity, dt: float) -> None:
         """Update physics for a single entity."""
@@ -168,6 +202,72 @@ class PhysicsSystem(System):
 
             if data and data.actor_np:
                 data.actor_np.setH(transform.rotation)
+
+    def _update_simple_physics(self, entity: Entity, dt: float) -> None:
+        """
+        SIMPLE tier physics for NPC.
+        Applies velocity to position, clamps to world bounds, snaps to cached ground Z.
+        No Panda3D collision nodes — much cheaper than FULL tier.
+        """
+        transform = entity.get_component(TransformComponent)
+        velocity = entity.get_component(VelocityComponent)
+        physics = entity.get_component(PhysicsComponent)
+
+        if not all([transform, velocity, physics]):
+            return
+
+        # Apply velocity to position
+        if abs(velocity.vx) > 0.001 or abs(velocity.vy) > 0.001:
+            transform.x += velocity.vx * dt
+            transform.y += velocity.vy * dt
+
+            # Update rotation to face movement direction
+            horiz_speed = velocity.speed_horizontal()
+            if horiz_speed > 0.05:
+                target_heading = degrees(atan2(-velocity.vx, velocity.vy)) + 180
+                current_heading = transform.rotation
+                diff = (target_heading - current_heading + 180) % 360 - 180
+                transform.rotation = current_heading + diff * min(physics.rotation_speed * dt, 1.0)
+
+        # Apply friction (NPC slow down when AI stops commanding movement)
+        speed = velocity.speed_horizontal()
+        if speed > 0.001:
+            # Simple linear decay — NPC decelerate smoothly
+            decay = min(physics.friction * dt, 1.0)
+            velocity.vx *= max(0, 1.0 - decay)
+            velocity.vy *= max(0, 1.0 - decay)
+        else:
+            velocity.vx = 0
+            velocity.vy = 0
+
+        # Snap to cached ground Z (updated periodically via round-robin ray casts)
+        cached_z = self._ground_z_cache.get(entity.id)
+        if cached_z is not None:
+            transform.z = cached_z
+        # If no cached ground, keep current Z (NPC won't fall through void)
+
+        # World bounds clamping
+        self._clamp_to_world_bounds(transform, entity)
+
+        # Sync interpolation velocity on TransformComponent
+        transform.velocity_x = velocity.vx
+        transform.velocity_y = velocity.vy
+
+    def _clamp_to_world_bounds(self, transform: TransformComponent, entity: Entity) -> None:
+        """Clamp entity position to world boundaries. Kill plane teleports to origin."""
+        wb = self._world_bounds
+        if not wb:
+            return
+
+        transform.x = max(wb.min_x, min(wb.max_x, transform.x))
+        transform.y = max(wb.min_y, min(wb.max_y, transform.y))
+
+        # Kill plane — teleport back to origin if below min_z
+        if transform.z < wb.min_z:
+            logger.warning(f"[PhysicsSystem] Entity {entity.id[:8]} fell below kill plane, resetting")
+            transform.x = 0
+            transform.y = 0
+            transform.z = 1.0
 
     def _check_ground(self, entity: Entity, data: 'PhysicsEntityData',
                       physics: PhysicsComponent, velocity: VelocityComponent) -> None:
