@@ -42,9 +42,8 @@ class CharacterController:
         self.cTrav = cTrav
 
         # === Movement parameters ===
-        # ПОЛЬЗОВАТЕЛЬСКИЕ ЗНАЧЕНИЯ - НЕ МЕНЯТЬ!
-        self.walk_speed = 1.5    # Walking speed (units/sec)
-        self.run_speed = 3.0      # Running speed (2x walk)
+        self.walk_speed = 0.8    # Walking speed (units/sec) — reduced to match animation
+        self.run_speed = 1.6      # Running speed (2x walk)
         self.rotation_speed = 10.0 # Rotation multiplier
 
         # Physics parameters

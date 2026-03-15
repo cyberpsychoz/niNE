@@ -246,9 +246,9 @@ class PhysicsComponent(Component):
     # Physics tier (NEW for unified physics)
     tier: PhysicsTier = PhysicsTier.FULL
 
-    # Movement speeds
-    walk_speed: float = 1.5
-    run_speed: float = 3.0
+    # Movement speeds (reduced to match animation playback)
+    walk_speed: float = 0.8
+    run_speed: float = 1.6
     rotation_speed: float = 10.0
 
     # Physics parameters
