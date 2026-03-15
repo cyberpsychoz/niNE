@@ -131,6 +131,62 @@ def test_combat_session_methods():
     assert cs.condition_durations["poisoned"] == 2
 
 
+
+# =============================================================================
+# Integration tests
+# =============================================================================
+
+def test_shared_world_coexistence():
+    from nine.core.ecs import PooledECSWorld
+    from nine.core.components import (
+        TransformComponent, PawnComponent, PawnType,
+        AIComponent, AIBehavior, FactionComponent,
+        InputComponent, PhysicsComponent, VelocityComponent,
+    )
+    world = PooledECSWorld()
+
+    player = world.create_entity("player-1")
+    player.add_component(PawnComponent(pawn_type=PawnType.PLAYER, display_name="Hero"))
+    player.add_component(TransformComponent(x=0, y=0, z=1))
+    player.add_component(InputComponent())
+    player.add_component(PhysicsComponent())
+    player.add_component(VelocityComponent())
+
+    npc = world.create_entity("npc-guard")
+    npc.add_component(PawnComponent(pawn_type=PawnType.NPC, display_name="Guard"))
+    npc.add_component(TransformComponent(x=5, y=5, z=1))
+    npc.add_component(AIComponent(behavior=AIBehavior.PATROL))
+    npc.add_component(FactionComponent(faction_id="guards"))
+    npc.add_component(VelocityComponent())
+
+    world.flush()
+
+    all_pawns = list(world.get_entities_with_components(PawnComponent, TransformComponent))
+    assert len(all_pawns) == 2
+
+    npcs = [e for e in all_pawns if e.get_component(PawnComponent).pawn_type == PawnType.NPC]
+    assert len(npcs) == 1 and npcs[0].get_component(AIComponent).behavior == AIBehavior.PATROL
+
+    players = [e for e in all_pawns if e.get_component(PawnComponent).pawn_type == PawnType.PLAYER]
+    assert len(players) == 1 and players[0].get_component(InputComponent) is not None
+
+def test_shim_aliases_resolve_to_core():
+    """PositionComponent and CombatComponent aliases work through shim."""
+    from nine.plugins.npc.sh_components import PositionComponent, CombatComponent
+    from nine.core.components import TransformComponent, CombatStatsComponent
+    assert PositionComponent is TransformComponent
+    assert CombatComponent is CombatStatsComponent
+
+    # entity.get_component(PositionComponent) == get_component(TransformComponent)
+    from nine.core.ecs import ECSWorld
+    world = ECSWorld()
+    e = world.create_entity("alias-test")
+    e.add_component(TransformComponent(x=1, y=2, z=3))
+    world.flush()
+    # Query via alias returns same component
+    assert e.get_component(PositionComponent).x == 1
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):
