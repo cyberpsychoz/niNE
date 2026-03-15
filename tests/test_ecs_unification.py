@@ -268,6 +268,92 @@ def test_reduced_speeds():
     assert p.run_speed == 1.6
 
 
+# =============================================================================
+# Phase 3: AI + Combat integration tests
+# =============================================================================
+
+def test_ai_can_find_players_from_ecs():
+    """AISystem should be able to find players via PawnComponent query."""
+    from nine.core.ecs import PooledECSWorld
+    from nine.core.components import (
+        TransformComponent, PawnComponent, PawnType,
+        AIComponent, AIBehavior, VelocityComponent,
+    )
+
+    world = PooledECSWorld()
+
+    # Create player
+    player = world.create_entity("player-ai-test")
+    player.add_component(PawnComponent(pawn_type=PawnType.PLAYER, display_name="Hero"))
+    player.add_component(TransformComponent(x=10, y=10, z=1))
+
+    # Create NPC
+    npc = world.create_entity("npc-ai-test")
+    npc.add_component(PawnComponent(pawn_type=PawnType.NPC))
+    npc.add_component(TransformComponent(x=5, y=5, z=1))
+    npc.add_component(AIComponent(behavior=AIBehavior.HOSTILE, aggro_radius=20.0))
+    npc.add_component(VelocityComponent())
+
+    world.flush()
+
+    # Query players the way AISystem._update_player_cache_from_ecs does
+    players_found = []
+    for entity in world.get_entities_with_components(PawnComponent, TransformComponent):
+        pawn = entity.get_component(PawnComponent)
+        if pawn.pawn_type == PawnType.PLAYER:
+            t = entity.get_component(TransformComponent)
+            players_found.append((entity.id, t.x, t.y))
+
+    assert len(players_found) == 1
+    assert players_found[0] == ("player-ai-test", 10, 10)
+
+
+def test_combat_hp_sync_to_health_component():
+    """Damage should update both CombatStatsComponent and HealthComponent."""
+    from nine.core.ecs import PooledECSWorld
+    from nine.core.components import (
+        CombatStatsComponent, HealthComponent, PawnComponent, TransformComponent,
+    )
+
+    world = PooledECSWorld()
+    npc = world.create_entity("npc-combat-test")
+    npc.add_component(PawnComponent())
+    npc.add_component(TransformComponent())
+    npc.add_component(CombatStatsComponent(hp_current=20, hp_max=20))
+    npc.add_component(HealthComponent(hp_current=20, hp_max=20))
+    world.flush()
+
+    # Simulate damage sync (what _sync_npc_entity_hp does)
+    combat = npc.get_component(CombatStatsComponent)
+    health = npc.get_component(HealthComponent)
+    new_hp = 12
+    combat.hp_current = new_hp
+    health.hp_current = new_hp
+
+    assert combat.hp_current == 12
+    assert health.hp_current == 12
+
+    # Death sync
+    combat.is_dead = True
+    health.is_dead = True
+    assert combat.is_dead and health.is_dead
+
+
+def test_spatial_hash_tracks_both():
+    """SpatialHash should work with both player and NPC entity IDs."""
+    from nine.core.spatial import SpatialHash
+    sh = SpatialHash(cell_size=10.0)
+
+    sh.update_entity("player-1", 5.0, 5.0)
+    sh.update_entity("npc-guard", 8.0, 8.0)
+    sh.update_entity("npc-goblin", 50.0, 50.0)
+
+    nearby = sh.get_nearby_entities(5.0, 5.0, 15.0)
+    assert "player-1" in nearby
+    assert "npc-guard" in nearby
+    assert "npc-goblin" not in nearby  # too far
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

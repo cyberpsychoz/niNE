@@ -238,6 +238,10 @@ class GameWorld:
         # =========================================================================
         self.ecs_world = PooledECSWorld()
 
+        # Physics system (handles FULL + SIMPLE tier physics for all entities)
+        self.physics_system = PhysicsSystem(self.render, self.cTrav)
+        self.ecs_world.add_system(self.physics_system)
+
         # Network sync system (used to generate world_state)
         self.network_sync_system = NetworkSyncSystem()
         self.ecs_world.add_system(self.network_sync_system)
