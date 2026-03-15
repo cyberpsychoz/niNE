@@ -1,6 +1,9 @@
 # Claude Code
 CLAUDE.md
 
+# Morrowind content (ISO, extracted assets, pipeline build artifacts)
+morrowind_content/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

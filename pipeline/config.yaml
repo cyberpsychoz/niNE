@@ -1,0 +1,19 @@
+morrowind:
+  data_dir: "morrowind_content/extracted/Data_Files"
+  bsa_files:
+    - "Morrowind.bsa"
+
+pipeline:
+  extract_dir: "morrowind_content/bsa_extracted"
+  egg_dir: "pipeline/build/egg"
+  bam_dir: "pipeline/build/bam"
+  cache_dir: "pipeline/build/cache"
+
+panda3d:
+  egg2bam: "egg2bam"
+  egg_cat: "egg-cat"
+
+defaults:
+  fps: 30
+  skeleton_root: "Bip01"
+  uv_flip_v: true
