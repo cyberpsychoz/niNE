@@ -767,6 +767,20 @@ class NPCManager:
         if not self.spatial_hash:
             return
 
+        # In unified mode, query players from shared ECS world
+        if self._unified_mode:
+            try:
+                from nine.core.components import PawnComponent, TransformComponent, PawnType
+                for entity in self.ecs_world.get_entities_with_components(PawnComponent, TransformComponent):
+                    pawn = entity.get_component(PawnComponent)
+                    if pawn.pawn_type == PawnType.PLAYER:
+                        transform = entity.get_component(TransformComponent)
+                        self.spatial_hash.update_entity(entity.id, transform.x, transform.y)
+                return
+            except ImportError:
+                pass
+
+        # Fallback: use cached player data from game_server
         for player in self._players_cache:
             player_uuid = player.get("uuid", "")
             if not player_uuid:
