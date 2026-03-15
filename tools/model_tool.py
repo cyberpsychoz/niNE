@@ -444,6 +444,11 @@ class Panda3DWidget(QWidget):
         if not self.actor:
             return False, "No model loaded", {}
 
+        # Check if model has a skeleton at all
+        model_joints = set(j.getName() for j in self.actor.getJoints())
+        if not model_joints:
+            return False, "Model has no skeleton — cannot apply animations", {}
+
         try:
             # Load temp actor to get anim names
             temp = Actor(str(anim_source_path))
@@ -454,11 +459,19 @@ class Panda3DWidget(QWidget):
                 return False, "No animations in source", {}
 
             # Check joint compatibility
-            model_joints = set(j.getName() for j in self.actor.getJoints())
             source_joints = set(j.getName() for j in temp.getJoints())
             common = model_joints & source_joints
 
             compat = len(common) / len(source_joints) * 100 if source_joints else 0
+
+            if not common:
+                temp.cleanup()
+                return False, "No common bones — incompatible skeletons", {
+                    'model_bones': len(model_joints),
+                    'source_bones': len(source_joints),
+                    'common': 0,
+                    'compatibility': 0
+                }
 
             # Load anims
             anims_dict = {name: str(anim_source_path) for name in anim_names}
@@ -1068,7 +1081,9 @@ class ModelToolWindow(QMainWindow):
                 if info['bones'] > 30:
                     self.bones_list.addItem(f"... +{info['bones'] - 30} more")
 
-            self._log(f"Loaded: {Path(path).name} ({info['bones']} bones, {info['anims']} anims)")
+                self._log(f"Loaded: {Path(path).name} ({info['bones']} bones, {info['anims']} anims)")
+            else:
+                self._log(f"Loaded: {Path(path).name} (no model info)")
             self.status_bar.showMessage(f"Loaded: {Path(path).name}")
 
         else:
@@ -1264,6 +1279,11 @@ class ModelToolWindow(QMainWindow):
 
     def _do_anim_import(self, path, anim_name):
         """Actually import the animation."""
+        if not self.viewport.actor or not self.viewport.actor.getJoints():
+            self.anim_import_status.setText("Model has no skeleton")
+            self.anim_import_status.setStyleSheet("color: #dc3545;")
+            return
+
         try:
             # Load the source to get animation
             temp = Actor(str(path))

@@ -1,14 +1,14 @@
 # Бэклог известных проблем
 
-**Последнее обновление:** 2026-02-14
+**Последнее обновление:** 2026-03-15
 
 ---
 
 ## Навигация по проблемам
 
-**Критические архитектурные баги (требуют немедленного внимания):**
-- [БАГ #1: ECS Pending Addition](#баг-1-ecs-entity-pending-addition-не-обрабатывается) - блокирует unit-тесты
-- [БАГ #2: AISystem coupling с NPCManager](#баг-2-aisystem-требует-жесткую-связь-с-npcmanager) - связан с автобоем
+**Исправленные архитектурные баги (март 2026, ECS Unification):**
+- [БАГ #1: ECS Pending Addition](#баг-1-ecs-entity-pending-addition-не-обрабатывается) - **ИСПРАВЛЕН** — добавлен `flush()` метод
+- [БАГ #2: AISystem coupling с NPCManager](#баг-2-aisystem-требует-жесткую-связь-с-npcmanager) - **ИСПРАВЛЕН** — AISystem запрашивает игроков из ECS
 - [БАГ #3: FactionComponent requirement](#баг-3-factioncomponent-обязателен-для-вражеской-детекции) - требует документации
 
 **NPC система (множественные проблемы):**
@@ -46,7 +46,7 @@
 
 ### БАГ #1: ECS Entity Pending Addition не обрабатывается
 **Severity:** CRITICAL
-**Status:** Открыто
+**Status:** ИСПРАВЛЕН (март 2026) — добавлен `ECSWorld.flush()` метод
 **Location:** `nine/core/ecs.py:445-470`
 **Обнаружен:** 2026-02-01 (комплексное тестирование NPC AI)
 
@@ -80,7 +80,7 @@ entities = list(world.get_entities_with_components(PositionComponent))
 
 ### БАГ #2: AISystem требует жесткую связь с NPCManager
 **Severity:** HIGH
-**Status:** Открыто
+**Status:** ИСПРАВЛЕН (март 2026) — AISystem запрашивает игроков через PawnComponent в shared ECS world
 **Location:** `nine/plugins/npc/sv_npc_ai.py:382-383`
 **Обнаружен:** 2026-02-01 (комплексное тестирование NPC AI)
 
