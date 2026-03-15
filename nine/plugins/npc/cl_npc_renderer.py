@@ -85,21 +85,32 @@ class NPCRenderer:
         self.node.setH(self.rotation)
 
         # Map template model IDs to actual .bam files
+        # (path, scale) — old player2.bam needs 0.3, new models are pre-scaled
         MODEL_FILE_MAP = {
-            "human_male": "nine/assets/models/player2.bam",
-            "human_female": "nine/assets/models/player2.bam",
+            "human_male": ("nine/assets/models/player2.bam", 0.3),
+            "human_female": ("nine/assets/models/player2.bam", 0.3),
+            "knight": ("nine/assets/models/npc/knight.bam", 1.0),
+            "shopkeeper_2": ("nine/assets/models/npc/shopkeeper_2.bam", 1.0),
+            "shopkeeper_3": ("nine/assets/models/npc/shopkeeper_3.bam", 1.0),
+            "villager_male_1": ("nine/assets/models/npc/villager_male_1.bam", 1.0),
+            "villager_male_2": ("nine/assets/models/npc/villager_male_2.bam", 1.0),
+            "villager_male_3": ("nine/assets/models/npc/villager_male_3.bam", 1.0),
+            "villager_female_1": ("nine/assets/models/npc/villager_female_1.bam", 1.0),
+            "villager_female_2": ("nine/assets/models/npc/villager_female_2.bam", 1.0),
         }
 
         # Try to load model by template ID, then fallback list
-        model_loaded = False
         model_id = self.model_path  # e.g. "human_male", "goblin"
-        model_files = []
+        model_files = []  # list of (path, scale)
+        model_scale = 0.3  # default for legacy models
 
         # If template specifies a known model, try it first
         if model_id in MODEL_FILE_MAP:
-            model_files.append(MODEL_FILE_MAP[model_id])
+            entry = MODEL_FILE_MAP[model_id]
+            model_files.append(entry[0])
+            model_scale = entry[1]
 
-        # Fallback chain
+        # Fallback chain (legacy models need 0.3)
         model_files.extend([
             "nine/assets/models/base.bam",
             "nine/assets/models/player2.bam",
@@ -121,12 +132,14 @@ class NPCRenderer:
             except Exception as e:
                 logger.debug(f"Failed to load NPC model {model_file}: {e}")
                 self.actor = None
+                # If we fell through to fallback, use legacy scale
+                model_scale = 0.3
                 continue
 
         if self.actor:
             try:
                 self.actor.reparentTo(self.node)
-                self.actor.setScale(0.3)
+                self.actor.setScale(model_scale)
 
                 # Load shared animations from base.bam (Mixamo skeleton)
                 # This allows any model with compatible skeleton to use

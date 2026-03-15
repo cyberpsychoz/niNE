@@ -39,15 +39,27 @@ These components are shared between players and NPCs in the unified ECS:
 
 | Component | Description |
 |-----------|-------------|
-| `TransformComponent` | x, y, z coordinates and rotation |
-| `VelocityComponent` | Movement velocity (vx, vy, vz) |
+| `TransformComponent` | x, y, z, rotation + velocity_x/y/z for interpolation + `get_pos()`/`set_pos()` |
+| `VelocityComponent` | Movement velocity (vx, vy, vz). PhysicsSystem applies to position. |
 | `PawnComponent` | Pawn type (player/npc/creature), display name, owner_id |
-| `PhysicsComponent` | Collision, walk/run speed, ground state |
-| `HealthComponent` | HP current/max, is_dead flag |
-| `ModelComponent` | Model path, animation state, scale |
-| `InputComponent` | Player input state (keys, camera_yaw) |
-| `AIControllerComponent` | AI behavior/state, aggro radius, target |
-| `NetworkSyncComponent` | Sync flags, dirty state, last sync time |
+| `PhysicsComponent` | **tier** (FULL/SIMPLE/NONE), collision, walk_speed=0.8, run_speed=1.6 |
+| `HealthComponent` | HP current/max, armor_class, temp_hp, `take_damage()`/`heal()` |
+| `CombatStatsComponent` | Attack bonus, damage dice, saves, CR (aliased as `CombatComponent`) |
+| `ModelComponent` | Model path, animation, current_animation, scale, tint_r/g/b |
+| `AIComponent` | Behavior, state, aggro/leash radius, LOD level, spawn_position |
+| `FactionComponent` | Faction ID, hostile_to_players, disposition overrides |
+| `PathfindingComponent` | Vec3-based path, steering (velocity, max_speed, max_force) |
+| `NPCInfoComponent` | Template ID, display name, title, is_unique, is_essential |
+| `InteractionComponent` | Interaction types (enum), prompt, radius |
+| `DialogueComponent` | Dialogue ID, flags, greeting, partner tracking |
+| `NeedsComponent` | Hunger, energy, social, safety + methods (living world) |
+| `PersonalityComponent` | Traits, chattiness, aggression + `has_trait()`, `get_reaction_modifier()` |
+| `ScheduleComponent` | Typed ScheduleEntry list + `get_activity_for_hour()` |
+| `NetworkSyncComponent` | Sync flags, interpolation data |
+| `WorldBoundsComponent` | World min/max x/y/z, kill plane |
+
+> **Note:** `AIControllerComponent` is deprecated. Use `AIComponent` instead.
+> `npc/sh_components.py` is a re-export shim — all components live in `nine/core/components.py`.
 
 ### Legacy NPC Components (`sh_components.py`)
 

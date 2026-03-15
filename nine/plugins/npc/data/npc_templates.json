@@ -2,7 +2,7 @@
   "templates": {
     "guard": {
       "display_name": "Стражник",
-      "model": "human_male",
+      "model": "knight",
       "components": {
         "AIComponent": {
           "behavior": "PATROL",
@@ -67,7 +67,7 @@
     },
     "merchant": {
       "display_name": "Торговец",
-      "model": "human_male",
+      "model": "shopkeeper_2",
       "components": {
         "AIComponent": {
           "behavior": "IDLE",

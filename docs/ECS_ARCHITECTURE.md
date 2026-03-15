@@ -1,14 +1,18 @@
 # Unified ECS Architecture
 
+**Последнее обновление:** 2026-03-15 (ECS Unification Phase 1-3)
+
 ## Overview
 
-niNE uses a Unified Entity-Component-System (ECS) architecture where **players and NPCs share the same ECS world**. This provides:
+niNE uses a Unified Entity-Component-System (ECS) architecture where **players and NPCs share the same `PooledECSWorld`**. This provides:
 
-- **Unified Physics** - All pawns (players + NPCs) use the same physics system
-- **Consistent Collisions** - NPCs collide with walls and players
-- **Single Network Format** - One `pawns[]` array instead of separate `players[]` and `npcs[]`
+- **Unified Physics** - All pawns use the same PhysicsSystem (FULL tier for players, SIMPLE tier for NPC)
+- **World Boundaries** - `WorldBoundsComponent` with kill plane prevents entities escaping to infinity
+- **Single Component Set** - All components defined in `nine/core/components.py`
+- **ECS Player Queries** - AISystem finds players via `PawnComponent(pawn_type=PLAYER)` — no NPCManager coupling
 - **Code Reuse** - Same systems process both players and NPCs
-- **Simpler Queries** - Query all pawns with `ecs_world.query(PawnComponent, ...)`
+- **Entity Pooling** - `PooledECSWorld` reduces GC pressure for 300+ NPC
+- **flush()** - `ECSWorld.flush()` makes entities queryable immediately after creation
 
 ---
 
@@ -44,79 +48,80 @@ niNE uses a Unified Entity-Component-System (ECS) architecture where **players a
 
 | File | Description |
 |------|-------------|
-| `nine/core/ecs.py` | ECS core: Entity, Component, ECSWorld |
-| `nine/core/components.py` | Unified components for all entities |
-| `nine/core/systems.py` | Systems: Physics, AI, Animation, NetworkSync |
-| `nine/core/world.py` | GameWorld with ECS integration for players |
-| `nine/plugins/npc/sv_npc_manager.py` | NPC manager with unified mode |
+| `nine/core/ecs.py` | ECS core: Entity, Component, ECSWorld, PooledECSWorld, EntityPool, `flush()` |
+| `nine/core/components.py` | **ALL** unified components (players + NPC + living world + combat) |
+| `nine/core/systems.py` | Systems: PhysicsSystem (FULL/SIMPLE tiers), InputSystem, AnimationSystem, NetworkSyncSystem |
+| `nine/core/world.py` | GameWorld with PooledECSWorld, PhysicsSystem, WorldBoundsComponent |
+| `nine/core/spatial.py` | SpatialHash for O(k) neighbor queries (tracks both players and NPC) |
+| `nine/plugins/npc/sh_components.py` | **Re-export shim** — imports from core, provides legacy aliases |
+| `nine/plugins/npc/sv_npc_manager.py` | NPC manager with unified mode (shared ECS world) |
+| `nine/plugins/npc/sv_npc_ai.py` | AISystem — queries players from ECS, writes VelocityComponent |
 
 ---
 
 ## Components (`nine/core/components.py`)
 
-### Enums
+### Key Enums
 
-```python
-class PawnType(Enum):
-    PLAYER = "player"
-    NPC = "npc"
-    CREATURE = "creature"
+| Enum | Values | Used by |
+|------|--------|---------|
+| `PawnType` | PLAYER, NPC, CREATURE | PawnComponent |
+| `AIBehavior` | IDLE, NEUTRAL, PATROL, HOSTILE, FOLLOW, FLEE, SCHEDULE, WANDER | AIComponent |
+| `AIState` | IDLE, MOVING, ATTACKING, PURSUING, FLEEING, INTERACTING, DEAD, IN_COMBAT | AIComponent |
+| `PhysicsTier` | FULL, SIMPLE, NONE | PhysicsComponent |
+| `InteractionType` | TALK, TRADE, ATTACK, LOOT | InteractionComponent |
+| `PersonalityTrait` | BRAVE, KIND, COWARDLY, GREEDY... (string values) | PersonalityComponent |
+| `Activity` | IDLE, SLEEPING, EATING, WORKING... (string values) | ScheduleComponent |
+| `MemoryType` | PLAYER_HELPED, PLAYER_ATTACKED... (string values) | MemoryComponent |
 
-class AIBehavior(Enum):
-    IDLE = "IDLE"
-    PATROL = "PATROL"
-    WANDER = "WANDER"
-    HOSTILE = "HOSTILE"
-    FRIENDLY = "FRIENDLY"
-    COWARDLY = "COWARDLY"
+### Component Categories
 
-class AIState(Enum):
-    IDLE = "IDLE"
-    PATROL = "PATROL"
-    ALERT = "ALERT"
-    CHASE = "CHASE"
-    ATTACK = "ATTACK"
-    FLEE = "FLEE"
-    DEAD = "DEAD"
-```
+**Transform & Movement:**
+- `TransformComponent` — x, y, z, rotation + velocity_x/y/z for interpolation + `get_pos()`/`set_pos()` Vec3 compat
+- `VelocityComponent` — vx, vy, vz + `speed_horizontal()`, `speed()`
 
-### Transform & Movement
+**Identity & Physics:**
+- `PawnComponent` — pawn_type, display_name, owner_id, template_id
+- `PhysicsComponent` — **tier** (FULL/SIMPLE/NONE), walk_speed (0.8), run_speed (1.6), collision, gravity
+- `FactionComponent` — faction_id, hostile_to_players, disposition_overrides
 
-```python
-@dataclass
-class TransformComponent(Component):
-    """Position and rotation in world space"""
-    x: float = 0.0
-    y: float = 0.0
-    z: float = 0.0
-    rotation: float = 0.0
+**Health & Combat:**
+- `HealthComponent` — hp_current/max, armor_class, temp_hp, `take_damage()`/`heal()`
+- `CombatStatsComponent` — attack_bonus, damage_dice, saves, CR (also aliased as `CombatComponent`)
+- `CombatSessionComponent` — turn-based state: initiative, action economy, conditions, concentration
+- `TargetableComponent` — target selection state
 
-@dataclass
-class VelocityComponent(Component):
-    """Movement velocity"""
-    vx: float = 0.0
-    vy: float = 0.0
-    vz: float = 0.0
-```
+**AI & Pathfinding:**
+- `AIComponent` — behavior, state, aggro/leash/attack radius, patrol, wander, LOD level
+- `PathfindingComponent` — Vec3-based path, steering (velocity, max_speed, max_force)
+- `AIControllerComponent` — DEPRECATED (kept for backward compat)
 
-### Pawn Components
+**NPC Info:**
+- `NPCInfoComponent` — template_id, display_name, title, is_unique, is_essential
+- `InteractionComponent` — interaction types (enum list), prompt, radius
+- `DialogueComponent` — dialogue_id, flags, greeting, partner tracking
 
-```python
-@dataclass
-class PawnComponent(Component):
-    """Base component for all creatures (players, NPCs)"""
-    pawn_type: str = "npc"         # PawnType value
-    display_name: str = ""
-    owner_id: Optional[int] = None  # client_id for players
+**Living World (with full methods):**
+- `NeedsComponent` — hunger, energy, social, safety + `update()`, `eat()`, `sleep()`, `most_urgent_need`
+- `PersonalityComponent` — traits, chattiness, aggression + `has_trait()`, `get_reaction_modifier()`
+- `ScheduleComponent` — typed ScheduleEntry list + `get_activity_for_hour()`, `add_entry()`
+- `RelationshipsComponent` — per-entity disposition/trust + `modify_disposition()`, `is_hostile_to()`
+- `MemoryComponent` — memories list + `add_memory()`, `get_memories_about()`, `decay_memories()`
 
-@dataclass
-class PhysicsComponent(Component):
-    """Physics properties"""
-    has_collision: bool = True
-    walk_speed: float = 1.5
-    run_speed: float = 3.0
-    is_on_ground: bool = False
-    is_running: bool = False
+**World:**
+- `WorldBoundsComponent` — min/max x/y/z, kill plane at min_z
+- `WorldObjectComponent` — static/pickup/interactive objects
+
+**Network:**
+- `NetworkSyncComponent` — sync flags, interpolation data
+
+### Physics Tiers
+
+| Tier | Entities | What it does | Cost |
+|------|----------|-------------|------|
+| FULL | Players, boss NPC | Panda3D CollisionSphere + Pusher + ground ray | ~0.2ms/entity |
+| SIMPLE | Regular NPC | Velocity → position, friction, world bounds clamp, periodic ground ray | ~0.005ms/entity |
+| NONE | Sleeping/distant NPC | Skipped entirely | 0 |
 
 @dataclass
 class HealthComponent(Component):
