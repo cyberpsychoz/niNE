@@ -369,8 +369,9 @@ class AISystem(System):
         self._tick_count += 1
         current_time = time.time()
 
-        # Player positions should be set via set_player_positions() before update()
-        # Fallback to old method for backward compatibility
+        # Player positions: prefer ECS query (shared world), fallback to set_player_positions() data
+        if not self._player_data:
+            self._update_player_cache_from_ecs()
         if not self._player_data and self.npc_manager:
             self._update_player_cache_legacy()
 
@@ -471,6 +472,42 @@ class AISystem(System):
             player_uuid = player.get("uuid", "")
             if player_uuid:
                 self._player_positions_dict[player_uuid] = (px, py, pz)
+
+    def _update_player_cache_from_ecs(self) -> None:
+        """
+        Query player positions directly from shared ECS world.
+        No dependency on NPCManager — uses PawnComponent(pawn_type=PLAYER).
+        """
+        if not self._world:
+            return
+
+        try:
+            from nine.core.components import PawnComponent, TransformComponent, PawnType
+        except ImportError:
+            return
+
+        self._player_positions.clear()
+        self._player_positions_dict.clear()
+        players = []
+
+        for entity in self._world.get_entities_with_components(PawnComponent, TransformComponent):
+            pawn = entity.get_component(PawnComponent)
+            if pawn.pawn_type != PawnType.PLAYER:
+                continue
+
+            transform = entity.get_component(TransformComponent)
+            px, py, pz = transform.x, transform.y, transform.z
+
+            self._player_positions.append((px, py))
+            self._player_positions_dict[entity.id] = (px, py, pz)
+
+            players.append({
+                "uuid": entity.id,
+                "name": pawn.display_name,
+                "position": {"x": px, "y": py, "z": pz},
+            })
+
+        self._player_data = players
 
     def _update_idle(
         self,
