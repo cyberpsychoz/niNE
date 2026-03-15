@@ -610,7 +610,7 @@ class CombatManager:
                 break
 
     def _sync_npc_entity_hp(self, entity_id: str, new_hp: int, is_dead: bool = False):
-        """Sync combat damage back to the NPC entity's CombatComponent."""
+        """Sync combat damage to NPC entity's CombatStatsComponent and HealthComponent."""
         if not hasattr(self.app, 'plugin_manager'):
             return
         npc_plugin = self.app.plugin_manager.get_plugin("nine.npc")
@@ -620,12 +620,23 @@ class CombatManager:
             if hasattr(module, 'get_npc_entity'):
                 entity = module.get_npc_entity(entity_id)
                 if entity:
+                    # Sync to CombatStatsComponent (NPC legacy CombatComponent)
                     from nine.plugins.npc.sh_components import CombatComponent
                     combat_comp = entity.get_component(CombatComponent)
                     if combat_comp:
                         combat_comp.hp_current = new_hp
                         if is_dead:
                             combat_comp.is_dead = True
+                    # Also sync to HealthComponent (unified ECS mode)
+                    try:
+                        from nine.core.components import HealthComponent
+                        health = entity.get_component(HealthComponent)
+                        if health:
+                            health.hp_current = new_hp
+                            if is_dead:
+                                health.is_dead = True
+                    except ImportError:
+                        pass
                 break
 
     def _get_player_data(self, client_id: int) -> Optional[dict]:
