@@ -38,6 +38,7 @@ from nine.core.components import (
     HealthComponent,
     InputComponent,
     NetworkSyncComponent,
+    WorldBoundsComponent,
     PawnType,
 )
 from nine.core.systems import (
@@ -243,6 +244,15 @@ class GameWorld:
 
         # Animation system
         self.ecs_world.add_system(AnimationSystem())
+
+        # Create world bounds entity
+        world_bounds_entity = self.ecs_world.create_entity("world-bounds")
+        world_bounds_entity.add_component(WorldBoundsComponent(
+            min_x=-500.0, max_x=500.0,
+            min_y=-500.0, max_y=500.0,
+            min_z=-10.0,  max_z=200.0,
+        ))
+        self.ecs_world.flush()
 
         # Player entity ID mapping: client_id -> entity_id
         self._player_entity_map: Dict[int, str] = {}
