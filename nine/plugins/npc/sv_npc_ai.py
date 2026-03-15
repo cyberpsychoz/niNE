@@ -1149,13 +1149,12 @@ class PathfindingSystem(System):
             logger.debug(f"No path found for entity {entity.id[:8]}")
 
     def _follow_path(self, entity: Entity, pos: PositionComponent, pathfinding: PathfindingComponent, ai: Optional[AIComponent], dt: float):
-        """Следует по пути."""
+        """Следует по пути. Writes to VelocityComponent for PhysicsSystem to apply."""
         if pathfinding.current_waypoint_index >= len(pathfinding.current_path):
             pathfinding.current_path = []
-            self._set_npc_animation(entity, "idle")
+            self._stop_npc(entity, pos, pathfinding)
             return
 
-        target = pathfinding.current_path[pathfinding.current_waypoint_index]
         current_pos = Vec3(pos.x, pos.y, pos.z)
 
         # Вычисляем steering force
@@ -1173,29 +1172,35 @@ class PathfindingSystem(System):
 
         pathfinding.current_waypoint_index = new_index
 
-        # Обновляем velocity
+        # Обновляем steering velocity
         pathfinding.velocity = pathfinding.velocity + steering * dt
         if pathfinding.velocity.length() > move_speed:
             pathfinding.velocity.normalize()
             pathfinding.velocity *= move_speed
 
-        # Обновляем позицию
-        new_pos = current_pos + pathfinding.velocity * dt
-        pos.x = new_pos.x
-        pos.y = new_pos.y
-        # Z обновляется отдельно (из heightmap или collision)
+        # Write to VelocityComponent (PhysicsSystem applies position change)
+        from nine.core.components import VelocityComponent
+        vel = entity.get_component(VelocityComponent)
+        if vel:
+            vel.vx = pathfinding.velocity.x
+            vel.vy = pathfinding.velocity.y
+        else:
+            # Fallback: direct position update (legacy non-unified mode)
+            new_pos = current_pos + pathfinding.velocity * dt
+            pos.x = new_pos.x
+            pos.y = new_pos.y
 
+        # Sync interpolation data on TransformComponent
         pos.velocity_x = pathfinding.velocity.x
         pos.velocity_y = pathfinding.velocity.y
 
-        # Поворачиваем в направлении движения (Panda3D heading convention)
+        # Rotation handled by PhysicsSystem SIMPLE tier when VelocityComponent present
+        # Fallback for legacy mode:
         speed = pathfinding.velocity.length()
-        if speed > 0.1:
-            # Model faces -Y at H=0.  atan2(vx, vy) gives angle from +Y,
-            # so add 180° to flip the model to face the movement direction.
+        if not vel and speed > 0.1:
             pos.rotation = 180.0 - math.degrees(math.atan2(pathfinding.velocity.x, pathfinding.velocity.y))
 
-        # Обновляем анимацию NPC на основе скорости
+        # Обновляем анимацию
         if speed > 0.1:
             self._set_npc_animation(entity, "walk_forward")
         else:
@@ -1214,10 +1219,19 @@ class PathfindingSystem(System):
         # Достигли конца пути?
         if pathfinding.current_waypoint_index >= len(pathfinding.current_path):
             pathfinding.current_path = []
-            pathfinding.velocity = Vec3(0, 0, 0)
-            pos.velocity_x = 0
-            pos.velocity_y = 0
-            self._set_npc_animation(entity, "idle")
+            self._stop_npc(entity, pos, pathfinding)
+
+    def _stop_npc(self, entity: Entity, pos, pathfinding: PathfindingComponent):
+        """Stop NPC movement — zero both VelocityComponent and pathfinding velocity."""
+        pathfinding.velocity = Vec3(0, 0, 0)
+        pos.velocity_x = 0
+        pos.velocity_y = 0
+        from nine.core.components import VelocityComponent
+        vel = entity.get_component(VelocityComponent)
+        if vel:
+            vel.vx = 0
+            vel.vy = 0
+        self._set_npc_animation(entity, "idle")
 
     @staticmethod
     def _set_npc_animation(entity: Entity, anim_name: str):
