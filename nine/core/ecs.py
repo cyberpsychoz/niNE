@@ -495,6 +495,10 @@ class ECSWorld:
 
         self._pending_removal.clear()
 
+    def flush(self) -> None:
+        """Process pending additions immediately. Safe to call multiple times."""
+        self._process_pending_additions()
+
     def _on_component_added(self, entity: Entity, component_type: Type[Component]) -> None:
         """Вызывается при добавлении компонента к сущности."""
         if entity.id in self._entities:
