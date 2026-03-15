@@ -53,6 +53,7 @@ try:
         VelocityComponent as UnifiedVelocityComponent,
         PawnComponent,
         PhysicsComponent as UnifiedPhysicsComponent,
+        PhysicsTier,
         HealthComponent as UnifiedHealthComponent,
         AIControllerComponent,
         ModelComponent as UnifiedModelComponent,
@@ -633,12 +634,13 @@ class NPCManager:
         # Parse template components
         components_data = template.get("components", {})
 
-        # Physics (for collision)
+        # Physics (SIMPLE tier for NPC — no Panda3D collision nodes, world bounds only)
         ai_data = components_data.get("AIComponent", {})
         entity.add_component(UnifiedPhysicsComponent(
+            tier=PhysicsTier.SIMPLE,
             walk_speed=ai_data.get("move_speed", 0.6),
             run_speed=ai_data.get("move_speed", 0.6) * 1.5,
-            has_collision=True
+            has_collision=False,  # SIMPLE tier doesn't use Panda3D collision
         ))
 
         # Health from CombatComponent
