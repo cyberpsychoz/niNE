@@ -1,101 +1,87 @@
-# niNE — D&D Gamemode Branch
+# niNE — Multiplayer 3D Game Engine
 
-> **Ветка:** `dnd-gamemode-v0.1.0-alpha`
->
-> Эта ветка содержит разработку **D&D режима** — игрового режима, основанного на настольной ролевой игре D&D 5e. Основной проект niNE продолжает развиваться независимо в ветке `main`.
+> **Branch:** `dnd-gamemode-v0.1.0-alpha` — D&D 5e game mode development
 
-![Версия Python](https://img.shields.io/badge/python-3.12+-blue.svg)
-![Лицензия](https://img.shields.io/badge/license-MIT-green.svg)
-![Panda3D](https://img.shields.io/badge/engine-Panda3D-orange.svg)
-![Branch](https://img.shields.io/badge/branch-dnd--gamemode-purple.svg)
+![Python](https://img.shields.io/badge/python-3.12+-blue.svg)
+![License](https://img.shields.io/badge/license-MIT-green.svg)
+![Panda3D](https://img.shields.io/badge/engine-Panda3D%201.10-orange.svg)
+![UI](https://img.shields.io/badge/UI-CEF%20Chromium%20131-green.svg)
 
-![logos](nine/assets/materials/textures/backgrounds/1.jpg)
+Multiplayer 3D game engine built with Panda3D, featuring a D&D 5e game mode with turn-based combat, NPC AI, and a living world system.
 
-## D&D Режим — Планируемые особенности
+## Architecture
 
-- **Система персонажей D&D 5e**: Полноценное создание персонажа с расами, классами, характеристиками
-- **6 рас**: Human, Elf, Dwarf, Halfling, Orc, Tiefling (по 2 модели на расу: male/female)
-- **12 классов D&D**: Fighter, Wizard, Rogue, Cleric и другие
-- **Пошаговая боевая система**: Инициатива, действия, реакции
-- **Система бросков кубов**: d20, d6, d8 с модификаторами
-- **DM Mode**: Инструменты для Игрового Мастера
-- **Система фракций**: 4 фракции с точками спавна и отношениями
+- **Unified ECS** — single `PooledECSWorld` for players and NPC with entity pooling
+- **Physics Tiers** — FULL (Panda3D collision) for players, SIMPLE (velocity-based) for NPC
+- **Plugin System** — modular GMod-inspired architecture with `sh_`/`cl_`/`sv_` naming
+- **CEF UI** — offscreen Chromium 131 via cef-capi-py, HTML/CSS/JS overlay
+- **Networking** — asyncio + SSL/TLS encrypted client-server communication
 
-## Базовые особенности niNE
+## Current Status (March 2026)
 
-- **3D среда для ролевых игр**: Базовый 3D мир, в котором игроки могут подключаться и взаимодействовать
-- **Простой хостинг серверов**: Запускайте серверы одним кликом или развертывайте отдельно
-- **Расширенная система плагинов**: Поддержка плагинов как в виде файлов, так и папок с ресурсами
-- **Сетевой мультиплеер**: Построен на asyncio и сокетах Python
-- **Чат**: Внутриигровое текстовое общение
+| System | Status |
+|--------|--------|
+| D&D Characters | 6 races, 12 classes, 8-step creation wizard |
+| Combat | Turn-based with initiative, action economy, D&D 5e rules |
+| NPC AI | LOD system, patrol, wander, needs, personality, schedules |
+| NPC Physics | PhysicsTier.SIMPLE, world bounds, kill plane |
+| Living World | Needs, relationships, memories, daily schedules |
+| Inventory & Equipment | D&D items, equipment slots, character sheet |
+| Spells | 35 spells, slots, concentration |
+| UI | CEF offscreen, HTML/CSS/JS, game HUD, DM panel |
+| Audio | BGM playlists, ambient, SFX, footsteps |
 
-![logos](nine/assets/materials/ingame.png)
-![logos](nine/assets/materials/preview_2.png)
-![logos](nine/assets/materials/preview_3.png)
-
-Для получения подробной технической информации, сведений об архитектуре и API для разработчиков, пожалуйста, обратитесь к нашей [**Технической документации (DOCS.md)**](docs/DOCS.md).
-
-Информация для контрибуторов - [**смотреть тут.**](docs/DEVELOPMENT.md).
-
-## Документация по плагинам
-
-niNE имеет мощную модульную систему плагинов, вдохновленную Garry's Mod:
-
-- 📚 [**Полная документация по плагинам**](docs/PLUGINS.md) - архитектура, API, примеры
-- 🎓 [**Туториал для начинающих**](docs/PLUGIN_TUTORIAL.md) - создайте свой первый плагин за 20 минут
-- 📋 [**Справочник Event API**](docs/EVENT_API.md) - полный список событий и их использование
-- 🚀 [**Шаблон плагина**](plugin_template/) - готовый шаблон для быстрого старта
-
-### Быстрый старт с плагинами
+## Quick Start
 
 ```bash
-# Скопируйте шаблон
-cp -r plugin_template plugins/my_plugin
-
-# Отредактируйте sh_plugin.py с вашими настройками
-# Запустите сервер - плагин загрузится автоматически!
-```
-
-## Установка
-
-### Предварительные требования
-
-
-- Python 3.12 или выше
-
-```bash
+# Install dependencies
 pip install -r requirements.txt
-```
 
-### Быстрый старт
-
-1. Клонируйте репозиторий:
-```bash
-git clone https://github.com/your-username/niNE.git
-cd niNE
-```
-
-2. Установите зависимости:
-```bash
-pip install -r requirements.txt
-```
-
-3. **Сгенерируйте SSL-сертификаты**: Для безопасного соединения между клиентом и сервером вам потребуются SSL-сертификаты. В режиме разработки вы можете использовать самоподписанные:
-```bash
+# Generate SSL certs (development)
 mkdir certs
-openssl req -x509 -newkey rsa:2048 -keyout certs/key.pem -out certs/cert.pem -days 365 -nodes -subj "/C=US/ST=CA/L=SanFrancisco/O=MyProject/OU=Dev/CN=localhost"
-```
+openssl req -x509 -newkey rsa:2048 -keyout certs/key.pem -out certs/cert.pem \
+  -days 365 -nodes -subj "/CN=localhost"
 
-4. Запустите сервер:
-```bash
-python server.py
-```
+# Run server
+python -m nine.server.game_server
 
-5. Запустите клиент:
-```bash
+# Run client
 python client.py
 ```
 
-## Лицензия
+## Documentation
 
-Этот проект лицензирован под MIT License - подробности см. в файле [LICENSE](LICENSE).
+| Document | Description |
+|----------|-------------|
+| [DEVELOPMENT.md](docs/DEVELOPMENT.md) | Development roadmap and status |
+| [ECS_ARCHITECTURE.md](docs/ECS_ARCHITECTURE.md) | Unified ECS architecture |
+| [PLUGINS.md](docs/PLUGINS.md) | Plugin system documentation |
+| [EVENT_API.md](docs/EVENT_API.md) | Event reference |
+| [NPC_SYSTEM.md](docs/NPC_SYSTEM.md) | NPC system documentation |
+| [ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md) | Server administration |
+| [BACKLOG.md](docs/BACKLOG.md) | Known issues |
+
+## Project Structure
+
+```
+nine/
+  core/           # ECS, physics, components, systems, networking
+  server/         # Game server
+  client/         # Game client
+  ui/             # CEF manager, webview API, HTML/CSS/JS
+  plugins/        # Plugin system
+    chat/         # Chat
+    combat/       # D&D combat (turn manager, dice, action economy)
+    npc/          # NPC (AI, renderer, living world)
+    inventory/    # Inventory, equipment, items
+    dnd/          # D&D character system
+    spells/       # Spell system
+    conditions/   # D&D conditions
+    quests/       # Quest journal
+    rest/         # Short/long rest
+  assets/         # Models, textures, sounds
+```
+
+## License
+
+MIT License — see [LICENSE](LICENSE).
