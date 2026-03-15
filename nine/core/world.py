@@ -28,7 +28,7 @@ logger = logging.getLogger("nine.server.game_server")
 
 from nine.core.database import DatabaseManager
 from nine.core.character_controller import CharacterController
-from nine.core.ecs import ECSWorld, Entity
+from nine.core.ecs import ECSWorld, Entity, PooledECSWorld
 from nine.core.components import (
     TransformComponent,
     VelocityComponent,
@@ -235,7 +235,7 @@ class GameWorld:
         # =========================================================================
         # Unified ECS World
         # =========================================================================
-        self.ecs_world = ECSWorld()
+        self.ecs_world = PooledECSWorld()
 
         # Network sync system (used to generate world_state)
         self.network_sync_system = NetworkSyncSystem()
