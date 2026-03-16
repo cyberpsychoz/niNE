@@ -1,0 +1,84 @@
+<!-- Admin Panel (F2) — 4 tabs: Players, Combat, World, Bans -->
+<div id="admin-panel" class="panel-overlay hidden">
+    <div class="panel-container panel-wide" style="width: 800px;">
+
+        <!-- Header -->
+        <div class="panel-header">
+            <span class="panel-title">ADMIN PANEL</span>
+            <button class="panel-close-btn" id="admin-panel-close">&times;</button>
+        </div>
+
+        <!-- Tabs -->
+        <div class="panel-tabs" id="admin-tabs">
+            <button class="panel-tab active" data-tab="players">Players</button>
+            <button class="panel-tab" data-tab="combat">Combat</button>
+            <button class="panel-tab" data-tab="world">World</button>
+            <button class="panel-tab" data-tab="bans">Bans</button>
+        </div>
+
+        <!-- Body -->
+        <div class="panel-body" id="admin-body">
+
+            <!-- Players Tab -->
+            <div class="panel-tab-content active" data-tab="players" id="admin-tab-players">
+                <div class="admin-player-list" id="admin-player-list">
+                    <div class="admin-empty-message">Loading players...</div>
+                </div>
+            </div>
+
+            <!-- Combat Tab -->
+            <div class="panel-tab-content" data-tab="combat" id="admin-tab-combat">
+                <div class="admin-combat-controls">
+                    <div class="admin-row" style="display:flex;gap:8px;margin-bottom:16px;align-items:center;">
+                        <button class="bg1-button admin-btn-red" id="admin-end-combat">End Combat</button>
+                        <button class="bg1-button" id="admin-next-turn">Next Turn</button>
+                    </div>
+                </div>
+                <div class="cs-section-title">Active Combats</div>
+                <div id="admin-combat-list" class="admin-combat-list">
+                    <div class="admin-empty-message">No active combats</div>
+                </div>
+                <div class="cs-section-title" style="margin-top:16px;">Spawn NPC</div>
+                <div class="admin-row" style="display:flex;gap:8px;align-items:center;">
+                    <label class="admin-label">Template:</label>
+                    <select id="admin-npc-template" class="bg1-input" style="width:160px;"></select>
+                    <label class="admin-label">X:</label>
+                    <input type="number" id="admin-spawn-x" class="bg1-input" value="0" style="width:70px;">
+                    <label class="admin-label">Y:</label>
+                    <input type="number" id="admin-spawn-y" class="bg1-input" value="0" style="width:70px;">
+                    <button class="bg1-button admin-btn-green" id="admin-spawn-npc">Spawn</button>
+                </div>
+            </div>
+
+            <!-- World Tab -->
+            <div class="panel-tab-content" data-tab="world" id="admin-tab-world">
+                <div class="cs-section-title">Announcement</div>
+                <div class="admin-row" style="display:flex;gap:8px;align-items:center;margin-bottom:16px;">
+                    <input type="text" id="admin-announcement-text" class="bg1-input"
+                           placeholder="Message for all players..." style="flex:1;">
+                    <button class="bg1-button admin-btn-gold" id="admin-send-announcement">Send</button>
+                </div>
+                <div class="cs-section-title">Noclip</div>
+                <div class="admin-row" style="display:flex;gap:8px;align-items:center;">
+                    <button class="bg1-button" id="admin-noclip-toggle">Noclip: OFF</button>
+                    <span class="admin-hint">Press N in-game to toggle</span>
+                </div>
+            </div>
+
+            <!-- Bans Tab -->
+            <div class="panel-tab-content" data-tab="bans" id="admin-tab-bans">
+                <div class="cs-section-title">Manual IP Ban</div>
+                <div class="admin-row" style="display:flex;gap:8px;align-items:center;margin-bottom:16px;">
+                    <input type="text" id="admin-ban-ip-input" class="bg1-input"
+                           placeholder="IP address..." style="width:200px;">
+                    <button class="bg1-button admin-btn-darkred" id="admin-ban-ip-btn">Ban IP</button>
+                </div>
+                <div class="cs-section-title">Banned IPs</div>
+                <div id="admin-ban-list" class="admin-ban-list">
+                    <div class="admin-empty-message">No banned IPs</div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>

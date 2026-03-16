@@ -99,10 +99,6 @@ class GameClient(ShowBase):
         self.is_connected = False
         self.is_server = False  # Plugins check this
 
-        # Combat state tracking (client-side)
-        self.in_combat = False
-        self.is_my_combat_turn = False
-
         # Buffer for events that arrive before plugins are loaded.
         # Server sends world_config, character_sheet, etc. BEFORE welcome,
         # but plugins load in the welcome handler. Buffer these and replay.
@@ -119,8 +115,6 @@ class GameClient(ShowBase):
         self.in_game_menu_active = False
         self.camera_controller = None
 
-        # D&D character data
-        self.account_uuid = None
         self.password = ""  # Stored for auth
         self.current_character = None  # Currently selected character data
 
@@ -129,8 +123,6 @@ class GameClient(ShowBase):
             "connect": self.open_login_menu, "exit": self.exit_game,
             "attempt_login": self.attempt_login, "close_login_menu": self.close_login_menu,
             "settings": self.show_settings_menu,
-            "select_character": self._select_character_from_ui,
-            "create_character": self._create_character_from_ui,
         }
 
         # Choose UI backend from config
@@ -456,9 +448,6 @@ class GameClient(ShowBase):
         # Block key-down when chat or a panel is open, allow key-up to prevent stuck keys
         if state and (self.is_chat_active() or self._is_panel_open()):
             return
-        # Block movement keys during combat when not player's turn
-        if state and self.in_combat and not self.is_my_combat_turn and key in ("w", "a", "s", "d", "space", "shift"):
-            return
         self.keyMap[key] = state
 
     def _is_panel_open(self):
@@ -634,34 +623,6 @@ class GameClient(ShowBase):
 
         return Task.cont
 
-    def _select_character_from_ui(self, character_uuid):
-        """Handle character selection from web UI."""
-        self.logger.info(f"Character selected from UI: {character_uuid}")
-        self.send_message({
-            "type": "character_select",
-            "character_uuid": character_uuid
-        })
-
-    def _create_character_from_ui(self, data: dict):
-        """Handle character creation from web UI."""
-        self.logger.info(f"Character creation from UI: {data.get('name', data.get('character_name', '?'))}")
-        self.send_message({
-            "type": "character_create",
-            "character_name": data.get("name", data.get("character_name", "")),
-            "gender": data.get("gender", "male"),
-            "race": data.get("race", "human"),
-            "class": data.get("class_name", "fighter"),
-            "background": data.get("background", ""),
-            "faction": data.get("faction", "neutral"),
-            "strength": data.get("strength", 10),
-            "dexterity": data.get("dexterity", 10),
-            "constitution": data.get("constitution", 10),
-            "intelligence": data.get("intelligence", 10),
-            "wisdom": data.get("wisdom", 10),
-            "charisma": data.get("charisma", 10),
-            "skills": data.get("skills", {}),
-        })
-
     def attempt_login(self):
         credentials = self.ui.get_login_credentials()
         ip_str = credentials.get("ip", "localhost:9009")
@@ -705,14 +666,12 @@ class GameClient(ShowBase):
         if self.dev_mode:
             auth_data = {"type": "dev_auth", "name": self.character_name, "uuid": self.client_uuid}
         else:
-            # D&D auth with password
             auth_data = {
                 "type": "auth",
                 "name": self.character_name,
                 "password": self.password
             }
         self.asyncio_loop.create_task(send_message(self.writer, auth_data))
-        # Clear password from memory after sending
         self.password = ""
 
     def _build_anim_map(self, actor):
@@ -845,47 +804,14 @@ class GameClient(ShowBase):
     def handle_network_data(self, data: dict):
         msg_type = data.get("type")
 
-        # ===== D&D Auth & Character Messages =====
         if msg_type == "auth_success":
-            # Авторизация успешна, сохраняем account_uuid и запрашиваем список персонажей
-            self.account_uuid = data.get("account_uuid")
-            self.logger.info(f"Auth success, account: {self.account_uuid}")
-            # Запрашиваем список персонажей
-            self.send_message({"type": "character_list_request"})
+            self.logger.info("Auth success")
+            # Server will send welcome message next
 
         elif msg_type == "auth_failed":
-            # Авторизация не удалась
             reason = data.get("reason", "Unknown error")
             self.logger.warning(f"Auth failed: {reason}")
-            # Возвращаемся в меню
             self.disconnect()
-            # TODO: Показать сообщение об ошибке
-
-        elif msg_type == "character_list":
-            # Получен список персонажей - показываем UI выбора
-            characters = data.get("characters", [])
-            max_characters = data.get("max_characters", 2)
-            self.logger.info(f"Character list received: {len(characters)} characters")
-            self.ui.show_character_select(characters, max_characters, self)
-
-        elif msg_type == "character_created":
-            # Персонаж успешно создан - обновляем список
-            character = data.get("character")
-            self.logger.info(f"Character created: {character.get('character_name')}")
-            # Запрашиваем обновлённый список (show_character_select handles navigation)
-            self.send_message({"type": "character_list_request"})
-
-        elif msg_type == "character_create_failed":
-            # Создание персонажа не удалось
-            reason = data.get("reason", "Unknown error")
-            self.logger.warning(f"Character create failed: {reason}")
-            self.ui.send_to_js("character_create_failed", {"reason": reason})
-
-        elif msg_type == "character_deleted":
-            # Персонаж удалён - запрашиваем обновлённый список
-            char_uuid = data.get("character_uuid")
-            self.logger.info(f"Character deleted: {char_uuid}")
-            self.send_message({"type": "character_list_request"})
 
         elif msg_type == "welcome":
             # Load plugins on first connection
@@ -908,7 +834,7 @@ class GameClient(ShowBase):
             else:
                 self.ui.hide_loading_screen()
 
-            # Переходим в игровое состояние (скрывает меню и уведомляет плагины)
+            # Enter game state (hides menus and notifies plugins)
             self.current_character = data.get("character_data")
             self.ui.enter_game(self.current_character)
             self.player_id = data["id"]
@@ -1088,26 +1014,6 @@ class GameClient(ShowBase):
                     self.player_actor_model.show()
             self._post_or_buffer_event("noclip_toggled", data)
 
-        elif msg_type == "combat_started":
-            self.in_combat = True
-            self.is_my_combat_turn = False
-            # Reset movement keys to stop walking
-            for key in self.keyMap:
-                self.keyMap[key] = False
-            self._post_or_buffer_event(msg_type, data)
-
-        elif msg_type == "combat_turn_start":
-            self.is_my_combat_turn = (str(data.get("entity_id", "")) == str(self.player_id))
-            if not self.is_my_combat_turn:
-                for key in self.keyMap:
-                    self.keyMap[key] = False
-            self._post_or_buffer_event(msg_type, data)
-
-        elif msg_type == "combat_ended":
-            self.in_combat = False
-            self.is_my_combat_turn = False
-            self._post_or_buffer_event(msg_type, data)
-
         else:
             self._post_or_buffer_event(msg_type, data)
 
@@ -1150,8 +1056,6 @@ class GameClient(ShowBase):
 
         self.player_id = -1
         self.is_connected = False
-        self.in_combat = False
-        self.is_my_combat_turn = False
         self._pre_plugin_event_buffer.clear()
 
         # Уведомляем плагины об отключении ПЕРЕД уничтожением UI
@@ -1227,7 +1131,7 @@ class GameClient(ShowBase):
         if self.is_chat_active():
             self.event_manager.post("escape_key_pressed")
             return
-        # Close any open panel first (character sheet, spellbook, quest log)
+        # Close any open panel first
         if hasattr(self.ui, '_close_active_panel') and self.ui._close_active_panel():
             return
         if self.in_game_menu_active:

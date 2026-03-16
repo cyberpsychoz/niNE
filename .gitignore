@@ -1,8 +1,17 @@
 # Claude Code
 CLAUDE.md
 
-# Morrowind content (ISO, extracted assets, pipeline build artifacts)
+# Pipeline and game content (extracted assets, build artifacts)
+pipeline/
 morrowind_content/
+oblivion_content/
+
+# Panda3D model files
+*.bam
+*.egg
+
+# Database
+nine.db
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

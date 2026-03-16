@@ -11,7 +11,7 @@ PLUGIN_INFO = PluginInfo(
     description="ECS-based NPC система с AI и pathfinding",
     author="niNE Team",
     version="0.1.0",
-    dependencies=["nine.dnd"],
+    dependencies=[],
     load_order=40,  # После dnd (10), перед combat (50)
     enabled=True,
 )

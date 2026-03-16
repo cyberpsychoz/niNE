@@ -1,87 +1,87 @@
-# niNE — Multiplayer 3D Game Engine
+# niNE
 
-> **Branch:** `dnd-gamemode-v0.1.0-alpha` — D&D 5e game mode development
+Multiplayer 3D game engine built with Panda3D and Python.
 
-![Python](https://img.shields.io/badge/python-3.12+-blue.svg)
-![License](https://img.shields.io/badge/license-MIT-green.svg)
-![Panda3D](https://img.shields.io/badge/engine-Panda3D%201.10-orange.svg)
-![UI](https://img.shields.io/badge/UI-CEF%20Chromium%20131-green.svg)
+## Features
 
-Multiplayer 3D game engine built with Panda3D, featuring a D&D 5e game mode with turn-based combat, NPC AI, and a living world system.
+- **Panda3D Rendering** — 3D world with lighting, skybox, post-processing
+- **Client-Server Architecture** — SSL/TLS encrypted multiplayer with asyncio networking
+- **Plugin System** — Modular architecture with hot-loadable plugins (`sh_`, `cl_`, `sv_` prefixes)
+- **ECS (Entity-Component-System)** — Unified PooledECSWorld with component registry and systems
+- **Physics** — PhysicsTier system (FULL for players, SIMPLE for NPCs, NONE for sleeping)
+- **CEF Web UI** — Chromium-based UI via cef-capi-py with JS-Python bridge
+- **NPC AI** — LOD-based AI with needs, behaviors, wander, schedules
+- **Living World** — Day/night cycle, NPC routines, spatial awareness
+- **Chat System** — In-game chat with commands
+- **Inventory & Equipment** — Slot-based equipment system
+- **Player Stats** — Configurable stat tracking
 
 ## Architecture
 
-- **Unified ECS** — single `PooledECSWorld` for players and NPC with entity pooling
-- **Physics Tiers** — FULL (Panda3D collision) for players, SIMPLE (velocity-based) for NPC
-- **Plugin System** — modular GMod-inspired architecture with `sh_`/`cl_`/`sv_` naming
-- **CEF UI** — offscreen Chromium 131 via cef-capi-py, HTML/CSS/JS overlay
-- **Networking** — asyncio + SSL/TLS encrypted client-server communication
-
-## Current Status (March 2026)
-
-| System | Status |
-|--------|--------|
-| D&D Characters | 6 races, 12 classes, 8-step creation wizard |
-| Combat | Turn-based with initiative, action economy, D&D 5e rules |
-| NPC AI | LOD system, patrol, wander, needs, personality, schedules |
-| NPC Physics | PhysicsTier.SIMPLE, world bounds, kill plane |
-| Living World | Needs, relationships, memories, daily schedules |
-| Inventory & Equipment | D&D items, equipment slots, character sheet |
-| Spells | 35 spells, slots, concentration |
-| UI | CEF offscreen, HTML/CSS/JS, game HUD, DM panel |
-| Audio | BGM playlists, ambient, SFX, footsteps |
+```
+nine/
+├── core/           # Engine core (ECS, physics, events, plugins, networking)
+├── server/         # Game server
+├── ui/             # UI system (CEF, DirectGUI, web assets)
+└── plugins/        # Plugin modules
+    ├── chat/         # Chat system
+    ├── inventory/    # Inventory & equipment
+    ├── stats/        # Player statistics
+    ├── npc/          # NPC AI & rendering
+    ├── living_npc/   # Living world behaviors
+    ├── lighting/     # Dynamic lighting
+    ├── skybox/       # Skybox rendering
+    ├── postfx/       # Post-processing effects
+    ├── world_config/ # World configuration
+    └── quests/       # Quest journal
+```
 
 ## Quick Start
 
 ```bash
 # Install dependencies
-pip install -r requirements.txt
+pip install panda3d panda3d-gltf
 
-# Generate SSL certs (development)
-mkdir certs
-openssl req -x509 -newkey rsa:2048 -keyout certs/key.pem -out certs/cert.pem \
-  -days 365 -nodes -subj "/CN=localhost"
-
-# Run server
+# Server
 python -m nine.server.game_server
 
-# Run client
+# Client
 python client.py
+
+# Dev client (auto-connect)
+python dev_client.py
 ```
 
-## Documentation
+## UI Backends
 
-| Document | Description |
-|----------|-------------|
-| [DEVELOPMENT.md](docs/DEVELOPMENT.md) | Development roadmap and status |
-| [ECS_ARCHITECTURE.md](docs/ECS_ARCHITECTURE.md) | Unified ECS architecture |
-| [PLUGINS.md](docs/PLUGINS.md) | Plugin system documentation |
-| [EVENT_API.md](docs/EVENT_API.md) | Event reference |
-| [NPC_SYSTEM.md](docs/NPC_SYSTEM.md) | NPC system documentation |
-| [ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md) | Server administration |
-| [BACKLOG.md](docs/BACKLOG.md) | Known issues |
+| Backend | Description |
+|---------|-------------|
+| `cef` | CEF offscreen Chromium (recommended) |
+| `directgui` | Native Panda3D DirectGUI (fallback) |
 
-## Project Structure
+Set via `config.json`: `"ui_backend": "cef"`
 
+## Plugin Development
+
+```python
+from nine.core.plugins import PluginModule
+
+class MyPlugin(PluginModule):
+    def on_load(self):
+        self.app.taskMgr.add(self.update, "my-task")
+        self.event_manager.subscribe("event", self.handler)
+
+    def on_unload(self):
+        self.event_manager.unsubscribe("event", self.handler)
 ```
-nine/
-  core/           # ECS, physics, components, systems, networking
-  server/         # Game server
-  client/         # Game client
-  ui/             # CEF manager, webview API, HTML/CSS/JS
-  plugins/        # Plugin system
-    chat/         # Chat
-    combat/       # D&D combat (turn manager, dice, action economy)
-    npc/          # NPC (AI, renderer, living world)
-    inventory/    # Inventory, equipment, items
-    dnd/          # D&D character system
-    spells/       # Spell system
-    conditions/   # D&D conditions
-    quests/       # Quest journal
-    rest/         # Short/long rest
-  assets/         # Models, textures, sounds
-```
+
+Plugins use prefix naming: `sh_` (shared), `cl_` (client-only), `sv_` (server-only).
+
+## Game Modes
+
+Game-specific content lives in separate branches:
+- `dnd-gamemode-v0.1.0-alpha` — D&D 5e tabletop RPG mode
 
 ## License
 
-MIT License — see [LICENSE](LICENSE).
+See [LICENSE](LICENSE).

@@ -6,11 +6,9 @@ import math
 import os
 import ssl
 import struct
-import subprocess
 import time
 from collections import deque
 from dataclasses import dataclass, field
-from itertools import cycle
 from typing import Dict, List, Set, Optional, Tuple
 
 from direct.showbase.ShowBase import ShowBase
@@ -292,9 +290,6 @@ class GameServer(ShowBase):
         # Noclip tracking
         self.noclip_clients: Set[int] = set()
 
-        # Combat movement freeze tracking: combat_id -> set of player client_ids
-        self._combat_frozen_players: Dict[str, set] = {}
-
         # Setup World (uses Panda3D collision system, no Bullet)
         self.world = GameWorld(self.render)
 
@@ -319,23 +314,8 @@ class GameServer(ShowBase):
         # Subscribe to system messages
         self.event_manager.subscribe("system_message_to_client", self.handle_system_message)
 
-        # Subscribe to D&D character events
-        self.event_manager.subscribe("dnd_send_to_client", self.handle_dnd_send)
-        self.event_manager.subscribe("dnd_character_selected", self.handle_character_selected)
-
-        # Subscribe to combat events
-        self.event_manager.subscribe("combat_started", self.handle_combat_started)
-        self.event_manager.subscribe("combat_ended", self.handle_combat_ended)
-        self.event_manager.subscribe("combat_turn_start", self.handle_combat_turn_start)
-        self.event_manager.subscribe("combat_action_result", self.handle_combat_action_result)
-        self.event_manager.subscribe("combat_round_start", self.handle_combat_round_start)
-
-        # Acquaintance system events
-        self.event_manager.subscribe("introduction_completed_to_client", self.handle_dnd_send)
-        self.event_manager.subscribe("introduction_request_to_client", self.handle_dnd_send)
-        self.event_manager.subscribe("introduction_declined_to_client", self.handle_dnd_send)
-        self.event_manager.subscribe("acquaintance_name_updated_to_client", self.handle_dnd_send)
-        self.event_manager.subscribe("player_name_response_to_client", self.handle_dnd_send)
+        # Subscribe to generic plugin-to-client forwarding
+        self.event_manager.subscribe("send_to_client", self.handle_send_to_client)
 
         # NPC Manager will be set by NPC plugin during load
         self.npc_manager = None
@@ -653,20 +633,6 @@ class GameServer(ShowBase):
             self.logger.debug(f"[GameServer TICK #{self._tick_id}] world.update(dt={dt:.4f})")
         self.world.update(dt)
 
-        # 2.1. Check combat movement notifications
-        for cid, player in self.world.players.items():
-            if getattr(player, '_combat_movement_notified', False):
-                player._combat_movement_notified = False
-                self.event_manager.post("chat_send_to_clients", {
-                    "data": {
-                        "type": "chat_broadcast",
-                        "chat_type": "system",
-                        "from_name": "Бой",
-                        "message": "Передвижение исчерпано!",
-                    },
-                    "recipients": [cid]
-                })
-
         # 2.5. Update NPC system
         if self.npc_manager:
             self.npc_manager.update(dt)
@@ -681,11 +647,7 @@ class GameServer(ShowBase):
                 })
             self.event_manager.post("player_update", {"players": players_data})
 
-        # 2.6. Update simulated combat (NPC vs NPC real-time fights)
-        if hasattr(self, 'simulated_combat') and self.simulated_combat:
-            self.simulated_combat.update(dt)
-
-        # 2.7. Update game time (day/night cycle)
+        # 2.6. Update game time (day/night cycle)
         delta_hours = dt * (self._time_scale / 3600.0)
         self._game_time += delta_hours
         if self._game_time >= 24.0:
@@ -804,24 +766,6 @@ class GameServer(ShowBase):
             self.handle_auth(client_id, data)
         elif msg_type == "dev_auth":
             self.handle_dev_auth(client_id, data)
-        # D&D Character messages
-        elif msg_type == "character_list_request":
-            self.event_manager.post("dnd_character_list_request", {"client_id": client_id})
-        elif msg_type == "character_select":
-            self.event_manager.post("dnd_character_select", {
-                "client_id": client_id,
-                "character_uuid": data.get("character_uuid")
-            })
-        elif msg_type == "character_create":
-            self.event_manager.post("dnd_character_create", {
-                "client_id": client_id,
-                **{k: v for k, v in data.items() if k != "type"}
-            })
-        elif msg_type == "character_delete":
-            self.event_manager.post("dnd_character_delete", {
-                "client_id": client_id,
-                "character_uuid": data.get("character_uuid")
-            })
         elif msg_type == "input":
              self.world.handle_input(client_id, data.get("state", {}))
         elif msg_type == "move":  # Dev clients send their own position
@@ -830,26 +774,6 @@ class GameServer(ShowBase):
         elif msg_type == "chat_message":
             player = self.world.players.get(client_id)
             if player:
-                # In combat: chat costs a bonus action (brief utterance)
-                if hasattr(self, 'combat_manager') and self.combat_manager:
-                    combat = self.combat_manager.get_combat_for_entity(str(client_id))
-                    if combat:
-                        participant = combat.get_participant(str(client_id))
-                        if participant and combat.current_participant == participant:
-                            if not participant.has_bonus_action:
-                                # No bonus action — block message
-                                self.event_manager.post("chat_send_to_clients", {
-                                    "data": {
-                                        "type": "chat_broadcast",
-                                        "chat_type": "system",
-                                        "from_name": "Бой",
-                                        "message": "Нет бонусного действия для речи",
-                                    },
-                                    "recipients": [client_id]
-                                })
-                                return
-                            participant.has_bonus_action = False
-                # Send to plugin for processing
                 player_pos = player.get_state()["pos"]
                 self.event_manager.post("chat_message_received", {
                     "client_id": client_id,
@@ -888,29 +812,6 @@ class GameServer(ShowBase):
             self.event_manager.post("unequip_item", {
                 "uuid": client_id,
                 "equipment_slot": data.get("equipment_slot", ""),
-            })
-        elif msg_type == "combat_action":
-            # Боевое действие от клиента
-            self.event_manager.post("combat_action_request", {
-                "client_id": client_id,
-                "action_id": data.get("action_id"),
-                "target_id": data.get("target_id"),
-            })
-        elif msg_type == "combat_end_turn":
-            # Пропуск хода
-            self.event_manager.post("combat_end_turn_request", {
-                "client_id": client_id,
-            })
-        elif msg_type == "combat_movement":
-            # Движение в бою
-            self.event_manager.post("combat_movement_request", {
-                "client_id": client_id,
-                "destination": data.get("destination"),
-            })
-        elif msg_type == "combat_vote_cancel":
-            # Голос за отмену боя
-            self.event_manager.post("combat_vote_cancel", {
-                "client_id": client_id,
             })
         elif msg_type == "admin_action":
             self.event_manager.post("dm_panel_admin_action", {
@@ -962,20 +863,20 @@ class GameServer(ShowBase):
 
     def handle_auth(self, client_id, data):
         """
-        D&D авторизация с проверкой пароля.
-        Если аккаунт существует - проверяем пароль.
-        Если не существует - создаём новый.
-        После успеха отправляем auth_success и ждём character_select.
+        Simple name+password authentication.
+        If account exists - verify password.
+        If not - create a new account.
+        On success, add the player to the world and send welcome.
         """
         import uuid as uuid_module
 
-        account_name = data.get("name", "").strip()
+        player_name = data.get("name", "").strip()
         password = data.get("password", "")
 
-        if not account_name:
-            self.logger.warning(f"Client {client_id} sent auth request with no name. Disconnecting.")
+        if not player_name:
+            self.logger.warning(f"Client {client_id} sent auth request with no name.")
             asyncio.run_coroutine_threadsafe(
-                self.send_to_client(client_id, {"type": "auth_failed", "reason": "No account name provided"}),
+                self.send_to_client(client_id, {"type": "auth_failed", "reason": "No name provided"}),
                 self.asyncio_loop
             )
             return
@@ -988,50 +889,80 @@ class GameServer(ShowBase):
             )
             return
 
-        # Проверяем существует ли аккаунт
-        existing_account = self.db.get_player_by_name(account_name)
+        # Check if account exists
+        existing_account = self.db.get_player_by_name(player_name)
 
         if existing_account:
-            # Аккаунт существует - проверяем пароль
-            if not self.db.verify_player_password_by_name(account_name, password):
-                self.logger.warning(f"Wrong password for account '{account_name}' from client {client_id}")
+            # Account exists - verify password
+            if not self.db.verify_player_password_by_name(player_name, password):
+                self.logger.warning(f"Wrong password for account '{player_name}' from client {client_id}")
                 asyncio.run_coroutine_threadsafe(
                     self.send_to_client(client_id, {"type": "auth_failed", "reason": "wrong_password"}),
                     self.asyncio_loop
                 )
                 return
 
-            account_uuid = existing_account["uuid"]
-            self.logger.info(f"Account '{account_name}' authenticated (Client #{client_id})")
+            self.logger.info(f"Account '{player_name}' authenticated (Client #{client_id})")
         else:
-            # Аккаунт не существует - создаём новый
+            # Account does not exist - create new
             account_uuid = str(uuid_module.uuid4())
-            success = self.db.create_player(account_uuid, account_name, password)
+            success = self.db.create_player(account_uuid, player_name, password)
             if not success:
-                self.logger.error(f"Failed to create account '{account_name}'")
+                self.logger.error(f"Failed to create account '{player_name}'")
                 asyncio.run_coroutine_threadsafe(
                     self.send_to_client(client_id, {"type": "auth_failed", "reason": "Failed to create account"}),
                     self.asyncio_loop
                 )
                 return
+            self.logger.info(f"New account '{player_name}' created (Client #{client_id})")
 
-            self.logger.info(f"New account '{account_name}' created (Client #{client_id})")
+        # Check that name is not already in use by another connected player
+        for pid, p in self.world.players.items():
+            if p.name == player_name and pid != client_id:
+                self.logger.warning(f"Name '{player_name}' already in use by client {pid}")
+                asyncio.run_coroutine_threadsafe(
+                    self.send_to_client(client_id, {"type": "auth_failed", "reason": "Name already in use"}),
+                    self.asyncio_loop
+                )
+                return
 
-        # Уведомляем D&D плагин об успешной авторизации
-        self.event_manager.post("dnd_auth_success", {
-            "client_id": client_id,
-            "account_uuid": account_uuid,
-            "account_name": account_name
-        })
+        # Add player to the world
+        player = self.world.add_player(client_id, player_name)
+        self.logger.info(f"Player '{player_name}' (Client #{client_id}) entered the game world")
 
-        # Отправляем auth_success клиенту
+        # Register client in interest manager
+        self.interest_manager.register_client(client_id)
+        pos = player.get_state()["pos"] if player else [0, 0, 0]
+        self.interest_manager.update_client_position(client_id, pos[0], pos[1], pos[2])
+
+        # Notify plugins about player join
+        self.event_manager.post("player_joined", {"uuid": client_id, "name": player_name})
+
+        # Send welcome message
+        other_players_state = {
+            pid: p.get_state()
+            for pid, p in self.world.players.items()
+            if pid != client_id
+        }
+
+        welcome_data = {
+            "type": "welcome",
+            "id": client_id,
+            "pos": pos,
+            "players": other_players_state
+        }
         asyncio.run_coroutine_threadsafe(
-            self.send_to_client(client_id, {
-                "type": "auth_success",
-                "account_uuid": account_uuid,
-                "account_name": account_name
-            }),
-            self.asyncio_loop
+            self.send_to_client(client_id, welcome_data), self.asyncio_loop
+        )
+
+        # Notify other players about the new player
+        join_data = {
+            "type": "player_joined",
+            "id": client_id,
+            "player_info": player.get_state() if player else {"name": player_name}
+        }
+        asyncio.run_coroutine_threadsafe(
+            self.broadcast(join_data, exclude_ids=[client_id]), self.asyncio_loop
         )
 
     def handle_chat_send(self, event_data: dict):
@@ -1142,9 +1073,9 @@ class GameServer(ShowBase):
                 self.send_to_client(client_id, chat_data), self.asyncio_loop
             )
 
-    def handle_dnd_send(self, event_data: dict):
+    def handle_send_to_client(self, event_data: dict):
         """
-        Отправляет D&D сообщение конкретному клиенту.
+        Generic handler to send a message to a specific client.
         event_data = {
             "client_id": client_id,
             "data": message_data
@@ -1157,237 +1088,6 @@ class GameServer(ShowBase):
             asyncio.run_coroutine_threadsafe(
                 self.send_to_client(client_id, message_data), self.asyncio_loop
             )
-
-    def handle_character_selected(self, event_data: dict):
-        """
-        Обработчик выбора персонажа - создаёт игрока в мире.
-        event_data = {
-            "client_id": client_id,
-            "character": character_data dict
-        }
-        """
-        client_id = event_data.get("client_id")
-        character = event_data.get("character", {})
-        self.logger.info(f"[DND] handle_character_selected: client_id={client_id}, character_name={character.get('character_name')}")
-
-        if client_id is None or not character:
-            return
-
-        character_name = character.get("character_name", f"Player_{client_id}")
-        character_uuid = character.get("uuid")
-
-        # Проверяем что имя не занято другим игроком
-        for pid, p in self.world.players.items():
-            if p.name == character_name and pid != client_id:
-                self.logger.warning(f"Character name '{character_name}' already in use by another player")
-                asyncio.run_coroutine_threadsafe(
-                    self.send_to_client(client_id, {
-                        "type": "error",
-                        "message": "Character already in use by another player"
-                    }),
-                    self.asyncio_loop
-                )
-                return
-
-        # Получаем позицию персонажа из БД или используем стартовую
-        pos_x = character.get("pos_x", 8.0)
-        pos_y = character.get("pos_y", -3.0)
-        pos_z = character.get("pos_z", 1.0)
-
-        # Create player in world
-        player = self.world.add_player(client_id, character_name)
-        if player:
-            # Set position from save
-            player.actor.setPos(pos_x, pos_y, pos_z)
-
-        # Register client in interest manager
-        self.interest_manager.register_client(client_id)
-        self.interest_manager.update_client_position(client_id, pos_x, pos_y, pos_z)
-
-        self.logger.info(f"Character '{character_name}' (Client #{client_id}) entered the game world")
-
-        # Уведомляем плагины о входе игрока
-        self.event_manager.post("player_joined", {
-            "uuid": client_id,
-            "name": character_name,
-            "character_uuid": character_uuid,
-            "character_data": character
-        })
-
-        # Отправляем welcome сообщение с данными персонажа
-        other_players_state = {
-            pid: p.get_state()
-            for pid, p in self.world.players.items()
-            if pid != client_id
-        }
-
-        welcome_data = {
-            "type": "welcome",
-            "id": client_id,
-            "pos": [pos_x, pos_y, pos_z],
-            "players": other_players_state,
-            "character_data": character
-        }
-        asyncio.run_coroutine_threadsafe(
-            self.send_to_client(client_id, welcome_data), self.asyncio_loop
-        )
-
-        # Уведомляем других игроков о входе
-        join_data = {
-            "type": "player_joined",
-            "id": client_id,
-            "player_info": player.get_state() if player else {"name": character_name}
-        }
-        asyncio.run_coroutine_threadsafe(
-            self.broadcast(join_data, exclude_ids=[client_id]), self.asyncio_loop
-        )
-
-    # =========================================================================
-    # Combat Event Handlers
-    # =========================================================================
-
-    def handle_combat_started(self, event_data: dict):
-        """Broadcasts combat_started to all participants."""
-        combat_id = event_data.get("combat_id")
-        participants = event_data.get("participants", [])
-        turn_order = event_data.get("turn_order", [])
-        round_num = event_data.get("round", 1)
-
-        self.logger.info(f"[Combat] Combat {combat_id[:8]}... started with {len(participants)} participants")
-
-        # Get client IDs of player participants and freeze them
-        client_ids = []
-        combat_player_set = set()
-        for p in participants:
-            if p.get("is_player"):
-                try:
-                    cid = int(p.get("entity_id"))
-                    client_ids.append(cid)
-                    combat_player_set.add(cid)
-                    # Freeze player movement
-                    player = self.world.players.get(cid)
-                    if player:
-                        player.combat_frozen = True
-                except (ValueError, TypeError):
-                    pass
-        self._combat_frozen_players[combat_id] = combat_player_set
-
-        if client_ids:
-            combat_data = {
-                "type": "combat_started",
-                "combat_id": combat_id,
-                "participants": participants,
-                "turn_order": turn_order,
-                "round": round_num
-            }
-            asyncio.run_coroutine_threadsafe(
-                self.send_to_clients(combat_data, client_ids), self.asyncio_loop
-            )
-
-    def handle_combat_ended(self, event_data: dict):
-        """Broadcasts combat_ended to all participants."""
-        combat_id = event_data.get("combat_id")
-        reason = event_data.get("reason", "DM_ENDED")
-        winners = event_data.get("winners", [])
-
-        self.logger.info(f"[Combat] Combat {combat_id[:8]}... ended: {reason}")
-
-        # Unfreeze all players from this combat
-        combat_players = self._combat_frozen_players.pop(combat_id, set())
-        for cid in combat_players:
-            player = self.world.players.get(cid)
-            if player:
-                player.combat_frozen = False
-                player._combat_movement_budget = None
-
-        # Broadcast to all clients (they check if they were in combat)
-        combat_data = {
-            "type": "combat_ended",
-            "combat_id": combat_id,
-            "reason": reason,
-            "winners": winners
-        }
-        asyncio.run_coroutine_threadsafe(
-            self.broadcast(combat_data), self.asyncio_loop
-        )
-
-    def handle_combat_turn_start(self, event_data: dict):
-        """Broadcasts turn start to all participants."""
-        combat_id = event_data.get("combat_id")
-        entity_id = event_data.get("entity_id")
-        entity_name = event_data.get("entity_name", "")
-        is_player = event_data.get("is_player", False)
-        round_num = event_data.get("round", 1)
-        turn_order = event_data.get("turn_order", [])
-        current_index = event_data.get("current_index", 0)
-        resources = event_data.get("resources", {})
-
-        self.logger.debug(f"[Combat] Turn start: entity={entity_id} ({entity_name}), round={round_num}")
-
-        # Freeze/unfreeze players for combat movement blocking
-        combat_players = self._combat_frozen_players.get(combat_id, set())
-        for cid in combat_players:
-            player = self.world.players.get(cid)
-            if player:
-                player.combat_frozen = True
-                # Clear movement budget for non-active players
-                player._combat_movement_budget = None
-        if is_player:
-            try:
-                cid = int(entity_id)
-                player = self.world.players.get(cid)
-                if player:
-                    player.combat_frozen = False
-                    # Set movement budget: movement_speed(feet) * 0.3 ≈ Panda3D units
-                    movement_feet = resources.get("movement", 30.0)
-                    player._combat_movement_budget = movement_feet * 0.3
-                    player._combat_moved = 0.0
-                    player._combat_movement_notified = False
-                    pos = player.actor.getPos()
-                    player._combat_last_pos = (pos.x, pos.y)
-            except (ValueError, TypeError):
-                pass
-
-        turn_data = {
-            "type": "combat_turn_start",
-            "combat_id": combat_id,
-            "entity_id": entity_id,
-            "entity_name": entity_name,
-            "is_player": is_player,
-            "round": round_num,
-            "turn_order": turn_order,
-            "current_index": current_index,
-            "resources": resources
-        }
-        asyncio.run_coroutine_threadsafe(
-            self.broadcast(turn_data), self.asyncio_loop
-        )
-
-    def handle_combat_action_result(self, event_data: dict):
-        """Broadcasts action result to all participants."""
-        combat_data = {
-            "type": "combat_action_result",
-            **event_data
-        }
-        asyncio.run_coroutine_threadsafe(
-            self.broadcast(combat_data), self.asyncio_loop
-        )
-
-    def handle_combat_round_start(self, event_data: dict):
-        """Broadcasts round start to all participants."""
-        combat_id = event_data.get("combat_id")
-        round_num = event_data.get("round", 1)
-
-        self.logger.debug(f"[Combat] Round {round_num} started in combat {combat_id[:8]}...")
-
-        round_data = {
-            "type": "combat_round_start",
-            "combat_id": combat_id,
-            "round": round_num
-        }
-        asyncio.run_coroutine_threadsafe(
-            self.broadcast(round_data), self.asyncio_loop
-        )
 
     # =========================================================================
     # Inspect System
@@ -1406,9 +1106,7 @@ class GameServer(ShowBase):
         try:
             target_client_id = int(entity_id)
             if target_client_id in self.world.players:
-                # Use acquaintance system for name resolution
                 name = self._resolve_player_name_for_inspect(client_id, target_client_id)
-                description = self._get_player_description(target_client_id)
                 asyncio.run_coroutine_threadsafe(
                     self.send_to_client(client_id, {
                         "type": "inspect_result",
@@ -1441,52 +1139,9 @@ class GameServer(ShowBase):
         )
 
     def _resolve_player_name_for_inspect(self, viewer_client_id: int, target_client_id: int) -> str:
-        """Resolve player name using acquaintance system if available."""
-        # Self-inspect — always show own name
-        if viewer_client_id == target_client_id:
-            return self._get_player_character_name(target_client_id)
-
-        # Try acquaintance module
-        pm = getattr(self, 'plugin_manager', None)
-        if pm:
-            from nine.plugins.inventory.sv_acquaintance import AcquaintanceServerModule
-            loaded = pm.get_plugin("nine.inventory")
-            if loaded:
-                for module in loaded.modules:
-                    if isinstance(module, AcquaintanceServerModule):
-                        return module.get_displayed_name(viewer_client_id, target_client_id)
-
-        return "Неизвестный"
-
-    def _get_player_character_name(self, client_id: int) -> str:
-        """Get character name for a player."""
-        pm = getattr(self, 'plugin_manager', None)
-        if pm:
-            from nine.plugins.inventory.sv_character_sheet import CharacterSheetServerModule
-            loaded = pm.get_plugin("nine.inventory")
-            if loaded:
-                for module in loaded.modules:
-                    if isinstance(module, CharacterSheetServerModule):
-                        return module.get_character_name(client_id)
-        player = self.world.players.get(client_id)
-        return player.name if player else "Игрок"
-
-    def _get_player_description(self, client_id: int) -> str:
-        """Get character description for a player."""
-        pm = getattr(self, 'plugin_manager', None)
-        if pm:
-            from nine.plugins.inventory.sv_character_sheet import CharacterSheetServerModule
-            loaded = pm.get_plugin("nine.inventory")
-            if loaded:
-                for module in loaded.modules:
-                    if isinstance(module, CharacterSheetServerModule):
-                        char = module.get_character(client_id)
-                        if char:
-                            desc = char.get("description", {})
-                            if isinstance(desc, str):
-                                return desc
-                            return desc.get("appearance", "")
-        return ""
+        """Resolve player name for inspect."""
+        player = self.world.players.get(target_client_id)
+        return player.name if player else "Unknown"
 
     async def send_to_clients(self, data, client_ids):
         """Sends a message to specific clients."""

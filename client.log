@@ -1,0 +1,392 @@
+2026-02-22 22:19:03,336 - __main__ - INFO - Using UI backend: cef
+2026-02-22 22:19:03,422 - nine.ui.webview_api - INFO - Subscribed to game events
+2026-02-22 22:19:03,422 - nine.ui.webview_api - INFO - WebViewAPI initialized
+2026-02-22 22:19:03,426 - nine.ui.cef - INFO - CEFUIManager initialized
+2026-02-22 22:19:03,466 - nine.ui.cef - INFO - HTTP server started on port 18599
+2026-02-22 22:19:03,466 - nine.ui.cef - INFO - Texture card created
+2026-02-22 22:19:03,638 - nine.ui.cef - INFO - CEF initialized
+2026-02-22 22:19:03,639 - nine.ui.cef - INFO - Browser creation requested: http://127.0.0.1:18599/index.html
+2026-02-22 22:19:03,639 - nine.ui.cef - INFO - Setting up CEF input handlers...
+2026-02-22 22:19:03,639 - nine.ui.cef - INFO - CEF input handlers registered
+2026-02-22 22:19:03,640 - nine.ui.cef - INFO - CEF overlay created
+2026-02-22 22:19:03,640 - nine.ui.cef - INFO - Showing main menu (backgrounds: 1)
+2026-02-22 22:19:03,640 - __main__ - INFO - CEF UI initialized successfully
+2026-02-22 22:19:03,640 - nine.core.scene_optimizer - INFO - SceneOptimizer initialized
+2026-02-22 22:19:03,640 - __main__ - INFO - Client initialized.
+2026-02-22 22:19:03,640 - nine.ui.cef - INFO - Showing main menu (backgrounds: 1)
+2026-02-22 22:19:03,666 - nine.ui.cef - INFO - Browser created
+2026-02-22 22:19:03,666 - nine.ui.cef - INFO - Browser host acquired
+2026-02-22 22:19:03,757 - nine.ui.cef - INFO - First frame rendered
+2026-02-22 22:19:03,781 - nine.ui.cef - INFO - [JS] [PanelManager] Initialized
+2026-02-22 22:19:03,781 - nine.ui.cef - INFO - [JS] [Router] Initialized
+2026-02-22 22:19:03,782 - nine.ui.cef - INFO - [JS] [Router] Registered screen: main-menu
+2026-02-22 22:19:03,782 - nine.ui.cef - INFO - [JS] [Router] Registered screen: loading-screen
+2026-02-22 22:19:03,782 - nine.ui.cef - INFO - [JS] [Router] Registered screen: login-menu
+2026-02-22 22:19:03,787 - nine.ui.cef - INFO - [JS] [Router] Registered screen: in-game-menu
+2026-02-22 22:19:03,787 - nine.ui.cef - INFO - [JS] [Router] Registered screen: settings-menu
+2026-02-22 22:19:03,787 - nine.ui.cef - INFO - [JS] [Router] Registered screen: character-select
+2026-02-22 22:19:03,787 - nine.ui.cef - INFO - [JS] [Router] Registered screen: character-create
+2026-02-22 22:19:03,788 - nine.ui.cef - INFO - [JS] [Router] Registered screen: guide
+2026-02-22 22:19:03,788 - nine.ui.cef - INFO - [JS] [Main] niNE Web UI starting...
+2026-02-22 22:19:03,788 - nine.ui.cef - INFO - [JS] [WebViewer] Created
+2026-02-22 22:19:03,788 - nine.ui.cef - INFO - [JS] [Main] DOM ready
+2026-02-22 22:19:03,789 - nine.ui.cef - INFO - Page loaded
+2026-02-22 22:19:03,789 - nine.ui.cef - INFO - Replaying 2 queued JS calls
+2026-02-22 22:19:03,790 - nine.ui.cef - INFO - [JS] An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing.
+2026-02-22 22:19:03,791 - nine.ui.cef - INFO - Page loaded
+2026-02-22 22:19:03,792 - nine.ui.cef - INFO - [JS] [WebViewer] Event listeners attached
+2026-02-22 22:19:03,792 - nine.ui.cef - INFO - [JS] [WebViewer] Rendered
+2026-02-22 22:19:03,792 - nine.ui.cef - INFO - [JS] [ChatWindow] Event listeners attached
+2026-02-22 22:19:03,792 - nine.ui.cef - INFO - [JS] [ChatWindow] Rendered
+2026-02-22 22:19:03,792 - nine.ui.cef - INFO - [JS] [GameHUD] Initialized
+2026-02-22 22:19:03,797 - nine.ui.cef - INFO - [JS] [CEF] pyapi bridge injected
+2026-02-22 22:19:03,797 - nine.ui.cef - INFO - [JS] [Router] Navigating to: main-menu [object Object]
+2026-02-22 22:19:03,797 - nine.ui.cef - INFO - [JS] [MainMenu] Created
+2026-02-22 22:19:03,797 - nine.ui.cef - INFO - [JS] [Main] Python message: navigate
+2026-02-22 22:19:03,798 - nine.ui.cef - INFO - [JS] [Router] Navigating to: main-menu [object Object]
+2026-02-22 22:19:03,798 - nine.ui.cef - INFO - [JS] [Router] Destroying previous screen: MainMenu
+2026-02-22 22:19:03,798 - nine.ui.cef - INFO - [JS] [MainMenu] Destroyed
+2026-02-22 22:19:03,798 - nine.ui.cef - INFO - [JS] [MainMenu] Created
+2026-02-22 22:19:03,798 - nine.ui.cef - INFO - [JS] [Main] Python message: navigate
+2026-02-22 22:19:03,798 - nine.ui.cef - INFO - [JS] [CharacterSheet] Initialized
+2026-02-22 22:19:03,799 - nine.ui.cef - INFO - [JS] [MainMenu] Background set: /assets/materials/textures/backgrounds/main_menu.gif
+2026-02-22 22:19:03,799 - nine.ui.cef - INFO - [JS] [MainMenu] Event listeners attached
+2026-02-22 22:19:03,799 - nine.ui.cef - INFO - [JS] [MainMenu] Rendered
+2026-02-22 22:19:03,799 - nine.ui.cef - INFO - [JS] [Router] Rendered screen: main-menu
+2026-02-22 22:19:03,799 - nine.ui.cef - INFO - [JS] [SoundManager] Autoplay blocked, waiting for user gesture
+2026-02-22 22:19:03,804 - nine.ui.cef - INFO - [JS] [MainMenu] Background set: /assets/materials/textures/backgrounds/main_menu.gif
+2026-02-22 22:19:03,804 - nine.ui.cef - INFO - [JS] [MainMenu] Event listeners attached
+2026-02-22 22:19:03,804 - nine.ui.cef - INFO - [JS] [MainMenu] Rendered
+2026-02-22 22:19:03,804 - nine.ui.cef - INFO - [JS] [Router] Rendered screen: main-menu
+2026-02-22 22:19:03,804 - nine.ui.cef - INFO - [JS] [SoundManager] Autoplay blocked, waiting for user gesture
+2026-02-22 22:19:03,804 - nine.ui.cef - INFO - [JS] [SpellbookPanel] Initialized
+2026-02-22 22:19:03,869 - nine.ui.cef - INFO - [JS] [QuestLog] Initialized
+2026-02-22 22:19:04,050 - nine.ui.cef - INFO - [JS] [RestDialog] Initialized
+2026-02-22 22:19:04,073 - nine.ui.cef - INFO - [JS] [ContextMenu] Initialized
+2026-02-22 22:19:04,077 - nine.ui.cef - INFO - [JS] [AdminPanel] Initialized
+2026-02-22 22:19:04,077 - nine.ui.cef - INFO - [JS] [PanelManager] Registered panel: character-sheet
+2026-02-22 22:19:04,078 - nine.ui.cef - INFO - [JS] [PanelManager] Registered panel: spellbook
+2026-02-22 22:19:04,078 - nine.ui.cef - INFO - [JS] [PanelManager] Registered panel: quest-log
+2026-02-22 22:19:04,078 - nine.ui.cef - INFO - [JS] [PanelManager] Registered panel: admin-panel
+2026-02-22 22:19:04,078 - nine.ui.cef - INFO - [JS] [API] Calling Python: get_settings()
+2026-02-22 22:19:04,078 - nine.ui.cef - INFO - JS call: get_settings({})
+2026-02-22 22:19:04,080 - nine.ui.cef - INFO - [JS] [SoundManager] Initialized
+2026-02-22 22:19:04,080 - nine.ui.cef - INFO - [JS] [Main] niNE Web UI initialized, waiting for Python navigation
+2026-02-22 22:19:06,298 - nine.ui.cef - INFO - [JS] [SoundManager] Menu music started
+2026-02-22 22:19:06,682 - nine.ui.cef - INFO - [JS] [MainMenu] PLAY clicked
+2026-02-22 22:19:06,682 - nine.ui.cef - INFO - [JS] [API] Calling Python: open_login_menu()
+2026-02-22 22:19:06,682 - nine.ui.cef - INFO - JS call: open_login_menu({})
+2026-02-22 22:19:06,683 - nine.ui.webview_api - INFO - Open login menu called from JavaScript
+2026-02-22 22:19:06,683 - nine.ui.cef - INFO - Showing login menu
+2026-02-22 22:19:06,698 - nine.ui.cef - INFO - [JS] [Router] Navigating to: login-menu [object Object]
+2026-02-22 22:19:06,698 - nine.ui.cef - INFO - [JS] [Router] Destroying previous screen: MainMenu
+2026-02-22 22:19:06,699 - nine.ui.cef - INFO - [JS] [MainMenu] Destroyed
+2026-02-22 22:19:06,699 - nine.ui.cef - INFO - [JS] [LoginMenu] Created
+2026-02-22 22:19:06,699 - nine.ui.cef - INFO - [JS] [Main] Python message: navigate
+2026-02-22 22:19:06,732 - nine.ui.cef - INFO - [JS] [LoginMenu] Event listeners attached
+2026-02-22 22:19:06,733 - nine.ui.cef - INFO - [JS] [LoginMenu] Rendered
+2026-02-22 22:19:06,733 - nine.ui.cef - INFO - [JS] [Router] Rendered screen: login-menu
+2026-02-22 22:19:06,734 - nine.ui.cef - INFO - [JS] Uncaught TypeError: e.target.closest is not a function
+2026-02-22 22:19:09,648 - nine.ui.cef - INFO - [JS] [LoginMenu] Attempting login: MilkiWinky -> localhost:9009
+2026-02-22 22:19:09,649 - nine.ui.cef - INFO - [JS] [API] Calling Python: attempt_login(localhost:9009, MilkiWinky)
+2026-02-22 22:19:09,649 - nine.ui.cef - INFO - JS call: attempt_login({'ip': 'localhost:9009', 'name': 'MilkiWinky', 'password': '1111'})
+2026-02-22 22:19:09,651 - nine.ui.webview_api - INFO - Attempt login: MilkiWinky -> localhost:9009
+2026-02-22 22:19:09,651 - nine.ui.cef - INFO - Hiding login menu
+2026-02-22 22:19:09,669 - nine.ui.cef - INFO - [JS] [Router] Navigating to: loading-screen [object Object]
+2026-02-22 22:19:09,669 - nine.ui.cef - INFO - [JS] [Router] Destroying previous screen: LoginMenu
+2026-02-22 22:19:09,669 - nine.ui.cef - INFO - [JS] [LoginMenu] Destroyed
+2026-02-22 22:19:09,669 - nine.ui.cef - INFO - [JS] [LoadingScreen] Created
+2026-02-22 22:19:09,669 - nine.ui.cef - INFO - [JS] [Main] Python message: navigate
+2026-02-22 22:19:09,669 - nine.ui.cef - INFO - [JS] [Main] Python message: loading_text
+2026-02-22 22:19:09,699 - nine.ui.cef - INFO - [JS] [LoadingScreen] Rendered
+2026-02-22 22:19:09,699 - nine.ui.cef - INFO - [JS] [Router] Rendered screen: loading-screen
+2026-02-22 22:19:09,699 - nine.ui.cef - INFO - [JS] Uncaught TypeError: e.target.closest is not a function
+2026-02-22 22:19:09,798 - __main__ - INFO - Connection to localhost:9009 successful.
+2026-02-22 22:19:09,815 - nine.ui.cef - INFO - [JS] [Main] Python message: loading_progress
+2026-02-22 22:19:09,940 - __main__ - INFO - Auth success, account: 787bae07-4a70-48e7-8b0d-b71824a242fe
+2026-02-22 22:19:10,005 - __main__ - INFO - Character list received: 1 characters
+2026-02-22 22:19:10,005 - nine.ui.cef - INFO - show_character_select: 1 chars, max=2
+2026-02-22 22:19:10,005 - nine.ui.cef - INFO -   char[0]: uuid=b045a8b9-c861-4e9a-903a-391fc122d42a, name=Орналдо
+2026-02-22 22:19:10,015 - nine.ui.cef - INFO - [JS] [Router] Navigating to: character-select [object Object]
+2026-02-22 22:19:10,015 - nine.ui.cef - INFO - [JS] [Router] Destroying previous screen: LoadingScreen
+2026-02-22 22:19:10,016 - nine.ui.cef - INFO - [JS] [LoadingScreen] Destroyed
+2026-02-22 22:19:10,016 - nine.ui.cef - INFO - [JS] [CharacterSelect] Created
+2026-02-22 22:19:10,016 - nine.ui.cef - INFO - [JS] [Main] Python message: navigate
+2026-02-22 22:19:10,016 - nine.ui.cef - INFO - [JS] [Main] Python message: game_state_changed
+2026-02-22 22:19:10,016 - nine.ui.cef - INFO - [JS] [CharacterSelect] Event listeners attached
+2026-02-22 22:19:10,016 - nine.ui.cef - INFO - [JS] [CharacterSelect] Rendered
+2026-02-22 22:19:10,016 - nine.ui.cef - INFO - [JS] [Router] Rendered screen: character-select
+2026-02-22 22:19:10,032 - nine.ui.cef - INFO - [JS] Uncaught TypeError: e.target.closest is not a function
+2026-02-22 22:19:12,332 - nine.ui.cef - INFO - [JS] [CharacterSelect] Character selected: b045a8b9-c861-4e9a-903a-391fc122d42a
+2026-02-22 22:19:12,333 - nine.ui.cef - INFO - [JS] [API] Calling Python: select_character(b045a8b9-c861-4e9a-903a-391fc122d42a)
+2026-02-22 22:19:12,333 - nine.ui.cef - INFO - JS call: select_character({'character_uuid': 'b045a8b9-c861-4e9a-903a-391fc122d42a'})
+2026-02-22 22:19:12,349 - nine.ui.webview_api - INFO - Select character: b045a8b9-c861-4e9a-903a-391fc122d42a
+2026-02-22 22:19:12,349 - __main__ - INFO - Character selected from UI: b045a8b9-c861-4e9a-903a-391fc122d42a
+2026-02-22 22:19:12,442 - __main__ - ERROR - Failed to load map : Could not load model file(s): ['']
+2026-02-22 22:19:12,442 - __main__ - INFO - Generating procedural test level...
+2026-02-22 22:19:12,443 - __main__ - INFO - Test level generated: ground + 10 blocks (matching server collision)
+2026-02-22 22:19:12,443 - __main__ - INFO - World config received and applied
+2026-02-22 22:19:12,443 - PluginManager - INFO - Поиск плагинов в: nine/plugins
+2026-02-22 22:19:12,447 - Plugin.nine.dnd - INFO - D&D Character System инициализирована
+2026-02-22 22:19:12,447 - PluginManager - INFO - Плагин загружен: D&D Character System v1.0.0 (0 модулей)
+2026-02-22 22:19:12,447 - Plugin.nine.world_config - INFO - World Config плагин инициализирован
+2026-02-22 22:19:12,447 - PluginManager - INFO - Плагин загружен: World Configuration v1.0.0 (0 модулей)
+2026-02-22 22:19:12,447 - Plugin.nine.lighting - INFO - Клиентский модуль освещения загружен
+2026-02-22 22:19:12,447 - Plugin.nine.lighting - INFO - Lighting плагин инициализирован
+2026-02-22 22:19:12,447 - PluginManager - INFO - Плагин загружен: Dynamic Lighting v1.0.0 (1 модулей)
+2026-02-22 22:19:12,448 - Plugin.nine.skybox - INFO - Клиентский модуль скайбокса загружен
+2026-02-22 22:19:12,448 - Plugin.nine.skybox - INFO - Skybox плагин инициализирован
+2026-02-22 22:19:12,448 - PluginManager - INFO - Плагин загружен: Skybox System v1.0.0 (1 модулей)
+2026-02-22 22:19:12,449 - Plugin.nine.stats - INFO - D&D HUD загружен
+2026-02-22 22:19:12,449 - Plugin.nine.stats - INFO - Система характеристик инициализирована
+2026-02-22 22:19:12,449 - PluginManager - INFO - Плагин загружен: Stats System v1.0.0 (1 модулей)
+2026-02-22 22:19:12,455 - Plugin.nine.inventory - INFO - Клиентский модуль листа персонажа загружен
+2026-02-22 22:19:12,458 - Plugin.nine.inventory - INFO - Загружено предметов: n_bucks, iron_sword, arcane_focus, artisans_tools, belt_pouch, common_clothes, con_tools, costume, crowbar, dark_common_clothes, dice_set, disguise_kit, explorers_pack, favor_of_admirer, fine_clothes, herbalism_kit, holy_symbol, hunting_trap, incense, ink, insignia_of_rank, iron_pot, letter_from_colleague, lute, musical_instrument, prayer_book, quill, scroll_case, scroll_of_pedigree, shovel, signet_ring, spellbook, thieves_tools, travelers_clothes, trophy, vestments, winter_blanket, health_potion, sushi, battleaxe, blowgun, club, dagger, dart, flail, glaive, greataxe, greatclub, greatsword, halberd, hand_crossbow, handaxe, heavy_crossbow, javelin, lance, light_crossbow, light_hammer, longbow, longsword, mace, maul, morningstar, net, pike, quarterstaff, rapier, scimitar, shortbow, shortsword, sickle, sling, spear, trident, warhammer, warpick, whip, amulet_of_health, amulet_of_nondetection, belt_of_dwarvenkind, belt_of_hill_giant_strength, boots_of_elvenkind, boots_of_speed, bracers_of_archery, bracers_of_defense, circlet_of_blasting, cloak_of_displacement, cloak_of_elvenkind, cloak_of_many_fashions, cloak_of_protection, cloak_of_the_bat, gloves_of_thievery, medallion_of_thoughts, periapt_of_wound_closure, ring_of_invisibility, ring_of_protection, ring_of_regeneration, ring_of_resistance_fire, ring_of_spell_storing, breastplate, chainmail, chain_shirt, half_plate, hide_armor, leather_armor, padded_armor, plate_armor, ring_mail, scale_mail, splint_armor, steel_shield, studded_leather, wooden_shield
+2026-02-22 22:19:12,458 - Plugin.nine.inventory - INFO - Система инвентаря инициализирована
+2026-02-22 22:19:12,458 - PluginManager - INFO - Плагин загружен: Inventory System v1.0.0 (1 модулей)
+2026-02-22 22:19:12,467 - Plugin.nine.chat - INFO - Клиентский модуль UI чата загружен
+2026-02-22 22:19:12,467 - Plugin.nine.chat - INFO - Система чата инициализирована
+2026-02-22 22:19:12,467 - PluginManager - INFO - Плагин загружен: Chat System v1.0.0 (1 модулей)
+2026-02-22 22:19:12,474 - Plugin.nine.npc - INFO - NPC Client Module loaded
+2026-02-22 22:19:12,474 - Plugin.nine.npc - INFO - D&D NPC System инициализирована
+2026-02-22 22:19:12,474 - PluginManager - INFO - Плагин загружен: D&D NPC System v0.1.0 (1 модулей)
+2026-02-22 22:19:12,479 - Plugin.nine.combat - INFO - Action Bar loaded
+2026-02-22 22:19:12,479 - Plugin.nine.combat - INFO - Combat UI loaded
+2026-02-22 22:19:12,479 - Plugin.nine.combat - INFO - Initiative Display loaded
+2026-02-22 22:19:12,479 - Plugin.nine.combat - INFO - Spectator Mode loaded
+2026-02-22 22:19:12,479 - Plugin.nine.combat - INFO - Target Selector loaded
+2026-02-22 22:19:12,479 - Plugin.nine.combat - INFO - D&D Combat System инициализирована
+2026-02-22 22:19:12,480 - PluginManager - INFO - Плагин загружен: D&D Combat System v0.1.0 (5 модулей)
+2026-02-22 22:19:12,482 - Plugin.nine.quests - INFO - Quest Log клиентский модуль загружен (J)
+2026-02-22 22:19:12,482 - Plugin.nine.quests - INFO - Quests система загружена
+2026-02-22 22:19:12,482 - PluginManager - INFO - Плагин загружен: Quests v0.1.0 (1 модулей)
+2026-02-22 22:19:12,484 - Plugin.nine.conditions - INFO - Condition Display клиентский модуль загружен
+2026-02-22 22:19:12,484 - Plugin.nine.conditions - INFO - Conditions система загружена
+2026-02-22 22:19:12,484 - PluginManager - INFO - Плагин загружен: Conditions v0.1.0 (1 модулей)
+2026-02-22 22:19:12,487 - Plugin.nine.spells - INFO - Загружено 37 заклинаний
+2026-02-22 22:19:12,487 - Plugin.nine.spells - INFO - Книга заклинаний загружена (K)
+2026-02-22 22:19:12,487 - Plugin.nine.spells - INFO - Spells система загружена
+2026-02-22 22:19:12,487 - PluginManager - INFO - Плагин загружен: Spells v0.1.0 (1 модулей)
+2026-02-22 22:19:12,488 - Plugin.nine.rest - INFO - Rest UI клиентский модуль загружен
+2026-02-22 22:19:12,488 - Plugin.nine.rest - INFO - Rest система загружена
+2026-02-22 22:19:12,488 - PluginManager - INFO - Плагин загружен: Rest v0.1.0 (1 модулей)
+2026-02-22 22:19:12,488 - Plugin.nine.dm_panel - INFO - DM Panel клиентский модуль загружен
+2026-02-22 22:19:12,488 - Plugin.nine.dm_panel - INFO - DM Panel загружена
+2026-02-22 22:19:12,488 - PluginManager - INFO - Плагин загружен: DM Panel v0.1.0 (1 модулей)
+2026-02-22 22:19:12,491 - Plugin.nine.living_npc - INFO - Living NPC система загружена
+2026-02-22 22:19:12,491 - PluginManager - INFO - Плагин загружен: Living NPC v0.1.0 (0 модулей)
+2026-02-22 22:19:12,491 - Plugin.nine.postfx - INFO - PostFX module loaded
+2026-02-22 22:19:12,491 - PluginManager - INFO - Плагин загружен: Post-Processing Effects v1.0.0 (1 модулей)
+2026-02-22 22:19:12,491 - __main__ - INFO - Replaying 65 buffered events after plugin load
+2026-02-22 22:19:12,491 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,491 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,491 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,492 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,492 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,492 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,492 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,492 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,492 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,492 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,492 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,492 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,492 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,492 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,492 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,492 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,492 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,492 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,492 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,492 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,492 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,492 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,492 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,492 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,492 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,493 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,493 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,493 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,493 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,493 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,493 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,493 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,493 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,493 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,493 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,493 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,493 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,493 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,493 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,493 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,493 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,493 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,493 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,493 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,493 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,493 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,493 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,493 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,493 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,493 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,494 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,494 - __main__ - INFO -   Replaying: world_state_received
+2026-02-22 22:19:12,494 - __main__ - INFO -   Replaying: world_config
+2026-02-22 22:19:12,494 - Plugin.nine.lighting - INFO - Освещение применено
+2026-02-22 22:19:12,580 - Plugin.nine.skybox - INFO - Скайбокс создан: nine/assets/materials/textures/sky.png
+2026-02-22 22:19:12,580 - __main__ - INFO -   Replaying: stats_update
+2026-02-22 22:19:12,580 - __main__ - INFO -   Replaying: equipment_update
+2026-02-22 22:19:12,580 - __main__ - INFO -   Replaying: inventory_update
+2026-02-22 22:19:12,581 - __main__ - INFO -   Replaying: inventory_update
+2026-02-22 22:19:12,581 - __main__ - INFO -   Replaying: inventory_update
+2026-02-22 22:19:12,581 - __main__ - INFO -   Replaying: inventory_update
+2026-02-22 22:19:12,581 - __main__ - INFO -   Replaying: inventory_update
+2026-02-22 22:19:12,581 - __main__ - INFO -   Replaying: inventory_update
+2026-02-22 22:19:12,581 - __main__ - INFO -   Replaying: inventory_update
+2026-02-22 22:19:12,581 - __main__ - INFO -   Replaying: inventory_update
+2026-02-22 22:19:12,581 - __main__ - INFO -   Replaying: inventory_update
+2026-02-22 22:19:12,581 - __main__ - INFO -   Replaying: inventory_update
+2026-02-22 22:19:12,582 - nine.ui.cef - INFO - Entered game state
+2026-02-22 22:19:12,591 - __main__ - INFO - Loaded actor model: nine/assets/models/base.bam
+2026-02-22 22:19:12,591 - __main__ - INFO - Available animations: ['idle', 'left_strafe', 'right_strafe', 'run_forward', 't-pose', 'walk_backward', 'walk_forward']
+2026-02-22 22:19:12,591 - Plugin.nine.npc - INFO - [NPC_RENDERER] Creating NPC: 2f90fdec, name=Торговец
+2026-02-22 22:19:12,594 - Plugin.nine.npc - INFO - [NPC_RENDERER] Creating NPC: d87e0446, name=Стражник
+2026-02-22 22:19:12,595 - Plugin.nine.npc - INFO - [NPC_RENDERER] Creating NPC: 7f653c0f, name=Стражник
+2026-02-22 22:19:12,622 - nine.ui.cef - INFO - [JS] [Router] Navigating to: loading-screen [object Object]
+2026-02-22 22:19:12,622 - nine.ui.cef - INFO - [JS] [Router] Destroying previous screen: CharacterSelect
+2026-02-22 22:19:12,622 - nine.ui.cef - INFO - [JS] [CharacterSelect] Destroyed
+2026-02-22 22:19:12,622 - nine.ui.cef - INFO - [JS] [LoadingScreen] Created
+2026-02-22 22:19:12,622 - nine.ui.cef - INFO - [JS] [Main] Python message: navigate
+2026-02-22 22:19:12,622 - nine.ui.cef - INFO - [JS] [Main] Python message: loading_text
+2026-02-22 22:19:12,623 - nine.ui.cef - INFO - [JS] [Main] Python message: loading_progress
+2026-02-22 22:19:12,623 - nine.ui.cef - INFO - [JS] [LoadingScreen] Rendered
+2026-02-22 22:19:12,623 - nine.ui.cef - INFO - [JS] [Router] Rendered screen: loading-screen
+2026-02-22 22:19:12,623 - nine.ui.cef - INFO - [JS] [Main] Python message: loading_progress
+2026-02-22 22:19:12,623 - nine.ui.cef - INFO - [JS] [Router] Navigating to: hidden [object Object]
+2026-02-22 22:19:12,623 - nine.ui.cef - INFO - [JS] [LoadingScreen] Destroyed
+2026-02-22 22:19:12,623 - nine.ui.cef - INFO - [JS] [Router] UI hidden
+2026-02-22 22:19:12,623 - nine.ui.cef - INFO - [JS] [Main] Python message: navigate
+2026-02-22 22:19:12,623 - nine.ui.cef - INFO - [JS] Uncaught TypeError: e.target.closest is not a function
+2026-02-22 22:19:12,628 - nine.ui.cef - INFO - [JS] [Main] Python message: equipment_update
+2026-02-22 22:19:12,628 - nine.ui.cef - INFO - [JS] [Main] Python message: inventory_update
+2026-02-22 22:19:12,628 - nine.ui.cef - INFO - [JS] [Main] Python message: inventory_update
+2026-02-22 22:19:12,628 - nine.ui.cef - INFO - [JS] [Main] Python message: inventory_update
+2026-02-22 22:19:12,628 - nine.ui.cef - INFO - [JS] [Main] Python message: inventory_update
+2026-02-22 22:19:12,628 - nine.ui.cef - INFO - [JS] [Main] Python message: inventory_update
+2026-02-22 22:19:12,628 - nine.ui.cef - INFO - [JS] [Main] Python message: inventory_update
+2026-02-22 22:19:12,628 - nine.ui.cef - INFO - [JS] [Main] Python message: inventory_update
+2026-02-22 22:19:12,628 - nine.ui.cef - INFO - [JS] [Main] Python message: inventory_update
+2026-02-22 22:19:12,628 - nine.ui.cef - INFO - [JS] [Main] Python message: inventory_update
+2026-02-22 22:19:12,628 - nine.ui.cef - INFO - [JS] [Main] Python message: inventory_update
+2026-02-22 22:19:12,629 - nine.ui.cef - INFO - [JS] [Router] Navigating to: hidden [object Object]
+2026-02-22 22:19:12,629 - nine.ui.cef - INFO - [JS] [Router] UI hidden
+2026-02-22 22:19:12,629 - nine.ui.cef - INFO - [JS] [Main] Python message: navigate
+2026-02-22 22:19:12,629 - nine.ui.cef - INFO - [JS] [Main] Python message: game_state_changed
+2026-02-22 22:19:12,629 - nine.ui.cef - INFO - [JS] [SoundManager] Menu music stopped
+2026-02-22 22:19:12,629 - nine.ui.cef - INFO - [JS] [Router] Navigating to: hidden [object Object]
+2026-02-22 22:19:12,629 - nine.ui.cef - INFO - [JS] [Router] UI hidden
+2026-02-22 22:19:12,629 - nine.ui.cef - INFO - [JS] [Main] Python message: navigate
+2026-02-22 22:19:12,629 - nine.ui.cef - INFO - [JS] [Main] Python message: character_sheet
+2026-02-22 22:19:12,949 - Plugin.nine.postfx - ERROR - Failed to setup pixelation: type object 'panda3d.core.GraphicsOutput' has no attribute 'BF_refuse_window'
+2026-02-22 22:19:32,217 - nine.ui.cef - INFO - [JS] [Main] Python message: close_panel
+2026-02-22 22:19:32,217 - nine.ui.cef - INFO - [JS] [Router] Navigating to: in-game-menu [object Object]
+2026-02-22 22:19:32,217 - nine.ui.cef - INFO - [JS] [InGameMenu] Created
+2026-02-22 22:19:32,218 - nine.ui.cef - INFO - [JS] [Main] Python message: navigate
+2026-02-22 22:19:32,234 - nine.ui.cef - INFO - [JS] [InGameMenu] Event listeners attached
+2026-02-22 22:19:32,234 - nine.ui.cef - INFO - [JS] [InGameMenu] Rendered
+2026-02-22 22:19:32,234 - nine.ui.cef - INFO - [JS] [Router] Rendered screen: in-game-menu
+2026-02-22 22:19:33,266 - nine.ui.cef - INFO - [JS] [InGameMenu] Disconnect clicked
+2026-02-22 22:19:34,199 - nine.ui.cef - INFO - [JS] [InGameMenu] Disconnecting...
+2026-02-22 22:19:34,199 - nine.ui.cef - INFO - [JS] [API] Calling Python: disconnect()
+2026-02-22 22:19:34,199 - nine.ui.cef - INFO - JS call: disconnect({})
+2026-02-22 22:19:34,216 - nine.ui.webview_api - INFO - Disconnect called from JavaScript
+2026-02-22 22:19:34,234 - __main__ - INFO - Connection closed. Cleaning up game state.
+2026-02-22 22:19:34,235 - nine.core.scene_optimizer - INFO - [Optimizer] Cleaned up
+2026-02-22 22:19:34,235 - Plugin.nine.postfx - INFO - PostFX module unloaded
+2026-02-22 22:19:34,235 - PluginManager - INFO - Плагин выгружен: Post-Processing Effects
+2026-02-22 22:19:34,235 - Plugin.nine.living_npc - INFO - Living NPC система выгружена
+2026-02-22 22:19:34,235 - PluginManager - INFO - Плагин выгружен: Living NPC
+2026-02-22 22:19:34,235 - Plugin.nine.dm_panel - INFO - DM Panel клиентский модуль выгружен
+2026-02-22 22:19:34,235 - Plugin.nine.dm_panel - INFO - DM Panel выгружена
+2026-02-22 22:19:34,235 - PluginManager - INFO - Плагин выгружен: DM Panel
+2026-02-22 22:19:34,235 - Plugin.nine.rest - INFO - Rest UI клиентский модуль выгружен
+2026-02-22 22:19:34,235 - Plugin.nine.rest - INFO - Rest система выгружена
+2026-02-22 22:19:34,235 - PluginManager - INFO - Плагин выгружен: Rest
+2026-02-22 22:19:34,235 - Plugin.nine.spells - INFO - Книга заклинаний выгружена
+2026-02-22 22:19:34,235 - Plugin.nine.spells - INFO - Spells система выгружена
+2026-02-22 22:19:34,235 - PluginManager - INFO - Плагин выгружен: Spells
+2026-02-22 22:19:34,235 - Plugin.nine.conditions - INFO - Condition Display клиентский модуль выгружен
+2026-02-22 22:19:34,235 - Plugin.nine.conditions - INFO - Conditions система выгружена
+2026-02-22 22:19:34,235 - PluginManager - INFO - Плагин выгружен: Conditions
+2026-02-22 22:19:34,235 - Plugin.nine.quests - INFO - Quest Log клиентский модуль выгружен
+2026-02-22 22:19:34,235 - Plugin.nine.quests - INFO - Quests система выгружена
+2026-02-22 22:19:34,235 - PluginManager - INFO - Плагин выгружен: Quests
+2026-02-22 22:19:34,236 - Plugin.nine.combat - INFO - Target Selector unloaded
+2026-02-22 22:19:34,236 - Plugin.nine.combat - INFO - Spectator Mode unloaded
+2026-02-22 22:19:34,236 - Plugin.nine.combat - INFO - Initiative Display unloaded
+2026-02-22 22:19:34,236 - Plugin.nine.combat - INFO - Combat UI unloaded
+2026-02-22 22:19:34,236 - Plugin.nine.combat - INFO - Action Bar unloaded
+2026-02-22 22:19:34,236 - Plugin.nine.combat - INFO - D&D Combat System остановлена
+2026-02-22 22:19:34,236 - PluginManager - INFO - Плагин выгружен: D&D Combat System
+2026-02-22 22:19:34,236 - Plugin.nine.npc - INFO - NPC Client Module unloaded
+2026-02-22 22:19:34,237 - Plugin.nine.npc - INFO - D&D NPC System остановлена
+2026-02-22 22:19:34,237 - PluginManager - INFO - Плагин выгружен: D&D NPC System
+2026-02-22 22:19:34,237 - Plugin.nine.chat - INFO - Клиентский модуль UI чата выгружен
+2026-02-22 22:19:34,237 - Plugin.nine.chat - INFO - Система чата остановлена
+2026-02-22 22:19:34,237 - PluginManager - INFO - Плагин выгружен: Chat System
+2026-02-22 22:19:34,237 - Plugin.nine.inventory - INFO - Клиентский модуль листа персонажа выгружен
+2026-02-22 22:19:34,237 - Plugin.nine.inventory - INFO - Система инвентаря остановлена
+2026-02-22 22:19:34,237 - PluginManager - INFO - Плагин выгружен: Inventory System
+2026-02-22 22:19:34,237 - Plugin.nine.stats - INFO - D&D HUD выгружен
+2026-02-22 22:19:34,237 - Plugin.nine.stats - INFO - Система характеристик остановлена
+2026-02-22 22:19:34,237 - PluginManager - INFO - Плагин выгружен: Stats System
+2026-02-22 22:19:34,237 - Plugin.nine.skybox - INFO - Клиентский модуль скайбокса выгружен
+2026-02-22 22:19:34,237 - Plugin.nine.skybox - INFO - Skybox плагин остановлен
+2026-02-22 22:19:34,237 - PluginManager - INFO - Плагин выгружен: Skybox System
+2026-02-22 22:19:34,237 - Plugin.nine.lighting - INFO - Клиентский модуль освещения выгружен
+2026-02-22 22:19:34,237 - Plugin.nine.lighting - INFO - Lighting плагин остановлен
+2026-02-22 22:19:34,237 - PluginManager - INFO - Плагин выгружен: Dynamic Lighting
+2026-02-22 22:19:34,237 - Plugin.nine.world_config - INFO - World Config плагин остановлен
+2026-02-22 22:19:34,237 - PluginManager - INFO - Плагин выгружен: World Configuration
+2026-02-22 22:19:34,237 - Plugin.nine.dnd - INFO - D&D Character System остановлена
+2026-02-22 22:19:34,237 - PluginManager - INFO - Плагин выгружен: D&D Character System
+2026-02-22 22:19:34,237 - nine.ui.cef - INFO - Showing main menu (backgrounds: 1)
+2026-02-22 22:19:34,268 - nine.ui.cef - INFO - [JS] [Router] Navigating to: hidden [object Object]
+2026-02-22 22:19:34,269 - nine.ui.cef - INFO - [JS] [InGameMenu] Destroyed
+2026-02-22 22:19:34,269 - nine.ui.cef - INFO - [JS] [Router] UI hidden
+2026-02-22 22:19:34,269 - nine.ui.cef - INFO - [JS] [Main] Python message: navigate
+2026-02-22 22:19:34,269 - nine.ui.cef - INFO - [JS] [Router] Navigating to: hidden [object Object]
+2026-02-22 22:19:34,269 - nine.ui.cef - INFO - [JS] [Router] UI hidden
+2026-02-22 22:19:34,269 - nine.ui.cef - INFO - [JS] [Main] Python message: navigate
+2026-02-22 22:19:34,269 - nine.ui.cef - INFO - [JS] [Router] Navigating to: main-menu [object Object]
+2026-02-22 22:19:34,269 - nine.ui.cef - INFO - [JS] [MainMenu] Created
+2026-02-22 22:19:34,270 - nine.ui.cef - INFO - [JS] [Main] Python message: navigate
+2026-02-22 22:19:34,270 - nine.ui.cef - INFO - [JS] [Main] Python message: game_state_changed
+2026-02-22 22:19:34,270 - nine.ui.cef - INFO - [JS] [MainMenu] Background set: /assets/materials/textures/backgrounds/main_menu.gif
+2026-02-22 22:19:34,270 - nine.ui.cef - INFO - [JS] [MainMenu] Event listeners attached
+2026-02-22 22:19:34,270 - nine.ui.cef - INFO - [JS] [MainMenu] Rendered
+2026-02-22 22:19:34,270 - nine.ui.cef - INFO - [JS] [Router] Rendered screen: main-menu
+2026-02-22 22:19:34,271 - nine.ui.cef - INFO - [JS] [SoundManager] Menu music started
+2026-02-22 22:19:34,271 - nine.ui.cef - INFO - [JS] Uncaught TypeError: e.target.closest is not a function
+2026-02-22 22:19:34,274 - __main__ - INFO - Connection closed. Cleaning up game state.
+2026-02-22 22:19:34,274 - nine.core.scene_optimizer - INFO - [Optimizer] Cleaned up
+2026-02-22 22:19:34,274 - nine.ui.cef - INFO - Showing main menu (backgrounds: 1)
+2026-02-22 22:19:34,349 - nine.ui.cef - INFO - [JS] [Router] Navigating to: hidden [object Object]
+2026-02-22 22:19:34,349 - nine.ui.cef - INFO - [JS] [MainMenu] Destroyed
+2026-02-22 22:19:34,349 - nine.ui.cef - INFO - [JS] [Router] UI hidden
+2026-02-22 22:19:34,349 - nine.ui.cef - INFO - [JS] [Main] Python message: navigate
+2026-02-22 22:19:34,349 - nine.ui.cef - INFO - [JS] Uncaught TypeError: e.target.closest is not a function
+2026-02-22 22:19:34,351 - nine.ui.cef - INFO - [JS] [Router] Navigating to: hidden [object Object]
+2026-02-22 22:19:34,352 - nine.ui.cef - INFO - [JS] [Router] UI hidden
+2026-02-22 22:19:34,352 - nine.ui.cef - INFO - [JS] [Main] Python message: navigate
+2026-02-22 22:19:34,352 - nine.ui.cef - INFO - [JS] [Router] Navigating to: main-menu [object Object]
+2026-02-22 22:19:34,352 - nine.ui.cef - INFO - [JS] [MainMenu] Created
+2026-02-22 22:19:34,352 - nine.ui.cef - INFO - [JS] [Main] Python message: navigate
+2026-02-22 22:19:34,382 - nine.ui.cef - INFO - [JS] [MainMenu] Background set: /assets/materials/textures/backgrounds/main_menu.gif
+2026-02-22 22:19:34,382 - nine.ui.cef - INFO - [JS] [MainMenu] Event listeners attached
+2026-02-22 22:19:34,382 - nine.ui.cef - INFO - [JS] [MainMenu] Rendered
+2026-02-22 22:19:34,382 - nine.ui.cef - INFO - [JS] [Router] Rendered screen: main-menu
+2026-02-22 22:19:35,449 - nine.ui.cef - INFO - [JS] [MainMenu] EXIT clicked
+2026-02-22 22:19:35,449 - nine.ui.cef - INFO - [JS] [API] Calling Python: exit_game()
+2026-02-22 22:19:35,449 - nine.ui.cef - INFO - JS call: exit_game({})
+2026-02-22 22:19:35,451 - nine.ui.webview_api - INFO - Exit game called from JavaScript
+2026-02-22 22:19:35,451 - root - INFO - Exiting application.

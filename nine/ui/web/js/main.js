@@ -10,9 +10,7 @@ window.chatWindow = null;
 window.gameHUD = null;
 // Global panel instances (persistent)
 window.characterSheet = null;
-window.spellbookPanel = null;
 window.questLog = null;
-window.restDialog = null;
 // Global context menu (persistent)
 window.contextMenu = null;
 
@@ -32,30 +30,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.characterSheet = new CharacterSheet();
     await window.characterSheet.init();
 
-    window.spellbookPanel = new SpellbookPanel();
-    await window.spellbookPanel.init();
-
     window.questLog = new QuestLog();
     await window.questLog.init();
-
-    window.restDialog = new RestDialog();
-    await window.restDialog.init();
 
     // Initialize persistent context menu
     window.contextMenu = new ContextMenu();
     await window.contextMenu.init();
 
-    // Initialize admin panel (F2)
-    window.adminPanel = new AdminPanel();
-    await window.adminPanel.init();
-
     // Register panels with PanelManager
     // (keyboard shortcuts handled Python-side in cef_manager.py: I, K, J, F2)
     if (window.panelManager) {
         window.panelManager.register('character-sheet', window.characterSheet);
-        window.panelManager.register('spellbook', window.spellbookPanel);
         window.panelManager.register('quest-log', window.questLog);
-        window.panelManager.register('admin-panel', window.adminPanel);
     }
 
     // Initialize sound manager (menu music + UI sounds)
