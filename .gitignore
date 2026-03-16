@@ -179,3 +179,8 @@ banlist.txt
 .aider*
 *.ps1
 .ps1*
+.idea/
+client.log
+server.log
+dev_client.prof
+package-lock.json
