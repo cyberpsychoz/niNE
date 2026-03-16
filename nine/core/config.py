@@ -10,9 +10,33 @@ class Config:
     CONFIG_FILE = Path("config.json")
     
     DEFAULT_SETTINGS = {
+<<<<<<< HEAD
         "nickname": "Player",
         "resolution": "1280x720",
         "available_resolutions": ["800x600", "1024x768", "1280x720", "1920x1080"]
+=======
+        # Общие
+        "nickname": "Player",
+        "resolution": "1280x720",
+        "available_resolutions": ["800x600", "1024x768", "1280x720", "1920x1080"],
+        # Управление
+        "camera_sensitivity": 1.0,
+        "invert_mouse_x": False,
+        "invert_mouse_y": False,
+        "third_person_camera": True,  # True = от третьего лица, False = от первого лица
+        # Графика
+        "fov": 70,  # Поле зрения (для first-person)
+        "ps1_effect_enabled": False,  # PS1-стиль пикселизация
+        "ps1_effect_resolution": 1,   # 0=Low (320x240), 1=Medium (640x480), 2=High (800x600)
+        # Звук
+        "audio_master_volume": 100,  # Общая громкость (0-100)
+        "audio_bgm_volume": 70,      # Громкость музыки (0-100)
+        "audio_sfx_volume": 80,      # Громкость звуковых эффектов (0-100)
+        "audio_ambient_volume": 60,  # Громкость эмбиента/окружения (0-100)
+        "audio_ui_volume": 70,       # Громкость звуков интерфейса (0-100)
+        "ui_sound_pack": "fantasy",  # Звуковой пак UI: fantasy, piano, skyward
+        "ui_sounds_enabled": True,   # Включить звуки интерфейса
+>>>>>>> main-core-engine
     }
 
     def __new__(cls):

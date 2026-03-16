@@ -1,0 +1,132 @@
+{
+  "templates": {
+    "guard": {
+      "display_name": "Стражник",
+      "model": "knight",
+      "components": {
+        "AIComponent": {
+          "behavior": "PATROL",
+          "aggro_radius": 8.0,
+          "attack_range": 2.0,
+          "move_speed": 1.2
+        },
+        "CombatComponent": {
+          "hp_max": 22,
+          "hp_current": 22,
+          "armor_class": 16,
+          "attack_bonus": 3,
+          "damage_dice": "1d8",
+          "damage_bonus": 1
+        },
+        "FactionComponent": {
+          "faction_id": "guards",
+          "hostile_to_players": false
+        },
+        "InteractionComponent": {
+          "interaction_prompt": "Поговорить"
+        }
+      },
+      "tags": [
+        "humanoid",
+        "guard"
+      ]
+    },
+    "goblin": {
+      "display_name": "Гоблин",
+      "model": "goblin",
+      "components": {
+        "AIComponent": {
+          "behavior": "NEUTRAL",
+          "aggro_radius": 5.0,
+          "attack_range": 1.5,
+          "move_speed": 1.5
+        },
+        "CombatComponent": {
+          "hp_max": 7,
+          "hp_current": 7,
+          "armor_class": 15,
+          "attack_bonus": 4,
+          "damage_dice": "1d6",
+          "damage_bonus": 2,
+          "cr": 0.25
+        },
+        "FactionComponent": {
+          "faction_id": "monsters",
+          "hostile_to_players": true
+        },
+        "InventoryComponent": {
+          "loot_table_id": "goblin_loot",
+          "gold": 5
+        }
+      },
+      "tags": [
+        "humanoid",
+        "monster",
+        "goblinoid"
+      ]
+    },
+    "merchant": {
+      "display_name": "Торговец",
+      "model": "shopkeeper_2",
+      "components": {
+        "AIComponent": {
+          "behavior": "IDLE",
+          "move_speed": 1.0
+        },
+        "CombatComponent": {
+          "hp_max": 10,
+          "hp_current": 10,
+          "armor_class": 10
+        },
+        "FactionComponent": {
+          "faction_id": "neutral"
+        },
+        "DialogueComponent": {
+          "dialogue_id": "merchant_default",
+          "greeting_text": "Добро пожаловать! Желаете взглянуть на товары?"
+        },
+        "InteractionComponent": {
+          "interaction_prompt": "Торговать"
+        },
+        "InventoryComponent": {
+          "is_merchant": true,
+          "gold": 100
+        }
+      },
+      "tags": [
+        "humanoid",
+        "merchant",
+        "npc"
+      ]
+    },
+    "skeleton": {
+      "display_name": "Скелет",
+      "model": "skeleton",
+      "components": {
+        "AIComponent": {
+          "behavior": "NEUTRAL",
+          "aggro_radius": 4.0,
+          "attack_range": 1.5,
+          "move_speed": 1.2
+        },
+        "CombatComponent": {
+          "hp_max": 13,
+          "hp_current": 13,
+          "armor_class": 13,
+          "attack_bonus": 4,
+          "damage_dice": "1d6",
+          "damage_bonus": 2,
+          "cr": 0.25
+        },
+        "FactionComponent": {
+          "faction_id": "undead",
+          "hostile_to_players": true
+        }
+      },
+      "tags": [
+        "undead",
+        "monster"
+      ]
+    }
+  }
+}

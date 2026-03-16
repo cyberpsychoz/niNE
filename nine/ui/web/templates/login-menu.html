@@ -1,0 +1,83 @@
+<!-- Login Menu - Server Connection Screen -->
+<div class="screen fade-in decorated-screen" id="login-menu-screen">
+    <div class="login-panel">
+        <!-- Header -->
+        <div class="login-header">
+            <h1 class="login-title">ПОДКЛЮЧЕНИЕ</h1>
+            <div class="login-subtitle">Введите данные сервера</div>
+        </div>
+
+        <!-- Decorative divider -->
+        <div class="ornament-divider">
+            <span class="ornament-line"></span>
+            <span class="ornament-diamond"></span>
+            <span class="ornament-line"></span>
+        </div>
+
+        <!-- Login Form -->
+        <form id="login-form" class="login-form" onsubmit="return false;">
+            <!-- Server IP -->
+            <div class="input-field">
+                <label class="input-label" for="input-ip">
+                    <span class="label-icon">&#9656;</span>
+                    Адрес сервера
+                </label>
+                <input
+                    type="text"
+                    id="input-ip"
+                    class="input-text"
+                    placeholder="127.0.0.1"
+                    autocomplete="off"
+                    spellcheck="false"
+                />
+            </div>
+
+            <!-- Character Name -->
+            <div class="input-field">
+                <label class="input-label" for="input-name">
+                    <span class="label-icon">&#9656;</span>
+                    Имя персонажа
+                </label>
+                <input
+                    type="text"
+                    id="input-name"
+                    class="input-text"
+                    placeholder="Введите ваше имя"
+                    autocomplete="off"
+                    spellcheck="false"
+                />
+            </div>
+
+            <!-- Password -->
+            <div class="input-field">
+                <label class="input-label" for="input-password">
+                    <span class="label-icon">&#9656;</span>
+                    Пароль
+                    <span class="label-hint">(необязательно)</span>
+                </label>
+                <input
+                    type="password"
+                    id="input-password"
+                    class="input-text"
+                    placeholder="Пароль сервера"
+                    autocomplete="off"
+                />
+            </div>
+
+            <!-- Error message area -->
+            <div id="login-error" class="login-error"></div>
+
+            <!-- Buttons -->
+            <div class="login-buttons">
+                <button type="submit" class="btn btn-primary" id="btn-connect">
+                    <span class="btn-icon">&#10148;</span>
+                    ПОДКЛЮЧИТЬСЯ
+                </button>
+                <button type="button" class="btn btn-secondary" id="btn-back">
+                    <span class="btn-icon">&#10094;</span>
+                    НАЗАД
+                </button>
+            </div>
+        </form>
+    </div>
+</div>

@@ -1,0 +1,193 @@
+<!-- Settings Menu - Game Configuration (styles in css/main.css) -->
+<div class="screen fade-in decorated-screen" id="settings-menu-screen">
+    <div class="settings-panel">
+        <!-- Header -->
+        <div class="settings-header">
+            <h1 class="settings-title">НАСТРОЙКИ</h1>
+        </div>
+
+        <!-- Tabs -->
+        <div class="settings-tabs">
+            <button class="tab-btn active" data-tab="general">
+                <span class="tab-icon">&#9881;</span>
+                Общее
+            </button>
+            <button class="tab-btn" data-tab="graphics">
+                <span class="tab-icon">&#9728;</span>
+                Графика
+            </button>
+            <button class="tab-btn" data-tab="audio">
+                <span class="tab-icon">&#9835;</span>
+                Звук
+            </button>
+            <button class="tab-btn" data-tab="controls">
+                <span class="tab-icon">&#9000;</span>
+                Управление
+            </button>
+        </div>
+
+        <!-- Tab Content Container -->
+        <div class="settings-body">
+            <!-- General Tab -->
+            <div class="tab-content active" id="tab-general">
+                <div class="setting-row">
+                    <div class="setting-info">
+                        <label class="setting-label">Имя игрока</label>
+                        <span class="setting-desc">Ваше отображаемое имя в игре</span>
+                    </div>
+                    <input type="text" id="setting-nickname" class="setting-input" maxlength="20" />
+                </div>
+
+                <div class="setting-row">
+                    <div class="setting-info">
+                        <label class="setting-label">Разрешение</label>
+                        <span class="setting-desc">Разрешение игрового окна</span>
+                    </div>
+                    <select id="setting-resolution" class="setting-select">
+                        <option value="800x600">800 x 600</option>
+                        <option value="1024x768">1024 x 768</option>
+                        <option value="1280x720">1280 x 720 (HD)</option>
+                        <option value="1920x1080">1920 x 1080 (Full HD)</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Graphics Tab -->
+            <div class="tab-content" id="tab-graphics">
+                <div class="setting-row">
+                    <div class="setting-info">
+                        <label class="setting-label">Поле зрения</label>
+                        <span class="setting-desc">Угол обзора камеры</span>
+                    </div>
+                    <div class="setting-slider-group">
+                        <input type="range" id="setting-fov" class="setting-slider"
+                               min="60" max="110" step="1" value="70" />
+                        <span id="setting-fov-value" class="setting-value">70</span>
+                    </div>
+                </div>
+
+                <div class="setting-row">
+                    <div class="setting-info">
+                        <label class="setting-label">PS1 ретро-эффект</label>
+                        <span class="setting-desc">Визуальный стиль low-poly</span>
+                    </div>
+                    <label class="toggle">
+                        <input type="checkbox" id="setting-ps1-effect" />
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <div class="setting-row">
+                    <div class="setting-info">
+                        <label class="setting-label">Масштаб PS1</label>
+                        <span class="setting-desc">Меньше = больше пикселизация</span>
+                    </div>
+                    <div class="setting-slider-group">
+                        <input type="range" id="setting-ps1-res" class="setting-slider"
+                               min="1" max="4" step="1" value="2" />
+                        <span id="setting-ps1-res-value" class="setting-value">2</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Audio Tab -->
+            <div class="tab-content" id="tab-audio">
+                <div class="setting-row">
+                    <div class="setting-info">
+                        <label class="setting-label">Общая громкость</label>
+                        <span class="setting-desc">Громкость всех звуков</span>
+                    </div>
+                    <div class="setting-slider-group">
+                        <input type="range" id="setting-volume-master" class="setting-slider"
+                               min="0" max="100" step="1" value="100" />
+                        <span id="setting-volume-master-value" class="setting-value">100</span>
+                    </div>
+                </div>
+
+                <div class="setting-row">
+                    <div class="setting-info">
+                        <label class="setting-label">Громкость музыки</label>
+                        <span class="setting-desc">Фоновая музыка</span>
+                    </div>
+                    <div class="setting-slider-group">
+                        <input type="range" id="setting-volume-bgm" class="setting-slider"
+                               min="0" max="100" step="1" value="100" />
+                        <span id="setting-volume-bgm-value" class="setting-value">100</span>
+                    </div>
+                </div>
+
+                <div class="setting-row">
+                    <div class="setting-info">
+                        <label class="setting-label">Звуковые эффекты</label>
+                        <span class="setting-desc">Боевые и окружающие звуки</span>
+                    </div>
+                    <div class="setting-slider-group">
+                        <input type="range" id="setting-volume-sfx" class="setting-slider"
+                               min="0" max="100" step="1" value="100" />
+                        <span id="setting-volume-sfx-value" class="setting-value">100</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Controls Tab -->
+            <div class="tab-content" id="tab-controls">
+                <div class="setting-row">
+                    <div class="setting-info">
+                        <label class="setting-label">Чувствительность</label>
+                        <span class="setting-desc">Скорость обзора мышью</span>
+                    </div>
+                    <div class="setting-slider-group">
+                        <input type="range" id="setting-camera-sens" class="setting-slider"
+                               min="0.1" max="2.0" step="0.05" value="1.0" />
+                        <span id="setting-camera-sens-value" class="setting-value">1.00</span>
+                    </div>
+                </div>
+
+                <div class="setting-row">
+                    <div class="setting-info">
+                        <label class="setting-label">Инверсия мыши X</label>
+                        <span class="setting-desc">Обратить горизонтальный обзор</span>
+                    </div>
+                    <label class="toggle">
+                        <input type="checkbox" id="setting-invert-x" />
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <div class="setting-row">
+                    <div class="setting-info">
+                        <label class="setting-label">Инверсия мыши Y</label>
+                        <span class="setting-desc">Обратить вертикальный обзор</span>
+                    </div>
+                    <label class="toggle">
+                        <input type="checkbox" id="setting-invert-y" />
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <div class="setting-row">
+                    <div class="setting-info">
+                        <label class="setting-label">Камера от 3-го лица</label>
+                        <span class="setting-desc">Вид на персонажа сзади</span>
+                    </div>
+                    <label class="toggle">
+                        <input type="checkbox" id="setting-third-person" checked />
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer Buttons -->
+        <div class="settings-footer">
+            <button class="btn btn-secondary" id="btn-back">
+                <span class="btn-icon">&#10094;</span>
+                НАЗАД
+            </button>
+            <button class="btn btn-primary" id="btn-save">
+                <span class="btn-icon">&#10003;</span>
+                СОХРАНИТЬ
+            </button>
+        </div>
+    </div>
+</div>

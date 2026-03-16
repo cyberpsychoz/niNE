@@ -1,0 +1,293 @@
+<!-- Chat Window - Garry's Mod style RP chat -->
+<div id="chat-window">
+    <!-- Temporary messages (closed mode) - grow upward from bottom -->
+    <div class="chat-temp-messages" id="chat-temp-messages"></div>
+
+    <!-- Hint bar (visible when chat closed, in-game only) -->
+    <div class="chat-hint-bar" id="chat-hint-bar">[ T ] Открыть чат</div>
+
+    <!-- Full chat (open mode) - overlays on top of everything -->
+    <div class="chat-full" id="chat-full">
+        <!-- History scrollable area -->
+        <div class="chat-history" id="chat-history">
+            <div class="chat-history-content" id="chat-history-content"></div>
+        </div>
+
+        <!-- Input area -->
+        <div class="chat-input-area">
+            <!-- Command suggestions (overlay above input) -->
+            <div class="chat-suggestions" id="chat-suggestions">
+                <div class="chat-suggestions-content" id="chat-suggestions-content"></div>
+            </div>
+            <input
+                type="text"
+                id="chat-input"
+                class="chat-input"
+                placeholder="Введите сообщение..."
+                maxlength="512"
+                autocomplete="off"
+            />
+        </div>
+    </div>
+</div>
+
+<style>
+/* ============================================================
+   Chat Window — fixed bottom-left anchor
+   ============================================================ */
+#chat-window {
+    position: fixed;
+    bottom: 16px;
+    left: 16px;
+    width: 560px;
+    z-index: 100;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+}
+
+#chat-window * {
+    pointer-events: auto;
+}
+
+/* ============================================================
+   Hint Bar — small text at the very bottom
+   ============================================================ */
+.chat-hint-bar {
+    color: rgba(204, 191, 140, 0.55);
+    font-size: 11px;
+    font-family: var(--font-primary);
+    text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.95);
+    padding: 4px 2px;
+    pointer-events: none;
+    display: none;
+}
+
+/* ============================================================
+   Temporary Messages (Closed Mode)
+   No backgrounds — just floating text with heavy shadow.
+   Newest at bottom, stack grows upward.
+   ============================================================ */
+.chat-temp-messages {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    gap: 1px;
+    pointer-events: none;
+    min-height: 0;
+}
+
+.chat-temp-msg {
+    font-size: 13px;
+    font-family: var(--font-primary);
+    text-shadow:
+        1px 1px 2px rgba(0, 0, 0, 1),
+        -1px -1px 2px rgba(0, 0, 0, 0.7),
+        0 0 6px rgba(0, 0, 0, 0.5);
+    padding: 2px 0;
+    word-wrap: break-word;
+    line-height: 1.35;
+    opacity: 1;
+    transition: opacity 2.5s ease-out;
+    pointer-events: none;
+}
+
+.chat-temp-msg.fading {
+    opacity: 0;
+}
+
+/* ============================================================
+   Full Chat (Open Mode) — replaces temp messages area
+   ============================================================ */
+.chat-full {
+    display: none;
+    flex-direction: column;
+    width: 100%;
+    position: relative;
+}
+
+.chat-full.open {
+    display: flex;
+}
+
+/* --- History --- */
+.chat-history {
+    height: 320px;
+    overflow-y: auto;
+    padding: 8px 10px;
+    background: rgba(8, 6, 4, 0.92);
+    border: 1px solid rgba(212, 175, 55, 0.2);
+    border-radius: 3px 3px 0 0;
+}
+
+.chat-history-content {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+/* --- Suggestions (overlay above input, inside chat-full) --- */
+.chat-suggestions {
+    display: none;
+    flex-direction: column;
+    background: rgba(12, 10, 6, 0.96);
+    border: 1px solid rgba(212, 175, 55, 0.2);
+    border-bottom: none;
+    border-radius: 3px 3px 0 0;
+    max-height: 180px;
+    overflow-y: auto;
+    padding: 3px 0;
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    right: 0;
+    z-index: 10;
+}
+
+.chat-suggestions.visible {
+    display: flex;
+}
+
+.chat-suggestions-content {
+    display: flex;
+    flex-direction: column;
+}
+
+.chat-suggestion-item {
+    padding: 3px 10px;
+    color: #B3A882;
+    font-size: 12px;
+    font-family: var(--font-primary);
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.chat-suggestion-item:hover {
+    background: rgba(212, 175, 55, 0.08);
+    color: #D4C494;
+}
+
+.chat-suggestion-item.selected {
+    color: #FFE680;
+    background: rgba(212, 175, 55, 0.15);
+}
+
+.chat-suggestion-item .cmd {
+    font-weight: bold;
+    color: inherit;
+    margin-right: 6px;
+}
+
+.chat-suggestion-item .desc {
+    color: rgba(179, 168, 130, 0.55);
+    font-size: 11px;
+}
+
+.chat-suggestion-item.selected .desc {
+    color: rgba(255, 230, 128, 0.6);
+}
+
+/* --- Input (anchor for suggestions overlay) --- */
+.chat-input-area {
+    position: relative;
+}
+
+.chat-input {
+    width: 100%;
+    background: rgba(10, 8, 5, 0.95);
+    border: 1px solid rgba(212, 175, 55, 0.2);
+    border-top: none;
+    border-radius: 0 0 3px 3px;
+    color: #FFE6B3;
+    font-family: var(--font-primary);
+    font-size: 13px;
+    padding: 7px 10px;
+    outline: none;
+    box-sizing: border-box;
+}
+
+.chat-input:focus {
+    border-color: rgba(212, 175, 55, 0.4);
+}
+
+.chat-input::placeholder {
+    color: rgba(204, 191, 140, 0.35);
+}
+
+/* ============================================================
+   Message Styling (shared by history and temp)
+   ============================================================ */
+.chat-msg {
+    font-size: 13px;
+    font-family: var(--font-primary);
+    padding: 2px 0;
+    word-wrap: break-word;
+    line-height: 1.35;
+}
+
+/* IC — warm yellow */
+.chat-msg.msg-ic { color: #FFF2BF; }
+
+/* System — gold */
+.chat-msg.msg-system { color: #E6BF66; }
+
+/* Emote (/me) — amber */
+.chat-msg.msg-emote { color: #FFD966; }
+
+/* It (/it) — amber */
+.chat-msg.msg-it { color: #FFD966; }
+
+/* LOOC — gray */
+.chat-msg.msg-looc { color: #B3B3B3; }
+
+/* OOC — gray */
+.chat-msg.msg-ooc { color: #B3B3B3; }
+
+/* Sender name (bold, inherits parent color) */
+.chat-sender { font-weight: bold; }
+
+/* Emote double-star */
+.chat-emote-stars { font-weight: bold; }
+
+/* LOOC/OOC red tag */
+.chat-tag-looc,
+.chat-tag-ooc {
+    color: #E63333;
+    font-weight: bold;
+}
+
+/* System star */
+.chat-system-star { font-weight: bold; }
+
+/* History messages get subtle text-shadow */
+.chat-history .chat-msg {
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+/* ============================================================
+   Scrollbar (thin, gold)
+   ============================================================ */
+.chat-history::-webkit-scrollbar,
+.chat-suggestions::-webkit-scrollbar {
+    width: 5px;
+}
+
+.chat-history::-webkit-scrollbar-track,
+.chat-suggestions::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.chat-history::-webkit-scrollbar-thumb,
+.chat-suggestions::-webkit-scrollbar-thumb {
+    background: rgba(212, 175, 55, 0.3);
+    border-radius: 3px;
+}
+
+.chat-history::-webkit-scrollbar-thumb:hover,
+.chat-suggestions::-webkit-scrollbar-thumb:hover {
+    background: rgba(212, 175, 55, 0.5);
+}
+</style>

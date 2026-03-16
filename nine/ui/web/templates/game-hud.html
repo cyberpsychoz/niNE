@@ -1,0 +1,85 @@
+<!-- Game HUD Template - persistent in-game overlay -->
+<div id="game-hud" class="game-hud hidden">
+    <!-- Stats Bar (top-left) -->
+    <div class="hud-stats">
+        <div class="hud-name" id="hud-char-name">---</div>
+        <div class="hud-hp-bar">
+            <div class="hud-hp-fill" id="hud-hp-fill"></div>
+            <span class="hud-hp-text" id="hud-hp-text">HP: 0/0</span>
+        </div>
+        <div class="hud-stats-row">
+            <span class="hud-ac" id="hud-ac">AC: 10</span>
+            <span class="hud-level" id="hud-level">Ур 1</span>
+        </div>
+    </div>
+
+    <!-- Conditions (below stats) -->
+    <div class="hud-conditions" id="hud-conditions"></div>
+
+    <!-- Combat Panel (bottom-center, hidden outside combat) -->
+    <div class="hud-combat hidden" id="hud-combat">
+        <!-- Turn indicator + round -->
+        <div class="hud-combat-info">
+            <span class="hud-round" id="hud-round">Round 1</span>
+            <span class="hud-turn" id="hud-turn"></span>
+            <button class="hud-cancel-combat-btn" id="hud-cancel-combat">Отменить бой</button>
+        </div>
+
+        <!-- Movement bar -->
+        <div class="hud-movement-section" id="hud-movement-section" style="display:none">
+            <div class="hud-movement-bar">
+                <div class="hud-movement-fill" id="hud-movement-fill" style="width:100%"></div>
+            </div>
+            <div class="hud-movement-text" id="hud-movement-text">30/30 фт</div>
+        </div>
+
+        <!-- Resource indicators -->
+        <div class="hud-resources" id="hud-resources">
+            <div class="hud-resource resource-available" id="hud-res-action">
+                <span class="resource-icon">&#9679;</span>
+                <span class="resource-label">Действие</span>
+            </div>
+            <div class="hud-resource resource-available" id="hud-res-bonus">
+                <span class="resource-icon">&#9679;</span>
+                <span class="resource-label">Бонус</span>
+            </div>
+            <div class="hud-resource resource-available" id="hud-res-reaction">
+                <span class="resource-icon">&#9679;</span>
+                <span class="resource-label">Реакция</span>
+            </div>
+        </div>
+
+        <!-- Action bar -->
+        <div class="hud-action-bar" id="hud-action-bar">
+            <button class="hud-action-btn" data-action="attack" data-key="1">
+                <span class="action-name">Атака</span>
+                <span class="action-key">[1]</span>
+            </button>
+            <button class="hud-action-btn" data-action="dash" data-key="2">
+                <span class="action-name">Рывок</span>
+                <span class="action-key">[2]</span>
+            </button>
+            <button class="hud-action-btn" data-action="dodge" data-key="3">
+                <span class="action-name">Уклонение</span>
+                <span class="action-key">[3]</span>
+            </button>
+            <button class="hud-action-btn" data-action="item" data-key="4">
+                <span class="action-name">Предмет</span>
+                <span class="action-key">[4]</span>
+            </button>
+            <button class="hud-action-btn hud-end-turn" data-action="end_turn" data-key="E">
+                <span class="action-name">Конец хода</span>
+                <span class="action-key">[E]</span>
+            </button>
+        </div>
+
+        <!-- Action result message -->
+        <div class="hud-action-result hidden" id="hud-action-result"></div>
+    </div>
+
+    <!-- Initiative Tracker (right side, hidden outside combat) -->
+    <div class="hud-initiative hidden" id="hud-initiative">
+        <div class="hud-initiative-title">Инициатива</div>
+        <div class="hud-initiative-list" id="hud-initiative-list"></div>
+    </div>
+</div>

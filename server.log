@@ -1,0 +1,152 @@
+2026-02-22 22:19:00,478 - nine.server.game_server - INFO - [World] Setting up Panda3D collision system
+2026-02-22 22:19:00,478 - nine.server.game_server - WARNING - [World] Map not found: , using test map
+2026-02-22 22:19:00,478 - nine.server.game_server - INFO - [World] === CREATING TEST MAP ===
+2026-02-22 22:19:00,478 - nine.server.game_server - INFO - [World] Created ground plane at z=0
+2026-02-22 22:19:00,478 - nine.server.game_server - INFO - [World] Test map created with 10 collision objects
+2026-02-22 22:19:00,478 - nine.server.game_server - INFO - [World] === TEST MAP READY ===
+2026-02-22 22:19:00,479 - PluginManager - INFO - Поиск плагинов в: nine/plugins
+2026-02-22 22:19:00,486 - Plugin.nine.dnd - INFO - D&D Character Server Module loaded
+2026-02-22 22:19:00,486 - Plugin.nine.dnd - INFO - D&D Character System инициализирована
+2026-02-22 22:19:00,486 - PluginManager - INFO - Плагин загружен: D&D Character System v1.0.0 (1 модулей)
+2026-02-22 22:19:00,487 - Plugin.nine.world_config - INFO - World config загружен: 
+2026-02-22 22:19:00,487 - Plugin.nine.world_config - INFO - World Config плагин инициализирован
+2026-02-22 22:19:00,487 - PluginManager - INFO - Плагин загружен: World Configuration v1.0.0 (1 модулей)
+2026-02-22 22:19:00,487 - Plugin.nine.lighting - INFO - Lighting плагин инициализирован
+2026-02-22 22:19:00,487 - PluginManager - INFO - Плагин загружен: Dynamic Lighting v1.0.0 (0 модулей)
+2026-02-22 22:19:00,487 - Plugin.nine.skybox - INFO - Skybox плагин инициализирован
+2026-02-22 22:19:00,487 - PluginManager - INFO - Плагин загружен: Skybox System v1.0.0 (0 модулей)
+2026-02-22 22:19:00,488 - Plugin.nine.stats - INFO - Серверный модуль характеристик загружен
+2026-02-22 22:19:00,488 - Plugin.nine.stats - INFO - Система характеристик инициализирована
+2026-02-22 22:19:00,488 - PluginManager - INFO - Плагин загружен: Stats System v1.0.0 (1 модулей)
+2026-02-22 22:19:00,498 - Plugin.nine.inventory - INFO - Серверный модуль системы знакомств загружен
+2026-02-22 22:19:00,498 - Plugin.nine.inventory - INFO - Серверный модуль листа персонажа загружен
+2026-02-22 22:19:00,498 - Plugin.nine.inventory - INFO - Серверный модуль экипировки загружен
+2026-02-22 22:19:00,502 - Plugin.nine.inventory - INFO - Загружено entity: n_bucks, iron_sword, arcane_focus, artisans_tools, belt_pouch, common_clothes, con_tools, costume, crowbar, dark_common_clothes, dice_set, disguise_kit, explorers_pack, favor_of_admirer, fine_clothes, herbalism_kit, holy_symbol, hunting_trap, incense, ink, insignia_of_rank, iron_pot, letter_from_colleague, lute, musical_instrument, prayer_book, quill, scroll_case, scroll_of_pedigree, shovel, signet_ring, spellbook, thieves_tools, travelers_clothes, trophy, vestments, winter_blanket, health_potion, sushi, battleaxe, blowgun, club, dagger, dart, flail, glaive, greataxe, greatclub, greatsword, halberd, hand_crossbow, handaxe, heavy_crossbow, javelin, lance, light_crossbow, light_hammer, longbow, longsword, mace, maul, morningstar, net, pike, quarterstaff, rapier, scimitar, shortbow, shortsword, sickle, sling, spear, trident, warhammer, warpick, whip, amulet_of_health, amulet_of_nondetection, belt_of_dwarvenkind, belt_of_hill_giant_strength, boots_of_elvenkind, boots_of_speed, bracers_of_archery, bracers_of_defense, circlet_of_blasting, cloak_of_displacement, cloak_of_elvenkind, cloak_of_many_fashions, cloak_of_protection, cloak_of_the_bat, gloves_of_thievery, medallion_of_thoughts, periapt_of_wound_closure, ring_of_invisibility, ring_of_protection, ring_of_regeneration, ring_of_resistance_fire, ring_of_spell_storing, breastplate, chainmail, chain_shirt, half_plate, hide_armor, leather_armor, padded_armor, plate_armor, ring_mail, scale_mail, splint_armor, steel_shield, studded_leather, wooden_shield
+2026-02-22 22:19:00,502 - Plugin.nine.inventory - INFO - Серверный модуль инвентаря загружен (Entity система)
+2026-02-22 22:19:00,504 - Plugin.nine.inventory - INFO - Система инвентаря инициализирована
+2026-02-22 22:19:00,504 - PluginManager - INFO - Плагин загружен: Inventory System v1.0.0 (4 модулей)
+2026-02-22 22:19:00,506 - Plugin.nine.chat - INFO - Серверный модуль чата загружен
+2026-02-22 22:19:00,506 - Plugin.nine.chat - INFO - Система чата инициализирована
+2026-02-22 22:19:00,506 - PluginManager - INFO - Плагин загружен: Chat System v1.0.0 (1 модулей)
+2026-02-22 22:19:00,523 - Plugin.nine.npc - INFO - Loaded 4 NPC templates
+2026-02-22 22:19:00,523 - Plugin.nine.npc - INFO - NPC Manager loaded (with optimization systems)
+2026-02-22 22:19:00,523 - Plugin.nine.npc - INFO - NPC Server Module loaded
+2026-02-22 22:19:00,523 - Plugin.nine.npc - INFO - D&D NPC System инициализирована
+2026-02-22 22:19:00,523 - PluginManager - INFO - Плагин загружен: D&D NPC System v0.1.0 (1 модулей)
+2026-02-22 22:19:00,532 - Plugin.nine.combat - INFO - Combat Manager loaded
+2026-02-22 22:19:00,532 - Plugin.nine.combat - INFO - Turn Manager loaded
+2026-02-22 22:19:00,532 - Plugin.nine.combat - INFO - SimulatedCombatManager loaded
+2026-02-22 22:19:00,532 - Plugin.nine.combat - INFO - Combat Server Module loaded
+2026-02-22 22:19:00,532 - Plugin.nine.combat - INFO - D&D Combat System инициализирована
+2026-02-22 22:19:00,532 - PluginManager - INFO - Плагин загружен: D&D Combat System v0.1.0 (1 модулей)
+2026-02-22 22:19:00,538 - Plugin.nine.quests - INFO - Загружено 7 квестов
+2026-02-22 22:19:00,538 - Plugin.nine.quests - INFO - Quest Manager серверный модуль загружен
+2026-02-22 22:19:00,538 - Plugin.nine.quests - INFO - Quests система загружена
+2026-02-22 22:19:00,538 - PluginManager - INFO - Плагин загружен: Quests v0.1.0 (1 модулей)
+2026-02-22 22:19:00,542 - Plugin.nine.conditions - INFO - Condition Manager серверный модуль загружен
+2026-02-22 22:19:00,542 - Plugin.nine.conditions - INFO - Conditions система загружена
+2026-02-22 22:19:00,542 - PluginManager - INFO - Плагин загружен: Conditions v0.1.0 (1 модулей)
+2026-02-22 22:19:00,546 - Plugin.nine.spells - INFO - Загружено 37 заклинаний
+2026-02-22 22:19:00,546 - Plugin.nine.spells - INFO - Spell Manager серверный модуль загружен
+2026-02-22 22:19:00,546 - Plugin.nine.spells - INFO - Spells система загружена
+2026-02-22 22:19:00,546 - PluginManager - INFO - Плагин загружен: Spells v0.1.0 (1 модулей)
+2026-02-22 22:19:00,549 - Plugin.nine.rest - INFO - Rest Manager серверный модуль загружен
+2026-02-22 22:19:00,549 - Plugin.nine.rest - INFO - Rest система загружена
+2026-02-22 22:19:00,549 - PluginManager - INFO - Плагин загружен: Rest v0.1.0 (1 модулей)
+2026-02-22 22:19:00,550 - Plugin.nine.dm_panel - INFO - DM Panel серверный модуль загружен
+2026-02-22 22:19:00,550 - Plugin.nine.dm_panel - INFO - DM Panel загружена
+2026-02-22 22:19:00,550 - PluginManager - INFO - Плагин загружен: DM Panel v0.1.0 (1 модулей)
+2026-02-22 22:19:00,555 - Plugin.nine.living_npc - INFO - Living Systems серверный модуль загружен
+2026-02-22 22:19:00,555 - Plugin.nine.living_npc - INFO - Living NPC система загружена
+2026-02-22 22:19:00,555 - PluginManager - INFO - Плагин загружен: Living NPC v0.1.0 (1 модулей)
+2026-02-22 22:19:00,556 - PluginManager - INFO - Плагин загружен: Post-Processing Effects v1.0.0 (0 модулей)
+2026-02-22 22:19:00,556 - Plugin.nine.npc - INFO - NPC Manager switched to unified ECS mode
+2026-02-22 22:19:00,556 - nine.server.game_server - INFO - [ECS] Unified ECS mode enabled - NPCs and Players share ECS world
+2026-02-22 22:19:00,556 - nine.core.pathfinder - INFO - GridPathfinder initialized: 100x100, cell_size=1.0
+2026-02-22 22:19:00,556 - Plugin.nine.npc - INFO - Sync pathfinder initialized for NPC
+2026-02-22 22:19:00,556 - nine.core.pathfinder_async - INFO - AsyncPathfinder initialized with 2 workers
+2026-02-22 22:19:00,557 - nine.core.pathfinder_async - INFO - AsyncPathfinder started with 2 workers
+2026-02-22 22:19:00,557 - Plugin.nine.npc - INFO - Async pathfinder started (2 workers)
+2026-02-22 22:19:00,557 - Plugin.nine.npc - INFO - [NPC Spawn] Adjusted z: 0.0 -> 0.0 (ground level)
+2026-02-22 22:19:00,557 - Plugin.nine.npc - INFO - Spawned NPC 'merchant' at (5.0, 0.0, 0.0) [unified=True]
+2026-02-22 22:19:00,557 - Plugin.nine.npc - INFO - [NPC Spawn] Adjusted z: 0.0 -> 0.0 (ground level)
+2026-02-22 22:19:00,557 - Plugin.nine.npc - INFO - Spawned NPC 'guard' at (10.0, 5.0, 0.0) [unified=True]
+2026-02-22 22:19:00,558 - Plugin.nine.npc - INFO - [NPC Spawn] Adjusted z: 0.0 -> 0.0 (ground level)
+2026-02-22 22:19:00,558 - Plugin.nine.npc - INFO - Spawned NPC 'guard' at (-10.0, 5.0, 0.0) [unified=True]
+2026-02-22 22:19:00,558 - nine.server.game_server - INFO - [World] world_loaded event posted with bounds: (-50, -50, 50, 50)
+2026-02-22 22:19:00,558 - nine.server.game_server - INFO - Game Server initialized.
+2026-02-22 22:19:00,560 - nine.server.game_server - INFO - SSL context loaded.
+2026-02-22 22:19:00,563 - nine.server.game_server - INFO - Serving on ('127.0.0.1', 9009)
+2026-02-22 22:19:09,783 - nine.server.game_server - INFO - Client #1 connected from ('127.0.0.1', 37730).
+2026-02-22 22:19:09,898 - nine.server.game_server - INFO - Account 'MilkiWinky' authenticated (Client #1)
+2026-02-22 22:19:09,898 - Plugin.nine.dnd - INFO - [DND] Client 1 authenticated as account 787bae07-4a70-48e7-8b0d-b71824a242fe
+2026-02-22 22:19:12,409 - Plugin.nine.dnd - INFO - [DND] on_character_select: client_id=1, character_uuid=b045a8b9-c861-4e9a-903a-391fc122d42a
+2026-02-22 22:19:12,409 - Plugin.nine.dnd - INFO - [DND] on_character_select: account_uuid from cache = 787bae07-4a70-48e7-8b0d-b71824a242fe
+2026-02-22 22:19:12,410 - Plugin.nine.dnd - INFO - [DND] on_character_select: character found = True
+2026-02-22 22:19:12,410 - Plugin.nine.dnd - INFO - [DND] on_character_select: char_account=787bae07-4a70-48e7-8b0d-b71824a242fe, expected=787bae07-4a70-48e7-8b0d-b71824a242fe
+2026-02-22 22:19:12,410 - Plugin.nine.dnd - INFO - [DND] on_character_select: posting dnd_character_selected event
+2026-02-22 22:19:12,410 - nine.server.game_server - INFO - [DND] handle_character_selected: client_id=1, character_name=Орналдо
+2026-02-22 22:19:12,410 - nine.server.game_server - INFO - [CharacterController] === PANDA3D COLLISION SYSTEM ===
+2026-02-22 22:19:12,410 - nine.server.game_server - INFO - [CharacterController] Walk Speed: 1.5
+2026-02-22 22:19:12,410 - nine.server.game_server - INFO - [CharacterController] Run Speed: 3.0
+2026-02-22 22:19:12,410 - nine.server.game_server - INFO - [CharacterController] Gravity: 25.0
+2026-02-22 22:19:12,410 - nine.server.game_server - INFO - [CharacterController] Jump Speed: 10.0
+2026-02-22 22:19:12,410 - nine.server.game_server - INFO - [CharacterController] ========================================
+
+2026-02-22 22:19:12,410 - nine.server.game_server - INFO - [World] Spawning player 'Орналдо' at [0, 0, 1]
+2026-02-22 22:19:12,410 - nine.server.game_server - INFO - [World] Actual position after spawn: (0.00, 0.00, 1.00)
+2026-02-22 22:19:12,410 - nine.server.game_server - INFO - [World] Added player 'Орналдо' (client_id=1, entity_id=79d71152)
+2026-02-22 22:19:12,410 - nine.server.game_server - INFO - Character 'Орналдо' (Client #1) entered the game world
+2026-02-22 22:19:12,411 - Plugin.nine.inventory - INFO - Granted starting equipment to 1: 1x light_crossbow, 1x leather_armor, 1x arcane_focus, 1x holy_symbol, 1x prayer_book, 1x incense, 1x vestments, 1x common_clothes, 15x n_bucks
+2026-02-22 22:19:12,411 - Plugin.nine.dnd - INFO - [DND] Client 1 selected character 'Орналдо'
+2026-02-22 22:19:12,411 - nine.server.game_server - INFO - [Player] pos=(0.00, 0.00, 0.94) onGround=False jumping=False vel=(0.00, -1.25)
+2026-02-22 22:19:12,609 - nine.server.game_server - INFO - [Player] Landed! (from z=0.38 to z=0.00)
+2026-02-22 22:19:13,360 - nine.server.game_server - INFO - [Ground] Ray hit 'ground_plane' at z=0.00, player.z=0.00, distance=0.00
+2026-02-22 22:19:13,459 - nine.server.game_server - INFO - [Player] pos=(0.00, 0.00, 0.00) onGround=True jumping=False vel=(0.00, 0.00)
+2026-02-22 22:19:14,360 - nine.server.game_server - INFO - [Ground] Ray hit 'ground_plane' at z=0.00, player.z=0.00, distance=0.00
+2026-02-22 22:19:14,460 - nine.server.game_server - INFO - [Player] pos=(0.00, 0.00, 0.00) onGround=True jumping=False vel=(0.00, 0.00)
+2026-02-22 22:19:15,360 - nine.server.game_server - INFO - [Ground] Ray hit 'ground_plane' at z=0.00, player.z=0.00, distance=0.00
+2026-02-22 22:19:15,460 - nine.server.game_server - INFO - [Player] pos=(0.00, 0.00, 0.00) onGround=True jumping=False vel=(0.00, 0.00)
+2026-02-22 22:19:16,360 - nine.server.game_server - INFO - [Ground] Ray hit 'ground_plane' at z=0.00, player.z=0.00, distance=0.00
+2026-02-22 22:19:16,460 - nine.server.game_server - INFO - [Player] pos=(0.00, 0.00, 0.00) onGround=True jumping=False vel=(0.00, 0.00)
+2026-02-22 22:19:17,360 - nine.server.game_server - INFO - [Ground] Ray hit 'ground_plane' at z=0.00, player.z=0.00, distance=0.00
+2026-02-22 22:19:17,460 - nine.server.game_server - INFO - [Player] pos=(0.32, 0.71, 0.00) onGround=True jumping=False vel=(3.00, 0.00)
+2026-02-22 22:19:18,360 - nine.server.game_server - INFO - [Ground] Ray hit 'ground_plane' at z=0.00, player.z=0.00, distance=0.00
+2026-02-22 22:19:18,460 - nine.server.game_server - INFO - [Player] pos=(1.58, 3.43, 0.00) onGround=True jumping=False vel=(3.00, 0.00)
+2026-02-22 22:19:19,360 - nine.server.game_server - INFO - [Ground] Ray hit 'ground_plane' at z=0.00, player.z=0.00, distance=0.00
+2026-02-22 22:19:19,460 - nine.server.game_server - INFO - [Player] pos=(1.94, 4.22, 0.00) onGround=True jumping=False vel=(0.01, 0.00)
+2026-02-22 22:19:20,360 - nine.server.game_server - INFO - [Ground] Ray hit 'ground_plane' at z=0.00, player.z=0.00, distance=0.00
+2026-02-22 22:19:20,460 - nine.server.game_server - INFO - [Player] pos=(2.12, 4.25, 0.00) onGround=True jumping=False vel=(1.50, 0.00)
+2026-02-22 22:19:21,360 - nine.server.game_server - INFO - [Ground] Ray hit 'ground_plane' at z=0.00, player.z=0.00, distance=0.00
+2026-02-22 22:19:21,460 - nine.server.game_server - INFO - [Player] pos=(5.12, 4.16, 0.00) onGround=True jumping=False vel=(3.13, 0.00)
+2026-02-22 22:19:22,360 - nine.server.game_server - INFO - [Ground] Ray hit 'ground_plane' at z=0.00, player.z=0.00, distance=0.00
+2026-02-22 22:19:22,460 - nine.server.game_server - INFO - [Player] pos=(6.42, 2.20, 0.00) onGround=True jumping=False vel=(0.31, 0.00)
+2026-02-22 22:19:23,360 - nine.server.game_server - INFO - [Ground] Ray hit 'ground_plane' at z=0.00, player.z=0.00, distance=0.00
+2026-02-22 22:19:23,460 - nine.server.game_server - INFO - [Player] pos=(7.06, 1.77, 0.00) onGround=True jumping=False vel=(3.00, 0.00)
+2026-02-22 22:19:24,360 - nine.server.game_server - INFO - [Ground] Ray hit 'ground_plane' at z=0.00, player.z=0.00, distance=0.00
+2026-02-22 22:19:24,460 - nine.server.game_server - INFO - [Player] pos=(8.26, -1.16, 0.00) onGround=True jumping=False vel=(3.32, 0.00)
+2026-02-22 22:19:25,360 - nine.server.game_server - INFO - [Ground] Ray hit 'ground_plane' at z=0.00, player.z=0.00, distance=0.00
+2026-02-22 22:19:25,461 - nine.server.game_server - INFO - [Player] pos=(6.85, -2.46, 0.00) onGround=True jumping=False vel=(0.07, 0.00)
+2026-02-22 22:19:26,361 - nine.server.game_server - INFO - [Ground] Ray hit 'ground_plane' at z=0.00, player.z=0.00, distance=0.00
+2026-02-22 22:19:26,461 - nine.server.game_server - INFO - [Player] pos=(6.48, -3.23, 0.00) onGround=True jumping=False vel=(1.50, 0.00)
+2026-02-22 22:19:27,361 - nine.server.game_server - INFO - [Ground] Ray hit 'ground_plane' at z=0.00, player.z=0.00, distance=0.00
+2026-02-22 22:19:27,461 - nine.server.game_server - INFO - [Player] pos=(5.63, -3.54, 0.00) onGround=True jumping=False vel=(0.02, 0.00)
+2026-02-22 22:19:28,361 - nine.server.game_server - INFO - [Ground] Ray hit 'ground_plane' at z=0.00, player.z=0.00, distance=0.00
+2026-02-22 22:19:28,461 - nine.server.game_server - INFO - [Player] pos=(3.57, -3.18, 0.00) onGround=True jumping=False vel=(3.34, 0.00)
+2026-02-22 22:19:29,361 - nine.server.game_server - INFO - [Ground] Ray hit 'ground_plane' at z=0.00, player.z=0.00, distance=0.00
+2026-02-22 22:19:29,461 - nine.server.game_server - INFO - [Player] pos=(2.94, -0.16, 0.00) onGround=True jumping=False vel=(3.28, 0.00)
+2026-02-22 22:19:30,361 - nine.server.game_server - INFO - [Ground] Ray hit 'ground_plane' at z=0.00, player.z=0.00, distance=0.00
+2026-02-22 22:19:30,461 - nine.server.game_server - INFO - [Player] pos=(4.33, 2.30, 0.00) onGround=True jumping=False vel=(0.90, 0.00)
+2026-02-22 22:19:31,361 - nine.server.game_server - INFO - [Ground] Ray hit 'ground_plane' at z=0.00, player.z=0.00, distance=0.00
+2026-02-22 22:19:31,461 - nine.server.game_server - INFO - [Player] pos=(4.50, 2.23, 0.00) onGround=True jumping=False vel=(1.50, 0.00)
+2026-02-22 22:19:32,361 - nine.server.game_server - INFO - [Ground] Ray hit 'ground_plane' at z=0.00, player.z=0.00, distance=0.00
+2026-02-22 22:19:32,461 - nine.server.game_server - INFO - [Player] pos=(5.18, 1.63, 0.00) onGround=True jumping=False vel=(0.04, 0.00)
+2026-02-22 22:19:33,361 - nine.server.game_server - INFO - [Ground] Ray hit 'ground_plane' at z=0.00, player.z=0.00, distance=0.00
+2026-02-22 22:19:33,461 - nine.server.game_server - INFO - [Player] pos=(5.18, 1.63, 0.00) onGround=True jumping=False vel=(0.00, 0.00)
+2026-02-22 22:19:34,261 - nine.server.game_server - INFO - Client #1 processing disconnection.
+2026-02-22 22:19:34,262 - nine.server.game_server - INFO - [World] Removed player (client_id=1)
+2026-02-22 22:19:34,262 - nine.server.game_server - INFO - Client #1 processing disconnection.
+2026-02-22 22:20:00,614 - nine.server.game_server - INFO - [Time] Game hour: 9:00
+2026-02-22 22:21:00,623 - nine.server.game_server - INFO - [Time] Game hour: 10:00
+2026-02-22 22:22:00,628 - nine.server.game_server - INFO - [Time] Game hour: 11:00
+2026-02-22 22:22:35,565 - nine.server.game_server - INFO - Server has shut down.

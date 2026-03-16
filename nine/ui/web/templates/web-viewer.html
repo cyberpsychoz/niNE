@@ -1,0 +1,244 @@
+<!-- WebViewer - In-game web page viewer -->
+<div id="webviewer-container" class="webviewer-container">
+    <!-- Header (draggable) -->
+    <div id="webviewer-header" class="webviewer-header">
+        <!-- Left: Title -->
+        <div class="webviewer-title-area">
+            <span id="webviewer-title" class="webviewer-title">Document</span>
+        </div>
+
+        <!-- Center: Navigation -->
+        <div class="webviewer-nav">
+            <button id="webviewer-back" class="webviewer-nav-btn" title="Back">
+                <span>&larr;</span>
+            </button>
+            <button id="webviewer-forward" class="webviewer-nav-btn" title="Forward">
+                <span>&rarr;</span>
+            </button>
+            <button id="webviewer-refresh" class="webviewer-nav-btn" title="Refresh">
+                <span>&#8635;</span>
+            </button>
+            <span id="webviewer-url" class="webviewer-url"></span>
+        </div>
+
+        <!-- Right: Window controls -->
+        <div class="webviewer-controls">
+            <button id="webviewer-minimize" class="webviewer-control-btn" title="Minimize">
+                <span>_</span>
+            </button>
+            <button id="webviewer-fullscreen" class="webviewer-control-btn" title="Fullscreen">
+                <span>&#9744;</span>
+            </button>
+            <button id="webviewer-close" class="webviewer-control-btn webviewer-close" title="Close">
+                <span>&times;</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Content (iframe) -->
+    <div class="webviewer-content">
+        <iframe id="webviewer-iframe"
+                class="webviewer-iframe"
+                sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+                frameborder="0"
+                src="about:blank">
+        </iframe>
+    </div>
+
+    <!-- Resize handle -->
+    <div class="webviewer-resize"></div>
+</div>
+
+<style>
+/* WebViewer Styles */
+.webviewer-container {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+
+    width: 80vw;
+    height: 80vh;
+    min-width: 400px;
+    min-height: 300px;
+
+    background: var(--color-bg-primary);
+    border: var(--border-width) solid var(--color-border);
+    border-radius: var(--border-radius);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+
+    display: flex;
+    flex-direction: column;
+
+    /* Hidden by default */
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--transition-normal);
+
+    z-index: 9999;
+}
+
+.webviewer-container.visible {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.webviewer-container.fullscreen {
+    top: 0;
+    left: 0;
+    transform: none;
+    width: 100vw;
+    height: 100vh;
+    border-radius: 0;
+}
+
+.webviewer-container.minimized {
+    height: 40px;
+}
+
+.webviewer-container.minimized .webviewer-content {
+    display: none;
+}
+
+/* Header */
+.webviewer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    height: 40px;
+    padding: 0 var(--spacing-sm);
+
+    background: var(--color-bg-secondary);
+    border-bottom: 1px solid var(--color-border);
+
+    cursor: move;
+}
+
+.webviewer-title-area {
+    flex: 0 0 auto;
+    max-width: 200px;
+}
+
+.webviewer-title {
+    font-size: 12px;
+    font-weight: bold;
+    color: var(--color-text-accent);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Navigation */
+.webviewer-nav {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    padding: 0 var(--spacing-md);
+}
+
+.webviewer-nav-btn {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+
+    background: var(--color-button-bg);
+    border: 1px solid var(--color-border);
+    border-radius: var(--border-radius);
+
+    color: var(--color-text-secondary);
+    font-size: 14px;
+
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.webviewer-nav-btn:hover {
+    background: var(--color-button-hover);
+    color: var(--color-text-accent);
+    border-color: var(--color-border-highlight);
+}
+
+.webviewer-url {
+    flex: 1;
+    font-size: 10px;
+    color: var(--color-text-secondary);
+
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Window controls */
+.webviewer-controls {
+    display: flex;
+    gap: 4px;
+}
+
+.webviewer-control-btn {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+
+    background: transparent;
+    border: none;
+
+    color: var(--color-text-secondary);
+    font-size: 16px;
+    font-weight: bold;
+
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.webviewer-control-btn:hover {
+    color: var(--color-text-primary);
+}
+
+.webviewer-close:hover {
+    color: #ff4444;
+}
+
+/* Content */
+.webviewer-content {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+}
+
+.webviewer-iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+    background: white;
+}
+
+/* Resize handle */
+.webviewer-resize {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+
+    width: 16px;
+    height: 16px;
+
+    cursor: nwse-resize;
+}
+
+.webviewer-resize::after {
+    content: '';
+    position: absolute;
+    bottom: 4px;
+    right: 4px;
+
+    width: 8px;
+    height: 8px;
+
+    border-right: 2px solid var(--color-border);
+    border-bottom: 2px solid var(--color-border);
+}
+</style>

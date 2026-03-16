@@ -1,4 +1,5 @@
 import asyncio
+<<<<<<< HEAD
 import json
 import ssl
 import struct
@@ -28,12 +29,26 @@ async def read_messages(reader: asyncio.StreamReader):
         except Exception as e:
             print(f"Error reading message: {e}")
             break
+=======
+import ssl
+import sys
+import argparse
+import json
+
+from nine.core.network import send_message, read_messages
+
+
+def handle_incoming_message(data: dict):
+    print(f"Received: {data}")
+
+>>>>>>> main-core-engine
 
 async def user_input(writer: asyncio.StreamWriter):
     while True:
         message = await asyncio.to_thread(sys.stdin.readline)
         message = message.strip()
         if message:
+<<<<<<< HEAD
             await send_message(writer, {"type": "chat_message", "message": message})
 
 async def main(name: str):
@@ -43,6 +58,21 @@ async def main(name: str):
     host = config.get("host", "localhost")
     port = config.get("port", 9009)
 
+=======
+            # Allow sending raw JSON for debugging
+            if message.startswith('{') and message.endswith('}'):
+                try:
+                    data = json.loads(message)
+                    await send_message(writer, data)
+                except json.JSONDecodeError:
+                    print("Invalid JSON. Sending as a chat message.")
+                    await send_message(writer, {"type": "chat_message", "message": message})
+            else:
+                await send_message(writer, {"type": "chat_message", "message": message})
+
+
+async def main(name: str, host: str, port: int):
+>>>>>>> main-core-engine
     ssl_context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
     try:
         ssl_context.load_verify_locations('certs/cert.pem')
@@ -50,12 +80,17 @@ async def main(name: str):
         print("CRITICAL ERROR: Certificate file 'certs/cert.pem' not found.")
         return
 
+<<<<<<< HEAD
+=======
+    reader, writer = None, None
+>>>>>>> main-core-engine
     try:
         reader, writer = await asyncio.open_connection(
             host, port, ssl=ssl_context, server_hostname=host if host != "localhost" else None
         )
         print(f"Connected to {host}:{port}")
 
+<<<<<<< HEAD
         auth_data = {
             "type": "dev_auth",
             "name": name,
@@ -64,6 +99,12 @@ async def main(name: str):
 
         # Run reader and user input tasks concurrently
         read_task = asyncio.create_task(read_messages(reader))
+=======
+        auth_data = {"type": "dev_auth", "name": name}
+        await send_message(writer, auth_data)
+
+        read_task = asyncio.create_task(read_messages(reader, handle_incoming_message))
+>>>>>>> main-core-engine
         input_task = asyncio.create_task(user_input(writer))
 
         await asyncio.gather(read_task, input_task)
@@ -71,6 +112,7 @@ async def main(name: str):
     except Exception as e:
         print(f"Failed to connect: {e}")
     finally:
+<<<<<<< HEAD
         if 'writer' in locals() and writer:
             writer.close()
             await writer.wait_closed()
@@ -82,5 +124,21 @@ if __name__ == "__main__":
 
     try:
         asyncio.run(main(args.name))
+=======
+        if writer:
+            writer.close()
+            await writer.wait_closed()
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Development CLI client.")
+    parser.add_argument("--name", default="DevCliPlayer", help="Player name to use.")
+    parser.add_argument("--host", default="localhost", help="Server host.")
+    parser.add_argument("--port", type=int, default=9009, help="Server port.")
+    args = parser.parse_args()
+
+    try:
+        asyncio.run(main(args.name, args.host, args.port))
+>>>>>>> main-core-engine
     except KeyboardInterrupt:
         print("Client stopped.")

@@ -1,62 +1,87 @@
 # niNE
-Это упрощенный 3D фреймворк для ролевых игр, вдохновленный SS14 и Garry's Mod. Он позволяет игрокам легко создавать серверы и расширять функциональность с помощью Python-плагинов с поддержкой дополнительных ресурсов.
 
-![Версия Python](https://img.shields.io/badge/python-3.12+-blue.svg)
-![Лицензия](https://img.shields.io/badge/license-MIT-green.svg)
-![Panda3D](https://img.shields.io/badge/engine-Panda3D-orange.svg)
+Multiplayer 3D game engine built with Panda3D and Python.
 
-![logos](nine/assets/materials/main_menu.png)
+## Features
 
-## Особенности
+- **Panda3D Rendering** — 3D world with lighting, skybox, post-processing
+- **Client-Server Architecture** — SSL/TLS encrypted multiplayer with asyncio networking
+- **Plugin System** — Modular architecture with hot-loadable plugins (`sh_`, `cl_`, `sv_` prefixes)
+- **ECS (Entity-Component-System)** — Unified PooledECSWorld with component registry and systems
+- **Physics** — PhysicsTier system (FULL for players, SIMPLE for NPCs, NONE for sleeping)
+- **CEF Web UI** — Chromium-based UI via cef-capi-py with JS-Python bridge
+- **NPC AI** — LOD-based AI with needs, behaviors, wander, schedules
+- **Living World** — Day/night cycle, NPC routines, spatial awareness
+- **Chat System** — In-game chat with commands
+- **Inventory & Equipment** — Slot-based equipment system
+- **Player Stats** — Configurable stat tracking
 
-- **3D среда для ролевых игр**: Базовый 3D мир, в котором игроки могут подключаться и взаимодействовать
-- **Простой хостинг серверов**: Запускайте серверы одним кликом или развертывайте отдельно
-- **Расширенная система плагинов**: Поддержка плагинов как в виде файлов, так и папок с ресурсами
-- **Сетевой мультиплеер**: Построен на asyncio и сокетах Python
-- **Чат**: Внутриигровое текстовое общение
+## Architecture
 
-Для получения подробной технической информации, сведений об архитектуре и API для разработчиков, пожалуйста, обратитесь к нашей [**Технической документации (DOCS.md)**](DOCS.md).
-
-## Установка
-
-### Предварительные требования
-
-
-- Python 3.12 или выше
-
-```bash
-pip install -r requirements.txt
+```
+nine/
+├── core/           # Engine core (ECS, physics, events, plugins, networking)
+├── server/         # Game server
+├── ui/             # UI system (CEF, DirectGUI, web assets)
+└── plugins/        # Plugin modules
+    ├── chat/         # Chat system
+    ├── inventory/    # Inventory & equipment
+    ├── stats/        # Player statistics
+    ├── npc/          # NPC AI & rendering
+    ├── living_npc/   # Living world behaviors
+    ├── lighting/     # Dynamic lighting
+    ├── skybox/       # Skybox rendering
+    ├── postfx/       # Post-processing effects
+    ├── world_config/ # World configuration
+    └── quests/       # Quest journal
 ```
 
-### Быстрый старт
+## Quick Start
 
-1. Клонируйте репозиторий:
 ```bash
-git clone https://github.com/your-username/niNE.git
-cd niNE
-```
+# Install dependencies
+pip install panda3d panda3d-gltf
 
-2. Установите зависимости:
-```bash
-pip install -r requirements.txt
-```
+# Server
+python -m nine.server.game_server
 
-3. **Сгенерируйте SSL-сертификаты**: Для безопасного соединения между клиентом и сервером вам потребуются SSL-сертификаты. В режиме разработки вы можете использовать самоподписанные:
-```bash
-mkdir certs
-openssl req -x509 -newkey rsa:2048 -keyout certs/key.pem -out certs/cert.pem -days 365 -nodes -subj "/C=US/ST=CA/L=SanFrancisco/O=MyProject/OU=Dev/CN=localhost"
-```
-
-4. Запустите сервер:
-```bash
-python server.py
-```
-
-5. Запустите клиент:
-```bash
+# Client
 python client.py
+
+# Dev client (auto-connect)
+python dev_client.py
 ```
 
-## Лицензия
+## UI Backends
 
-Этот проект лицензирован под MIT License - подробности см. в файле [LICENSE](LICENSE).
+| Backend | Description |
+|---------|-------------|
+| `cef` | CEF offscreen Chromium (recommended) |
+| `directgui` | Native Panda3D DirectGUI (fallback) |
+
+Set via `config.json`: `"ui_backend": "cef"`
+
+## Plugin Development
+
+```python
+from nine.core.plugins import PluginModule
+
+class MyPlugin(PluginModule):
+    def on_load(self):
+        self.app.taskMgr.add(self.update, "my-task")
+        self.event_manager.subscribe("event", self.handler)
+
+    def on_unload(self):
+        self.event_manager.unsubscribe("event", self.handler)
+```
+
+Plugins use prefix naming: `sh_` (shared), `cl_` (client-only), `sv_` (server-only).
+
+## Game Modes
+
+Game-specific content lives in separate branches:
+- `dnd-gamemode-v0.1.0-alpha` — D&D 5e tabletop RPG mode
+
+## License
+
+See [LICENSE](LICENSE).

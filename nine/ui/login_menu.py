@@ -1,65 +1,134 @@
 # nine/ui/login_menu.py
+"""
+Меню входа/подключения.
+Полностью переписано с использованием blocks_v2.
+"""
+
+from direct.gui.DirectGui import DirectFrame
+from panda3d.core import TransparencyAttrib
+
 from .base_component import BaseUIComponent
-from direct.gui.DirectGui import DirectFrame, DirectEntry, DirectLabel, DirectButton, DGG
-from panda3d.core import LColor, TextNode
+from .blocks_v2 import Block
+from .ui_config import ui
+
 
 class LoginMenu(BaseUIComponent):
+    """Меню входа на сервер - чистый blocks_v2 дизайн."""
+
     def __init__(self, ui_manager, default_ip: str, default_name: str):
         super().__init__(ui_manager)
-        
-        self.button_color = (LColor(0.1, 0.1, 0.1, 0.8), LColor(0.2, 0.2, 0.2, 0.8), LColor(0.3, 0.3, 0.3, 0.8), LColor(0.1, 0.1, 0.1, 0.5))
+        self._default_ip = default_ip
+        self._default_name = default_name
+        self._block = None
+        self._create_window()
 
-        self._create_window(default_ip, default_name)
-
-    def _create_window(self, default_ip, default_name):
+    def _create_window(self):
         """Создает элементы меню входа."""
-        frame = self._add_element('root', DirectFrame(
-            parent=self.base.aspect2d, 
-            frameColor=(0, 0, 0, 0.7), 
-            frameSize=(-0.7, 0.7, -0.5, 0.5)
-        ))
-        
-        # Поле для IP
-        self._add_element('ip_entry', DirectEntry(
-            parent=frame, scale=0.06, pos=(-0.6, 0, 0.35), initialText=default_ip,
-            numLines=1, focus=1, text_align=TextNode.ALeft, width=20
-        ))
-        self._add_element('ip_label', DirectLabel(
-            parent=frame, text="IP Сервера:", pos=(-0.6, 0, 0.42), scale=0.05, text_align=TextNode.ALeft
-        ))
-        
-        # Поле для имени
-        self._add_element('name_entry', DirectEntry(
-            parent=frame, scale=0.06, pos=(-0.6, 0, 0.15), initialText=default_name,
-            numLines=1, text_align=TextNode.ALeft, width=20
-        ))
-        self._add_element('name_label', DirectLabel(
-            parent=frame, text="Имя персонажа:", pos=(-0.6, 0, 0.22), scale=0.05, text_align=TextNode.ALeft
-        ))
+        # Тёмный фон на весь экран
+        bg = DirectFrame(
+            parent=self.base.render2d,
+            frameSize=(-2, 2, -2, 2),
+            frameColor=ui.colors.bg_dark,
+        )
+        bg.setTransparency(TransparencyAttrib.M_alpha)
+        self._add_element('background', bg)
 
-        # Поле для пароля
-        self._add_element('password_entry', DirectEntry(
-            parent=frame, scale=0.06, pos=(-0.6, 0, -0.05), initialText="",
-            numLines=1, text_align=TextNode.ALeft, width=20, obscured=True
-        ))
-        self._add_element('password_label', DirectLabel(
-            parent=frame, text="Пароль:", pos=(-0.6, 0, 0.02), scale=0.05, text_align=TextNode.ALeft
-        ))
+        # Основной блок формы
+        self._block = Block(
+            parent=self.base.aspect2d,
+            width=1.0,  # Компактнее
+            padding=0.08,
+            bg_color=ui.colors.bg_medium,
+            pos=(0, 0, 0)
+        )
 
-        # Кнопки
-        self._add_element('login_button', DirectButton(
-            parent=frame, text="Войти / Регистрация", scale=0.07, pos=(0, 0, -0.3), 
-            command=self.ui_manager.callbacks.get("attempt_login"), frameColor=self.button_color
-        ))
-        self._add_element('back_button', DirectButton(
-            parent=frame, text="Назад", scale=0.07, pos=(0, 0, -0.4), 
-            command=self.ui_manager.callbacks.get("close_login_menu"), frameColor=self.button_color
-        ))
-        
+        # Заголовок
+        self._block.label("ПОДКЛЮЧЕНИЕ К СЕРВЕРУ", style="title", align="center")
+        self._block.spacer(ui.spacing.lg)
+
+        # IP сервера
+        self._block.label("IP Адрес:", style="label")
+        self._block.spacer(ui.spacing.xs)
+        row_ip = self._block.row(justify="center")
+        row_ip.entry(
+            name="ip",
+            initial=self._default_ip,
+            width=24,
+            max_width=0.8,
+            focus=True
+        )
+        self._block.spacer(ui.spacing.md)
+
+        # Имя персонажа
+        self._block.label("Имя персонажа:", style="label")
+        self._block.spacer(ui.spacing.xs)
+        row_name = self._block.row(justify="center")
+        row_name.entry(
+            name="name",
+            initial=self._default_name,
+            width=24,
+            max_width=0.8
+        )
+        self._block.spacer(ui.spacing.md)
+
+        # Пароль
+        self._block.label("Пароль:", style="label")
+        self._block.spacer(ui.spacing.xs)
+        row_pass = self._block.row(justify="center")
+        row_pass.entry(
+            name="password",
+            initial="",
+            width=24,
+            max_width=0.8,
+            obscured=True
+        )
+        self._block.spacer(ui.spacing.xl)
+
+        # Кнопки в одной строке
+        btn_row = self._block.row(justify="center", gap=0.08)
+        btn_row.button(
+            "ВОЙТИ",
+            command=self._on_login_click,
+            small=False
+        )
+        btn_row.button(
+            "НАЗАД",
+            command=self._on_back_click,
+            small=False
+        )
+
+        # Строим весь блок
+        frame = self._block.build()
+        self._add_element('panel', frame)
+
+        self._play_open_sound()
+
+    def _on_login_click(self):
+        """Обработчик кнопки Войти."""
+        callback = self.ui_manager.callbacks.get("attempt_login")
+        if callback:
+            callback()
+
+    def _on_back_click(self):
+        """Обработчик кнопки Назад."""
+        callback = self.ui_manager.callbacks.get("close_login_menu")
+        if callback:
+            callback()
+
     def get_credentials(self) -> dict:
         """Возвращает словарь с данными для входа."""
+        if not self._block:
+            return {"ip": "", "name": "", "password": ""}
+
         return {
-            "ip": self._elements['ip_entry'].get() if 'ip_entry' in self._elements else "",
-            "name": self._elements['name_entry'].get() if 'name_entry' in self._elements else "",
-            "password": self._elements['password_entry'].get() if 'password_entry' in self._elements else ""
+            "ip": self._block.get("ip") or "",
+            "name": self._block.get("name") or "",
+            "password": self._block.get("password") or ""
         }
+
+    def destroy(self):
+        """Уничтожает меню."""
+        if self._block:
+            self._block.destroy()
+            self._block = None
+        super().destroy()

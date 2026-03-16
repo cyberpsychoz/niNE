@@ -1,81 +1,100 @@
-from direct.gui.DirectGui import DirectFrame, DirectButton, DGG
-from panda3d.core import LVector4, NodePath, LColor
+# nine/ui/in_game_menu.py
+"""
+Игровое меню паузы.
+Полностью переписано с использованием blocks_v2.
+"""
 
-from nine.ui.base_component import BaseUIComponent
+from direct.gui.DirectGui import DirectFrame
+from panda3d.core import TransparencyAttrib
+
+from .base_component import BaseUIComponent
+from .blocks_v2 import Block
+from .ui_config import ui
 
 
 class InGameMenu(BaseUIComponent):
-    """
-    In-game menu component accessible during gameplay.
-    Allows continuing the game or disconnecting from the server.
-    """
+    """Меню паузы с автоматическим layout."""
 
     def __init__(self, ui_manager, client):
         super().__init__(ui_manager)
-        self.client = client  # Reference to the GameClient for disconnect functionality
-
-        # Consistent button styling
-        self.button_color = (LColor(0.1, 0.1, 0.1, 0.8), LColor(0.2, 0.2, 0.2, 0.8), LColor(0.3, 0.3, 0.3, 0.8), LColor(0.1, 0.1, 0.1, 0.5))
-
+        self.client = client
+        self._block = None
         self._setup()
 
     def _setup(self):
-        # Background frame - similar to LoginMenu's root frame
-        self._add_element(
-            'root',
-            DirectFrame(
-                frameSize=(-0.7, 0.7, -0.5, 0.5), # Adjusted size for central appearance
-                frameColor=(0, 0, 0, 0.7),      # Dark transparent background
-                parent=self.base.aspect2d,      # Parent to aspect2d for central positioning
-                sortOrder=10  # Ensure it's on top
-            )
+        """Создает элементы меню."""
+        # Затемняющий оверлей
+        self._overlay = DirectFrame(
+            parent=self.base.render2d,
+            frameSize=(-2, 2, -2, 2),
+            frameColor=ui.colors.bg_overlay,
+        )
+        self._overlay.setTransparency(TransparencyAttrib.M_alpha)
+        self._add_element('overlay', self._overlay)
+
+        # Создаём блок меню
+        self._block = Block(
+            parent=self.base.aspect2d,
+            width=0.7,  # Компактное меню паузы
+            padding=0.08,
+            bg_color=ui.colors.bg_medium,
+            pos=(0, 0, 0)
         )
 
-        # Buttons anchor - for central vertical stacking
-        buttons_anchor = self._add_element('buttons_anchor', NodePath("in-game-menu-buttons-anchor"))
-        buttons_anchor.reparentTo(self._elements['root'])
-        # The anchor is already centered within its parent (the root frame)
+        # Заголовок
+        self._block.label("ПАУЗА", style="title", align="center")
+        self._block.spacer(ui.spacing.xl)
 
-        # Continue Button
-        self._add_element(
-            'continue_button',
-            DirectButton(
-                text="Continue Game",
-                scale=0.07,  # Consistent scale
-                command=self._on_continue_click,
-                frameColor=self.button_color, # Consistent color
-                text_fg=(1,1,1,1), # White text
-                pressEffect=True, # Consistent effect
-                relief=DGG.FLAT, # Consistent relief
-                pos=(0, 0, 0.1), # Adjusted position within the frame
-                parent=buttons_anchor # Parent to the anchor
-            )
-        )
+        # Кнопка Продолжить
+        row1 = self._block.row(justify="center")
+        row1.button("ПРОДОЛЖИТЬ", command=self._on_continue_click, small=False)
+        self._block.spacer(ui.spacing.md)
 
-        # Disconnect Button
-        self._add_element(
-            'disconnect_button',
-            DirectButton(
-                text="Disconnect",
-                scale=0.07, # Consistent scale
-                command=self._on_disconnect_click,
-                frameColor=self.button_color, # Consistent color
-                text_fg=(1,1,1,1), # White text
-                pressEffect=True, # Consistent effect
-                relief=DGG.FLAT, # Consistent relief
-                pos=(0, 0, -0.1), # Adjusted position within the frame
-                parent=buttons_anchor # Parent to the anchor
-            )
-        )
+        # Кнопка Настройки
+        row2 = self._block.row(justify="center")
+        row2.button("НАСТРОЙКИ", command=self._on_settings_click, small=False)
+        self._block.spacer(ui.spacing.md)
 
-        self.hide() # Initially hidden
+        # Кнопка Отключиться
+        row3 = self._block.row(justify="center")
+        row3.button("ОТКЛЮЧИТЬСЯ", command=self._on_disconnect_click, small=False)
+
+        # Строим блок
+        frame = self._block.build()
+        self._add_element('panel', frame)
+
+        self.hide()
+
+    def show(self):
+        """Показывает меню."""
+        self._play_open_sound()
+        self._overlay.show()
+        self._block.show()
+
+    def hide(self):
+        """Скрывает меню."""
+        self._overlay.hide()
+        if self._block:
+            self._block.hide()
+
+    def destroy(self):
+        """Уничтожает меню."""
+        if self._block:
+            self._block.destroy()
+            self._block = None
+        super().destroy()
 
     def _on_continue_click(self):
-        """Hides the menu and resumes gameplay."""
-        print("Continue button clicked!")
+        """Продолжить игру."""
         self.ui_manager.hide_in_game_menu()
+        self.client.in_game_menu_active = False
+        self.client.enable_game_input()
+
+    def _on_settings_click(self):
+        """Открыть настройки."""
+        self.ui_manager.hide_in_game_menu()
+        self.ui_manager.show_settings_menu(self.client, from_in_game=True)
 
     def _on_disconnect_click(self):
-        """Initiates disconnection from the server."""
-        print("Disconnect button clicked!")
+        """Отключиться от сервера."""
         self.client.disconnect_from_server()
