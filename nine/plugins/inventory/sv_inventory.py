@@ -3,6 +3,7 @@
 Управляет инвентарями игроков на сервере.
 """
 
+import json
 from typing import Dict, List, Optional
 from nine.core.plugins import PluginModule
 from nine.core.entity import Entity, ENTITY_REGISTRY, EntityManager
@@ -17,6 +18,8 @@ class InventoryServerModule(PluginModule):
     def on_load(self):
         # {player_uuid: [Entity, ...]} - инвентарь каждого игрока
         self.inventories: Dict[str, List[Entity]] = {}
+        # {player_uuid: character_uuid} - mapping for DB persistence
+        self._player_char_map: Dict[str, str] = {}
         # Максимальный размер инвентаря
         self.max_slots = 20
 
@@ -62,18 +65,36 @@ class InventoryServerModule(PluginModule):
     # -------------------------------------------------------------------------
 
     def on_player_join(self, data: dict):
-        """Игрок присоединился - инициализируем инвентарь."""
+        """Игрок присоединился - загружаем инвентарь из БД."""
         player_uuid = data.get("uuid")
         if not player_uuid:
             return
 
-        # TODO: Загрузить инвентарь из БД
-        self.inventories[player_uuid] = []
+        character_uuid = data.get("character_uuid")
+        if character_uuid:
+            self._player_char_map[player_uuid] = character_uuid
 
-        # Grant starting equipment from class + background
-        character_data = data.get("character_data")
-        if character_data:
-            self._grant_starting_equipment(player_uuid, character_data)
+        # Try to load inventory from DB
+        loaded_from_db = False
+        if character_uuid and hasattr(self.app, 'db') and self.app.db:
+            char_data = self.app.db.get_character(character_uuid)
+            if char_data:
+                saved_inventory = char_data.get("inventory")
+                if saved_inventory and isinstance(saved_inventory, list) and len(saved_inventory) > 0:
+                    self.inventories[player_uuid] = self._deserialize_inventory(saved_inventory)
+                    loaded_from_db = True
+                    self.logger.info(
+                        f"Loaded {len(self.inventories[player_uuid])} items from DB "
+                        f"for player {player_uuid}"
+                    )
+
+        if not loaded_from_db:
+            self.inventories[player_uuid] = []
+
+            # Grant starting equipment only for fresh characters (no saved inventory)
+            character_data = data.get("character_data")
+            if character_data:
+                self._grant_starting_equipment(player_uuid, character_data)
 
         self.logger.debug(f"Инвентарь игрока {player_uuid} инициализирован")
 
@@ -81,12 +102,22 @@ class InventoryServerModule(PluginModule):
         self._send_inventory_update(player_uuid)
 
     def on_player_leave(self, data: dict):
-        """Игрок вышел - сохраняем и очищаем данные."""
+        """Игрок вышел - сохраняем инвентарь в БД и очищаем данные."""
         player_uuid = data.get("uuid")
         if not player_uuid:
             return
 
-        # TODO: Сохранить инвентарь в БД
+        # Save inventory to DB
+        character_uuid = self._player_char_map.get(player_uuid)
+        if character_uuid and hasattr(self.app, 'db') and self.app.db:
+            serialized = self._serialize_inventory(player_uuid)
+            self.app.db.update_character(character_uuid, {"inventory": serialized})
+            self.logger.info(
+                f"Saved {len(serialized)} items to DB for player {player_uuid}"
+            )
+
+        # Cleanup
+        self._player_char_map.pop(player_uuid, None)
         if player_uuid in self.inventories:
             del self.inventories[player_uuid]
 
@@ -224,6 +255,44 @@ class InventoryServerModule(PluginModule):
 
             self.logger.debug(f"Игрок {player_uuid} использовал {entity.CLASS_ID}")
             self._send_inventory_update(player_uuid)
+
+    # -------------------------------------------------------------------------
+    # Persistence (serialize / deserialize)
+    # -------------------------------------------------------------------------
+
+    def _serialize_inventory(self, player_uuid: str) -> list:
+        """Serialize player inventory to a list of dicts for DB storage."""
+        items = self.inventories.get(player_uuid, [])
+        result = []
+        for item in items:
+            result.append(item.to_dict())
+        return result
+
+    def _deserialize_inventory(self, items_data: list) -> List[Entity]:
+        """Deserialize a list of item dicts back into Entity instances."""
+        result = []
+        for item_dict in items_data:
+            class_id = item_dict.get("class_id")
+            if not class_id:
+                continue
+
+            entity = ENTITY_REGISTRY.create(class_id, unique_id=item_dict.get("unique_id"))
+            if entity is None:
+                self.logger.warning(
+                    f"Cannot deserialize item: unknown class_id '{class_id}', skipping"
+                )
+                continue
+
+            entity.count = item_dict.get("count", 1)
+            entity.data = item_dict.get("data", {})
+            entity._owner_uuid = item_dict.get("owner_uuid")
+
+            # Set event manager for items that need it
+            if hasattr(entity, 'set_event_manager'):
+                entity.set_event_manager(self.event_manager)
+
+            result.append(entity)
+        return result
 
     # -------------------------------------------------------------------------
     # Inventory operations

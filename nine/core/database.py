@@ -112,6 +112,11 @@ class DatabaseManager:
                     cursor.execute("ALTER TABLE game_characters ADD COLUMN spell_slots_current TEXT DEFAULT '{}'")
                     cursor.execute("ALTER TABLE game_characters ADD COLUMN spell_slots_max TEXT DEFAULT '{}'")
 
+                # Миграция: добавление колонки inventory для персистентного инвентаря
+                if char_columns and 'inventory' not in char_columns:
+                    print("Миграция: добавление колонки inventory в game_characters...")
+                    cursor.execute("ALTER TABLE game_characters ADD COLUMN inventory TEXT DEFAULT '[]'")
+
                 # Миграция: добавление hit dice для системы отдыха
                 if char_columns and 'hit_dice_current' not in char_columns:
                     print("Миграция: добавление колонок hit dice...")
@@ -359,7 +364,7 @@ class DatabaseManager:
                 result = dict(row)
                 # Парсим JSON поля
                 for json_field in ['skills', 'proficiencies', 'class_features', 'personality', 'equipment',
-                                   'spells_known', 'spells_prepared', 'spell_slots_current', 'spell_slots_max']:
+                                   'inventory', 'spells_known', 'spells_prepared', 'spell_slots_current', 'spell_slots_max']:
                     if result.get(json_field):
                         try:
                             result[json_field] = json.loads(result[json_field])
@@ -389,7 +394,7 @@ class DatabaseManager:
             if row:
                 result = dict(row)
                 for json_field in ['skills', 'proficiencies', 'class_features', 'personality', 'equipment',
-                                   'spells_known', 'spells_prepared', 'spell_slots_current', 'spell_slots_max']:
+                                   'inventory', 'spells_known', 'spells_prepared', 'spell_slots_current', 'spell_slots_max']:
                     if result.get(json_field):
                         try:
                             result[json_field] = json.loads(result[json_field])
@@ -485,7 +490,7 @@ class DatabaseManager:
 
         # JSON поля требуют сериализации
         json_fields = {'skills', 'proficiencies', 'class_features', 'personality', 'equipment',
-                       'spells_known', 'spells_prepared', 'spell_slots_current', 'spell_slots_max'}
+                       'inventory', 'spells_known', 'spells_prepared', 'spell_slots_current', 'spell_slots_max'}
 
         # Формируем SQL запрос
         set_clauses = []

@@ -180,6 +180,32 @@ class Item(Entity):
         # Переопределите для кастомной стоимости
         return 0
 
+    def to_dict(self) -> dict:
+        """Serialize item for persistence (inventory saving)."""
+        d = super().to_dict()
+        # Include any Item-specific instance state beyond Entity base
+        return d
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'Item':
+        """
+        Restore an Item from a dict.
+
+        Uses ENTITY_REGISTRY to create the correct subclass based on class_id,
+        then populates instance fields from the dict.
+        """
+        from nine.core.entity import ENTITY_REGISTRY
+
+        class_id = data.get("class_id", cls.CLASS_ID)
+        entity = ENTITY_REGISTRY.create(class_id, unique_id=data.get("unique_id"))
+        if entity is None:
+            # Fallback: create base Item if class_id is not registered
+            entity = cls(unique_id=data.get("unique_id"))
+        entity.count = data.get("count", 1)
+        entity.data = data.get("data", {})
+        entity._owner_uuid = data.get("owner_uuid")
+        return entity
+
     @classmethod
     def get_info(cls) -> dict:
         """Получить информацию о классе предмета."""

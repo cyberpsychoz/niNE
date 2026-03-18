@@ -8,6 +8,7 @@
 - Синхронизация с клиентом
 """
 
+import json
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 from nine.core.plugins import PluginModule
@@ -63,6 +64,8 @@ class EquipmentServerModule(PluginModule):
     def on_load(self):
         # {player_uuid: PlayerEquipment}
         self.equipment: Dict[str, PlayerEquipment] = {}
+        # {player_uuid: character_uuid} - mapping for DB persistence
+        self._player_char_map: Dict[str, str] = {}
 
         # Ссылка на модуль инвентаря
         self.inventory_module = None
@@ -105,13 +108,31 @@ class EquipmentServerModule(PluginModule):
     # =========================================================================
 
     def on_player_join(self, data: dict):
-        """Игрок присоединился — инициализируем экипировку."""
+        """Игрок присоединился — загружаем экипировку из БД."""
         player_uuid = data.get("uuid")
         if not player_uuid:
             return
 
-        # TODO: Загрузить экипировку из БД
-        self.equipment[player_uuid] = PlayerEquipment()
+        character_uuid = data.get("character_uuid")
+        if character_uuid:
+            self._player_char_map[player_uuid] = character_uuid
+
+        # Try to load equipment from DB
+        loaded_from_db = False
+        if character_uuid and hasattr(self.app, 'db') and self.app.db:
+            char_data = self.app.db.get_character(character_uuid)
+            if char_data:
+                saved_equipment = char_data.get("equipment")
+                if saved_equipment and isinstance(saved_equipment, dict) and len(saved_equipment) > 0:
+                    self.equipment[player_uuid] = self._deserialize_equipment(saved_equipment)
+                    loaded_from_db = True
+                    self.logger.info(
+                        f"Loaded {len(self.equipment[player_uuid].slots)} equipped items "
+                        f"from DB for player {player_uuid}"
+                    )
+
+        if not loaded_from_db:
+            self.equipment[player_uuid] = PlayerEquipment()
 
         self.logger.debug(f"Экипировка игрока {player_uuid} инициализирована")
 
@@ -119,12 +140,22 @@ class EquipmentServerModule(PluginModule):
         self._send_equipment_update(player_uuid)
 
     def on_player_leave(self, data: dict):
-        """Игрок вышел — сохраняем и очищаем данные."""
+        """Игрок вышел — сохраняем экипировку в БД и очищаем данные."""
         player_uuid = data.get("uuid")
         if not player_uuid:
             return
 
-        # TODO: Сохранить экипировку в БД
+        # Save equipment to DB
+        character_uuid = self._player_char_map.get(player_uuid)
+        if character_uuid and hasattr(self.app, 'db') and self.app.db:
+            serialized = self._serialize_equipment(player_uuid)
+            self.app.db.update_character(character_uuid, {"equipment": serialized})
+            self.logger.info(
+                f"Saved {len(serialized)} equipped items to DB for player {player_uuid}"
+            )
+
+        # Cleanup
+        self._player_char_map.pop(player_uuid, None)
         if player_uuid in self.equipment:
             del self.equipment[player_uuid]
 
@@ -219,6 +250,49 @@ class EquipmentServerModule(PluginModule):
         player_uuid = data.get("uuid")
         if player_uuid:
             self._send_equipment_update(player_uuid)
+
+    # =========================================================================
+    # Persistence (serialize / deserialize)
+    # =========================================================================
+
+    def _serialize_equipment(self, player_uuid: str) -> dict:
+        """Serialize player equipment to a dict for DB storage."""
+        if player_uuid not in self.equipment:
+            return {}
+
+        player_eq = self.equipment[player_uuid]
+        result = {}
+        for slot, entity in player_eq.slots.items():
+            if entity:
+                result[slot] = entity.to_dict()
+        return result
+
+    def _deserialize_equipment(self, data: dict) -> PlayerEquipment:
+        """Deserialize equipment dict from DB into a PlayerEquipment instance."""
+        player_eq = PlayerEquipment()
+        for slot, item_dict in data.items():
+            if not item_dict or not isinstance(item_dict, dict):
+                continue
+
+            class_id = item_dict.get("class_id")
+            if not class_id:
+                continue
+
+            entity = ENTITY_REGISTRY.create(class_id, unique_id=item_dict.get("unique_id"))
+            if entity is None:
+                self.logger.warning(
+                    f"Cannot deserialize equipment: unknown class_id '{class_id}' "
+                    f"in slot '{slot}', skipping"
+                )
+                continue
+
+            entity.count = item_dict.get("count", 1)
+            entity.data = item_dict.get("data", {})
+            entity._owner_uuid = item_dict.get("owner_uuid")
+
+            player_eq.set(slot, entity)
+
+        return player_eq
 
     # =========================================================================
     # Equipment operations
