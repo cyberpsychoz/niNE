@@ -34,6 +34,38 @@
 
 ---
 
+## Архитектура: Unified Pawn System
+
+Игроки и NPC наследуют общую ECS-архитектуру через `PawnComponent`:
+
+```
+PawnComponent(pawn_type=PLAYER/NPC)
+  Общие компоненты:
+    TransformComponent    — позиция, rotation, velocity
+    HealthComponent       — HP, is_dead
+    CombatStatsComponent  — AC, атака, damage
+    ModelComponent        — модель, анимация, tint
+    PhysicsComponent      — FULL/SIMPLE/NONE
+    FactionComponent      — фракция, враждебность
+
+  Только NPC:
+    AIComponent           — state, behavior, LOD
+    NeedsComponent        — hunger, energy, safety
+    PathfindingComponent  — waypoints, steering
+    PersonalityComponent  — traits
+    ScheduleComponent     — daily routines
+    MemoryComponent       — memories of events
+
+  Только Player:
+    CharacterController   — input → movement (не ECS, отдельный класс)
+```
+
+Ресурсные ноды, crafting stations, мировые объекты — это тоже ECS entities
+с `PawnType.OBJECT` или отдельным компонентом. NPC могут взаимодействовать
+с ними через AI (голодный NPC идёт к еде, кузнец идёт к наковальне).
+
+---
+
 ## Чего не хватает для Rimworld-подобного геймплея
 
 ### Tier 1 — Критически важно
@@ -44,6 +76,7 @@
 - Прогресс крафтинга (время)
 - Интеграция с inventory (расход материалов)
 - Пример: 2x Wood + 1x Iron → Wooden Shield
+- NPC тоже должны уметь крафтить (кузнец NPC создаёт оружие)
 
 **2. Resource Gathering** `nine/plugins/gathering/`
 - Ресурсные ноды на карте (деревья, камни, руда, травы)
@@ -51,6 +84,7 @@
 - Респавн ресурсов
 - Tool requirements (кирка для руды, топор для дерева)
 - Drop table при сборе (1-3 Wood, chance of special item)
+- NPC тоже собирают ресурсы (фермер собирает еду, шахтёр — руду)
 
 **3. Building/Construction** `nine/plugins/building/`
 - Размещение объектов в мире (ghost preview → build)
@@ -114,6 +148,79 @@
 
 ---
 
+## DM Toolkit — инструменты мастера
+
+### Текущее состояние
+DM Panel (`nine/plugins/dm_panel/`) — базовая веб-панель + chat-команды для управления.
+Не хватает удобного in-game управления через контекстное меню.
+
+### Что нужно: Context Menu (C) для NPC
+
+DM/Admin должен мочь кликнуть на NPC (или нажать C рядом с ним) и получить контекстное меню со ВСЕМИ инструментами:
+
+#### Управление NPC
+- **Переместить** — drag & drop или teleport к указанной точке
+- **Повернуть** — изменить facing direction
+- **Удалить** — убрать NPC с карты
+- **Клонировать** — создать копию этого NPC рядом
+
+#### Боевые действия
+- **Начать бой** — от лица этого NPC (инициирует encounter)
+- **Атаковать цель** — выбрать цель для атаки
+- **Установить инициативу** — ручной ввод числа
+- **Добавить в текущий бой** — если бой уже идёт
+
+#### Здоровье и состояния
+- **Изменить HP** — ползунок или ввод (+/- или абсолютное значение)
+- **Полный хил** — восстановить HP до максимума
+- **Убить** — мгновенно установить HP = 0, триггерить death
+- **Воскресить** — восстановить из мёртвого состояния
+- **Добавить состояние** — выбор из списка D&D conditions
+- **Убрать состояние** — снять конкретное condition
+
+#### Roleplay
+- **Говорить от лица NPC** — текст появится в чате от имени этого NPC
+- **Действие (/me)** — эмоция/действие от имени NPC
+- **Шёпот игроку** — приватное сообщение конкретному игроку от NPC
+
+#### Информация
+- **Инспект** — показать все характеристики NPC (HP, AC, faction, inventory, etc.)
+- **Статистика** — damage dealt, damage taken, kills
+- **Позиция** — координаты x/y/z
+
+#### Создание NPC (быстрое)
+- **Spawn menu** — выбор из шаблонов (guard, goblin, merchant, skeleton, etc.)
+- **Spawn рядом с собой** — быстрый спавн без координат
+- **Spawn по клику** — кликнуть на карту = спавн в этой точке
+- **Кастомный NPC** — ввести имя, HP, AC, faction, модель
+
+### Реализация
+
+Серверная часть (`sv_dm_tools.py`):
+```python
+# События для DM инструментов
+"dm_npc_move"         → {entity_id, x, y, z}
+"dm_npc_set_hp"       → {entity_id, hp}  или  {entity_id, delta}
+"dm_npc_kill"         → {entity_id}
+"dm_npc_resurrect"    → {entity_id}
+"dm_npc_speak"        → {entity_id, message, chat_type}
+"dm_npc_attack"       → {entity_id, target_id}
+"dm_npc_add_condition" → {entity_id, condition_id}
+"dm_npc_remove"       → {entity_id}
+"dm_npc_clone"        → {entity_id}
+"dm_spawn_npc"        → {template, x, y, z, custom_data}
+"dm_start_combat_as"  → {entity_id}  (NPC инициирует бой)
+```
+
+Клиентская часть (`cl_dm_context_menu.js`):
+- Привязка к клавише C или правому клику
+- Raycast для определения NPC под курсором
+- Выбранный NPC подсвечивается (outline или glow)
+- Радиальное или вертикальное контекстное меню
+- Горячие клавиши для частых действий (H = heal, K = kill, M = move)
+
+---
+
 ## Рекомендации по порядку реализации
 
 ### Фаза 1: Survival Loop (самое важное)
@@ -128,11 +235,12 @@
 5. **Trading** → даёт экономику
 6. **Weather** → даёт атмосферу
 
-### Фаза 3: Social & Polish
-7. **Dialogue** → NPC становятся интересными
-8. **Party System** → мультиплеер становится полезным
-9. **Map** → навигация
-10. **Professions** → долгосрочная прогрессия
+### Фаза 3: DM & Social
+7. **DM Context Menu** → мастер может нормально вести сессию
+8. **Dialogue** → NPC становятся интересными
+9. **Party System** → мультиплеер становится полезным
+10. **Map** → навигация
+11. **Professions** → долгосрочная прогрессия
 
 ---
 
@@ -142,8 +250,11 @@
 - **NPC templates** — merchant уже есть, добавить trader AI
 - **Needs система** — hunger/energy уже в компонентах, включить для игроков
 - **Event система** — все плагины общаются через события
-- **ECS** — crafting stations и ресурсные ноды = ECS entities
+- **ECS** — crafting stations и ресурсные ноды = ECS entities с PawnType.OBJECT
 - **CEF UI** — любой UI через HTML/CSS/JS
+- **Context Menu** — уже есть базовое (inspect, interact), расширить для DM
+
+---
 
 ## Проделанная работа (эта сессия)
 
