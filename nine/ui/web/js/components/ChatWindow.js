@@ -125,6 +125,7 @@ class ChatWindow {
         const { type, data } = event.detail;
         if (type === 'chat_message') this.addMessage(data);
         else if (type === 'game_state_changed') this._onGameState(data);
+        else if (type === 'open_chat') this.open();
     }
 
     _onGameState(data) {

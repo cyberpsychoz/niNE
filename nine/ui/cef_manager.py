@@ -660,6 +660,9 @@ class CEFUIManager:
         self._input.accept('j', self._on_panel_key, ['quest-log'])
         self._input.accept('f2', self._on_panel_key, ['admin-panel'])
 
+        # Chat toggle (T key — handled Python-side like panels)
+        self._input.accept('t', self._on_chat_toggle)
+
         # Noclip toggle (admin/DM only — server validates role)
         self._input.accept('n', self._on_noclip_toggle)
 
@@ -839,6 +842,19 @@ class CEFUIManager:
                     self.app.keyMap[key] = False
         self.send_to_js("toggle_panel", {"panel": panel_name})
 
+    def _on_chat_toggle(self):
+        """Handle T key — open chat window via JS."""
+        if getattr(self.app, '_web_chat_active', False):
+            return
+        from nine.core.game_state import GameState
+        if self.game_state != GameState.IN_GAME:
+            return
+        if self._panel_open:
+            return
+        if getattr(self.app, 'in_game_menu_active', False):
+            return
+        self.send_to_js("open_chat", {})
+
     def _on_noclip_toggle(self):
         """Handle N key — request noclip toggle from server."""
         if getattr(self.app, '_web_chat_active', False):
@@ -1004,6 +1020,9 @@ class CEFUIManager:
         from nine.core.game_state import GameState
         self.set_game_state(GameState.IN_GAME)
         self.send_to_js("navigate", {"screen": "hidden"})
+        # Explicitly stop menu music (belt-and-suspenders: game_state_changed
+        # also triggers this in JS, but ensure it fires even if event is delayed)
+        self.send_to_js("stop_menu_music", {})
         logger.info("Entered game state")
 
     def destroy_all(self):

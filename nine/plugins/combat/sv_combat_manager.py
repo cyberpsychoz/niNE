@@ -1204,6 +1204,14 @@ class CombatManager:
             extraArgs=[combat_id, entity_id],
             appendTask=True,
         )
+        # Safety timeout: force end NPC turn if AI gets stuck (10 seconds max)
+        self.app.taskMgr.remove(f"npc-timeout-{combat_id}")
+        self.app.taskMgr.doMethodLater(
+            10.0, self._npc_turn_timeout,
+            f"npc-timeout-{combat_id}",
+            extraArgs=[combat_id, entity_id],
+            appendTask=True,
+        )
 
     def _npc_ai_decide(self, combat_id: str, entity_id: str, task):
         """NPC AI decision-making for turn-based combat."""
@@ -1301,6 +1309,8 @@ class CombatManager:
 
         # If the action was end_turn, the turn manager already advanced
         if action_id == "end_turn":
+            # Clean up safety timeout
+            self.app.taskMgr.remove(f"npc-timeout-{combat_id}")
             return
 
         # Schedule follow-up: if NPC still has bonus action, might use it,
@@ -1335,6 +1345,26 @@ class CombatManager:
             "target_id": None,
         })
 
+        return task.done
+
+    def _npc_turn_timeout(self, combat_id: str, entity_id: str, task):
+        """Safety timeout: force-end NPC turn if AI decision chain gets stuck."""
+        combat = self.active_combats.get(combat_id)
+        if not combat or not combat.is_active:
+            return task.done
+
+        current = combat.current_participant
+        if not current or current.entity_id != entity_id:
+            return task.done  # Turn already advanced
+
+        self.logger.warning(f"NPC turn timeout for {entity_id} in combat {combat_id[:8]}, forcing end_turn")
+        self.app.taskMgr.remove(f"npc-ai-{combat_id}")
+        self.event_manager.post("combat_action_execute", {
+            "combat_id": combat_id,
+            "actor_id": entity_id,
+            "action_id": "end_turn",
+            "target_id": None,
+        })
         return task.done
 
     def _npc_pick_target(self, combat: CombatInstance, npc: CombatParticipant) -> Optional[CombatParticipant]:

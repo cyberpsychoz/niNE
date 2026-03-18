@@ -36,6 +36,8 @@ class SoundManager {
             if (type === 'game_state_changed') {
                 const st = data.new_state || data.state || '';
                 if (st === 'IN_GAME') this.stopMenuMusic();
+            } else if (type === 'stop_menu_music') {
+                this.stopMenuMusic();
             } else if (type === 'audio_volume_changed') {
                 this.masterVolume = data.master_volume ?? this.masterVolume;
                 this.bgmVolume = data.bgm_volume ?? this.bgmVolume;

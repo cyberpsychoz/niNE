@@ -1,0 +1,64 @@
+<div id="admin-panel" class="panel-overlay hidden">
+    <div class="panel-container admin-panel-container">
+        <div class="panel-header">
+            <h2 class="panel-title">DM Panel</h2>
+            <button class="panel-close-btn" id="admin-panel-close">&times;</button>
+        </div>
+
+        <!-- Tab bar -->
+        <div class="panel-tabs" id="admin-tabs">
+            <button class="tab-btn active" data-tab="players">Players</button>
+            <button class="tab-btn" data-tab="combat">Combat</button>
+            <button class="tab-btn" data-tab="spawn">Spawn</button>
+            <button class="tab-btn" data-tab="tools">Tools</button>
+        </div>
+
+        <!-- Players tab -->
+        <div class="panel-tab-content active" id="admin-tab-players">
+            <div class="admin-player-list" id="admin-player-list">
+                <div class="admin-empty">No players connected</div>
+            </div>
+        </div>
+
+        <!-- Combat tab -->
+        <div class="panel-tab-content" id="admin-tab-combat">
+            <div class="admin-row">
+                <button class="btn btn-sm" id="admin-start-combat">Start Combat</button>
+                <button class="btn btn-sm btn-danger" id="admin-end-combat">End Combat</button>
+                <button class="btn btn-sm" id="admin-next-turn">Next Turn</button>
+            </div>
+            <div class="admin-combat-list" id="admin-combat-list">
+                <div class="admin-empty">No active combats</div>
+            </div>
+        </div>
+
+        <!-- Spawn tab -->
+        <div class="panel-tab-content" id="admin-tab-spawn">
+            <div class="admin-row">
+                <label>Template:</label>
+                <select id="admin-spawn-template" class="admin-select">
+                    <option value="guard">Guard</option>
+                    <option value="goblin">Goblin</option>
+                    <option value="skeleton">Skeleton</option>
+                    <option value="merchant">Merchant</option>
+                </select>
+                <button class="btn btn-sm" id="admin-spawn-btn">Spawn NPC</button>
+            </div>
+            <div class="admin-npc-list" id="admin-npc-list">
+                <div class="admin-empty">No NPCs spawned</div>
+            </div>
+        </div>
+
+        <!-- Tools tab -->
+        <div class="panel-tab-content" id="admin-tab-tools">
+            <div class="admin-row">
+                <label>Announcement:</label>
+                <input type="text" id="admin-announce-text" class="admin-input" placeholder="Message to all players...">
+                <button class="btn btn-sm" id="admin-announce-btn">Send</button>
+            </div>
+            <div class="admin-row">
+                <button class="btn btn-sm" id="admin-noclip-btn">Toggle Noclip</button>
+            </div>
+        </div>
+    </div>
+</div>
