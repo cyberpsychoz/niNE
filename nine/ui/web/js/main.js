@@ -45,17 +45,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.contextMenu = new ContextMenu();
     await window.contextMenu.init();
 
-    // Initialize admin panel (F2)
-    window.adminPanel = new AdminPanel();
-    await window.adminPanel.init();
-
     // Register panels with PanelManager
     // (keyboard shortcuts handled Python-side in cef_manager.py: I, K, J, F2)
     if (window.panelManager) {
         window.panelManager.register('character-sheet', window.characterSheet);
         window.panelManager.register('spellbook', window.spellbookPanel);
         window.panelManager.register('quest-log', window.questLog);
-        window.panelManager.register('admin-panel', window.adminPanel);
     }
 
     // Initialize sound manager (menu music + UI sounds)
