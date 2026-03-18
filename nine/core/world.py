@@ -305,7 +305,7 @@ class GameWorld:
         """
         try:
             # Load model for collision extraction
-            map_model = loader.loadModel(model_path)
+            map_model = self.base.loader.loadModel(model_path)
             if not map_model:
                 logger.error(f"[World] Failed to load map model: {model_path}")
                 self._create_fallback_ground()
